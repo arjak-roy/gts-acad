@@ -1,0 +1,563 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN     @map("admin")
+  CANDIDATE @map("candidate")
+  CLIENT    @map("client")
+  VENDOR    @map("vendor")
+  TRAINER   @map("trainer")
+
+  @@map("role")
+}
+
+enum ProgramType {
+  LANGUAGE  @map("language")
+  CLINICAL  @map("clinical")
+  TECHNICAL @map("technical")
+
+  @@map("program_type")
+}
+
+enum BatchStatus {
+  DRAFT      @map("draft")
+  PLANNED    @map("planned")
+  IN_SESSION @map("in_session")
+  COMPLETED  @map("completed")
+  ARCHIVED   @map("archived")
+  CANCELLED  @map("cancelled")
+
+  @@map("batch_status")
+}
+
+enum EnrollmentStatus {
+  ACTIVE    @map("active")
+  ON_HOLD   @map("on_hold")
+  COMPLETED @map("completed")
+  DROPPED   @map("dropped")
+
+  @@map("enrollment_status")
+}
+
+enum AttendanceStatus {
+  PRESENT @map("present")
+  ABSENT  @map("absent")
+  LATE    @map("late")
+  EXCUSED @map("excused")
+
+  @@map("attendance_status")
+}
+
+enum ExamType {
+  IELTS      @map("IELTS")
+  OET        @map("OET")
+  NCLEX      @map("NCLEX")
+  GOETHE_A1  @map("GOETHE_A1")
+  GOETHE_A2  @map("GOETHE_A2")
+  GOETHE_B1  @map("GOETHE_B1")
+  GOETHE_B2  @map("GOETHE_B2")
+  PROMETRIC  @map("PROMETRIC")
+
+  @@map("exam_type")
+}
+
+enum EvaluationStatus {
+  SCHEDULED   @map("scheduled")
+  IN_PROGRESS @map("in_progress")
+  COMPLETED   @map("completed")
+  CANCELLED   @map("cancelled")
+  RESCHEDULED @map("rescheduled")
+
+  @@map("evaluation_status")
+}
+
+enum InterviewType {
+  INTERNAL_MOCK     @map("internal_mock")
+  CLIENT_FINAL      @map("client_final")
+  TECHNICAL_SCREENING @map("technical_screening")
+  LANGUAGE_CHECK    @map("language_check")
+
+  @@map("interview_type")
+}
+
+enum BatchMode {
+  ONLINE  @map("online")
+  OFFLINE @map("offline")
+
+  @@map("batch_mode")
+}
+
+enum AssessmentType {
+  DIAGNOSTIC @map("diagnostic")
+  MODULE     @map("module")
+  MOCK       @map("mock")
+  FINAL      @map("final")
+
+  @@map("assessment_type")
+}
+
+enum AssessmentMode {
+  ONLINE      @map("online")
+  PAPER_BASED @map("paper_based")
+  VIVA_VOCE   @map("viva_voce")
+
+  @@map("assessment_mode")
+}
+
+enum CertificateStatus {
+  ISSUED  @map("issued")
+  REVOKED @map("revoked")
+  EXPIRED @map("expired")
+
+  @@map("certificate_status")
+}
+
+enum PlacementStatus {
+  NOT_READY       @map("not_ready")
+  IN_REVIEW       @map("in_review")
+  PLACEMENT_READY @map("placement_ready")
+
+  @@map("placement_status")
+}
+
+enum SyncStatus {
+  NOT_SYNCED @map("not_synced")
+  QUEUED     @map("queued")
+  SYNCED     @map("synced")
+  FAILED     @map("failed")
+
+  @@map("sync_status")
+}
+
+model Country {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  isoCode     String    @unique @map("iso_code") @db.VarChar(5)
+  states      State[]
+  learners    Learner[] @relation("LearnerNationality")
+
+  @@map("countries")
+}
+
+model State {
+  id        Int      @id @default(autoincrement())
+  countryId Int      @map("country_id")
+  name      String   @db.VarChar(100)
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities    City[]
+
+  @@map("states")
+}
+
+model City {
+  id              Int              @id @default(autoincrement())
+  stateId         Int              @map("state_id")
+  name            String           @db.VarChar(100)
+  state           State            @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  trainingCentres TrainingCentre[]
+
+  @@map("cities")
+}
+
+model Currency {
+  id     Int     @id @default(autoincrement())
+  code   String  @unique @db.VarChar(10)
+  symbol String? @db.VarChar(5)
+
+  @@map("currencies")
+}
+
+model User {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("user_id")
+  email             String             @unique @db.VarChar(255)
+  name              String             @map("full_name") @db.VarChar(255)
+  phone             String?            @db.VarChar(20)
+  password          String             @db.VarChar(255)
+  role              UserRole
+  emailVerifiedAt   DateTime?          @map("email_verified_at") @db.Timestamptz(6)
+  isActive          Boolean            @default(true) @map("is_active")
+  lastLoginAt       DateTime?          @map("last_login_at") @db.Timestamptz(6)
+  metadata          Json               @default("{}")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  security          UserSecurity?
+  trainerProfile    TrainerProfile?
+  learnerAccount    Learner?           @relation("LearnerUser")
+  markedAttendance  AttendanceRecord[] @relation("AttendanceMarkedBy")
+  recruiterSyncLogs RecruiterSyncLog[] @relation("SyncTriggeredBy")
+  interviews        Interview[]        @relation("InterviewedBy")
+
+  @@map("users")
+}
+
+model UserSecurity {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @unique @db.Uuid @map("user_id")
+  twoFactorEnabled  Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret   String?   @map("two_factor_secret")
+  recoveryCodes     String[]  @map("recovery_codes")
+  passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz(6)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_security")
+}
+
+model TrainerProfile {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("trainer_id")
+  userId         String         @unique @db.Uuid @map("user_id")
+  specialization String         @db.VarChar(255)
+  bio            String?
+  rating         Decimal        @default(0) @map("rating_avg") @db.Decimal(3, 2)
+  capacity       Int            @default(0)
+  isActive       Boolean        @default(true) @map("is_active")
+  joinedAt       DateTime       @default(now()) @map("joined_at") @db.Date
+  programs       String[]
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leadBatches    Batch[]        @relation("BatchLeadTrainer")
+  batches        Batch[]        @relation("BatchTrainers")
+  roleplays      Roleplay[]
+  trainerPmsLogs TrainerPmsLog[]
+
+  @@index([userId], map: "idx_trainers_user")
+  @@map("trainers")
+}
+
+model Program {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("course_id")
+  slug          String        @unique @db.VarChar(120)
+  name          String        @map("title") @db.VarChar(255)
+  type          ProgramType
+  category      String?       @db.VarChar(100)
+  description   String?
+  durationWeeks Int           @map("duration_weeks")
+  isActive      Boolean       @default(true) @map("is_active")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  batches       Batch[]
+  assessments   Assessment[]
+  certificates  Certificate[]
+
+  @@index([type, isActive], map: "idx_courses_type")
+  @@map("courses")
+}
+
+model TrainingCentre {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String   @map("centre_name") @db.VarChar(255)
+  locationId         Int?     @map("location_id")
+  infrastructure     Json     @default("{}")
+  totalCapacity      Int      @default(0) @map("total_capacity")
+  currentUtilization Int      @default(0) @map("current_utilization")
+  complianceStatus   String   @default("pending") @map("compliance_status") @db.VarChar(50)
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  location           City?    @relation(fields: [locationId], references: [id])
+  batches            Batch[]
+
+  @@map("training_centres")
+}
+
+model Batch {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("batch_id")
+  code               String             @unique @db.VarChar(50)
+  name               String             @map("batch_name") @db.VarChar(100)
+  programId          String             @db.Uuid @map("course_id")
+  centreId           String?            @db.Uuid @map("centre_id")
+  campus             String?            @db.VarChar(120)
+  trainerId          String?            @db.Uuid @map("trainer_id")
+  startDate          DateTime           @map("start_date") @db.Timestamptz(6)
+  endDate            DateTime?          @map("end_date") @db.Timestamptz(6)
+  mode               BatchMode          @default(OFFLINE)
+  status             BatchStatus        @default(PLANNED)
+  capacity           Int                @default(25)
+  schedule           String[]
+  scheduleTime       DateTime?          @map("schedule_time") @db.Time(6)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  trainer            TrainerProfile?    @relation("BatchLeadTrainer", fields: [trainerId], references: [id], onDelete: SetNull)
+  trainers           TrainerProfile[]   @relation("BatchTrainers")
+  program            Program            @relation(fields: [programId], references: [id], onDelete: Restrict)
+  centre             TrainingCentre?    @relation(fields: [centreId], references: [id], onDelete: SetNull)
+  enrollments        BatchEnrollment[]
+  assessments        Assessment[]
+  performanceMetrics PerformanceMetric[]
+  roleplays          Roleplay[]
+  trainerPmsLogs     TrainerPmsLog[]
+
+  @@index([programId, status], map: "idx_batches_course_status")
+  @@index([trainerId], map: "idx_batches_trainer")
+  @@map("batches")
+}
+
+model Learner {
+  id                         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("candidate_id")
+  userId                     String?               @unique @db.Uuid @map("user_id")
+  learnerCode                String                @unique @map("candidate_code") @db.VarChar(50)
+  fullName                   String                @map("full_name") @db.VarChar(255)
+  email                      String                @unique @db.VarChar(255)
+  phone                      String?               @db.VarChar(20)
+  country                    String?               @db.VarChar(100)
+  profileImageUrl            String?               @map("profile_image_url")
+  dob                        DateTime?             @db.Date
+  gender                     String?               @db.VarChar(20)
+  nationalityId              Int?                  @map("nationality_id")
+  status                     String                @default("active") @db.VarChar(50)
+  targetCountry              String?               @map("target_country") @db.VarChar(100)
+  targetLanguage             String?               @map("target_language") @db.VarChar(100)
+  targetExam                 ExamType?             @map("target_exam")
+  isActive                   Boolean               @default(true) @map("is_active")
+  softSkillsScore            Int                   @default(0) @map("soft_skills_score")
+  readinessPercentage        Int                   @default(0) @map("readiness_percentage")
+  placementStatus            PlacementStatus       @default(NOT_READY) @map("placement_status")
+  recruiterSyncStatus        SyncStatus            @default(NOT_SYNCED) @map("recruiter_sync_status")
+  latestAssessmentAverage    Decimal               @default(0) @map("latest_assessment_average") @db.Decimal(5, 2)
+  latestAttendancePercentage Decimal               @default(0) @map("latest_attendance_percentage") @db.Decimal(5, 2)
+  isReadyForDeployment       Boolean               @default(false) @map("is_ready_for_deployment")
+  createdAt                  DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                       User?                 @relation("LearnerUser", fields: [userId], references: [id], onDelete: SetNull)
+  nationality                Country?              @relation("LearnerNationality", fields: [nationalityId], references: [id])
+  enrollments                BatchEnrollment[]
+  assessmentScores           AssessmentScore[]
+  readinessSnapshots         ReadinessSnapshot[]
+  certificates               Certificate[]
+  recruiterSyncLogs          RecruiterSyncLog[]
+  basicDetails               CandidateBasicDetails?
+  documents                  CandidateDocument[]
+  performanceMetrics         PerformanceMetric[]
+  roleplays                  Roleplay[]
+  interviews                 Interview[]
+
+  @@index([userId], map: "idx_candidates_user")
+  @@index([placementStatus, recruiterSyncStatus], map: "idx_candidates_status")
+  @@map("candidates")
+}
+
+model CandidateBasicDetails {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  candidateId String   @unique @db.Uuid @map("candidate_id")
+  passportNo  String?  @map("passport_no") @db.VarChar(50)
+  education   Json?
+  experience  Json?
+  lastUpdated DateTime @default(now()) @map("last_updated") @db.Timestamptz(6)
+  learner     Learner  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_basic_details")
+}
+
+model CandidateDocument {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  candidateId  String    @db.Uuid @map("candidate_id")
+  documentType String?   @map("document_type") @db.VarChar(100)
+  filePath     String    @map("file_path")
+  verified     Boolean   @default(false)
+  verifiedAt   DateTime? @map("verified_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  learner      Learner   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_documents")
+}
+
+model BatchEnrollment {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("enrollment_id")
+  learnerId         String             @db.Uuid @map("candidate_id")
+  batchId           String             @db.Uuid @map("batch_id")
+  status            EnrollmentStatus   @default(ACTIVE)
+  joinedAt          DateTime           @default(now()) @map("joined_at") @db.Timestamptz(6)
+  completedAt       DateTime?          @map("completed_at") @db.Timestamptz(6)
+  learner           Learner            @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  batch             Batch              @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  attendanceRecords AttendanceRecord[]
+
+  @@unique([learnerId, batchId])
+  @@index([batchId, status], map: "idx_enrollments_batch_status")
+  @@index([learnerId], map: "idx_enrollments_candidate")
+  @@map("candidate_batch_enrollments")
+}
+
+model AttendanceRecord {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  enrollmentId String           @db.Uuid @map("enrollment_id")
+  sessionDate  DateTime         @map("session_date") @db.Date
+  status       AttendanceStatus
+  notes        String?          @map("remarks")
+  markedById   String?          @db.Uuid @map("marked_by_user_id")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  enrollment   BatchEnrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  markedBy     User?            @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, sessionDate])
+  @@index([sessionDate, status], map: "idx_attendance_date_status")
+  @@index([markedById], map: "idx_attendance_marker")
+  @@map("attendance_tracker")
+}
+
+model Assessment {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("assessment_id")
+  title       String           @db.VarChar(255)
+  type        AssessmentType
+  mode        AssessmentMode   @default(ONLINE)
+  maxScore    Int              @default(100) @map("max_score")
+  programId   String?          @db.Uuid @map("course_id")
+  batchId     String?          @db.Uuid @map("batch_id")
+  scheduledAt DateTime?        @map("scheduled_at") @db.Timestamptz(6)
+  status      EvaluationStatus @default(SCHEDULED)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  program     Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
+  batch       Batch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  scores      AssessmentScore[]
+
+  @@index([batchId], map: "idx_assessments_batch")
+  @@map("assessments")
+}
+
+model AssessmentScore {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("assessment_score_id")
+  assessmentId String     @db.Uuid @map("assessment_id")
+  learnerId    String     @db.Uuid @map("candidate_id")
+  score        Int
+  feedback     String?
+  gradedAt     DateTime   @default(now()) @map("graded_at") @db.Timestamptz(6)
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  learner      Learner    @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, learnerId])
+  @@index([learnerId, gradedAt], map: "idx_assessment_scores_candidate")
+  @@map("assessment_scores")
+}
+
+model ReadinessEngineRule {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("rule_id")
+  name               String              @default("default") @db.VarChar(100)
+  attendanceWeight   Int                 @default(30) @map("attendance_weight")
+  assessmentWeight   Int                 @default(50) @map("assessment_weight")
+  softSkillsWeight   Int                 @default(20) @map("soft_skills_weight")
+  placementThreshold Int                 @default(80) @map("placement_threshold")
+  isDefault          Boolean             @default(true) @map("is_default")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  snapshots          ReadinessSnapshot[]
+
+  @@map("readiness_engine_rules")
+}
+
+model ReadinessSnapshot {
+  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("snapshot_id")
+  learnerId  String              @db.Uuid @map("candidate_id")
+  ruleId     String              @db.Uuid @map("rule_id")
+  percentage Int
+  status     PlacementStatus
+  syncStatus SyncStatus          @default(NOT_SYNCED) @map("sync_status")
+  syncedAt   DateTime?           @map("synced_at") @db.Timestamptz(6)
+  notes      String?
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  learner    Learner             @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  rule       ReadinessEngineRule @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+
+  @@index([status, syncStatus], map: "idx_readiness_snapshot_status")
+  @@map("candidate_readiness_snapshots")
+}
+
+model Certificate {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("certificate_id")
+  learnerId        String            @db.Uuid @map("candidate_id")
+  programId        String            @db.Uuid @map("course_id")
+  status           CertificateStatus @default(ISSUED)
+  issuedAt         DateTime          @default(now()) @map("issued_at") @db.Timestamptz(6)
+  verificationCode String            @unique @map("verification_code") @db.VarChar(100)
+  learner          Learner           @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  program          Program           @relation(fields: [programId], references: [id], onDelete: Restrict)
+
+  @@index([issuedAt, status], map: "idx_certificates_issued")
+  @@map("candidate_certificates")
+}
+
+model RecruiterSyncLog {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("sync_log_id")
+  learnerId     String     @db.Uuid @map("candidate_id")
+  triggeredById String?    @db.Uuid @map("triggered_by_user_id")
+  destination   String     @default("recruiter-workspace") @db.VarChar(100)
+  status        SyncStatus
+  payload       Json
+  responseBody  Json?      @map("response_body")
+  message       String?
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  learner       Learner    @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  triggeredBy   User?      @relation("SyncTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt], map: "idx_sync_logs_status")
+  @@map("candidate_recruiter_sync_logs")
+}
+
+model PerformanceMetric {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("metric_id")
+  learnerId            String   @db.Uuid @map("student_id")
+  batchId              String   @db.Uuid @map("batch_id")
+  gameScore            Decimal? @map("game_score") @db.Decimal(5, 2)
+  attendancePercentage Decimal? @map("attendance_percentage") @db.Decimal(5, 2)
+  readingScore         Decimal? @map("reading_score") @db.Decimal(5, 2)
+  writingScore         Decimal? @map("writing_score") @db.Decimal(5, 2)
+  listeningScore       Decimal? @map("listening_score") @db.Decimal(5, 2)
+  speakingScore        Decimal? @map("speaking_score") @db.Decimal(5, 2)
+  overallBand          Decimal? @map("overall_band") @db.Decimal(3, 1)
+  trainerFeedback      String?  @map("trainer_feedback")
+  lastUpdated          DateTime @default(now()) @map("last_updated") @db.Timestamptz(6)
+  learner              Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  batch                Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("performance_metrics")
+}
+
+model Roleplay {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("roleplay_id")
+  batchId      String          @db.Uuid @map("batch_id")
+  learnerId    String          @db.Uuid @map("student_id")
+  trainerId    String?         @db.Uuid @map("trainer_id")
+  scenarioName String?         @map("scenario_name") @db.VarChar(255)
+  videoUrl     String?         @map("video_url")
+  scores       Json?
+  occurredAt   DateTime        @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  batch        Batch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  learner      Learner         @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  trainer      TrainerProfile? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+
+  @@map("roleplays")
+}
+
+model Interview {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("interview_id")
+  learnerId       String           @db.Uuid @map("student_id")
+  interviewerId   String?          @db.Uuid @map("interviewer_id")
+  type            InterviewType    @default(INTERNAL_MOCK)
+  status          EvaluationStatus @default(SCHEDULED)
+  scheduledAt     DateTime?        @map("scheduled_at") @db.Timestamptz(6)
+  feedbackSummary String?          @map("feedback_summary")
+  isPassed        Boolean          @default(false) @map("is_passed")
+  resultMetadata  Json?            @map("result_metadata")
+  learner         Learner          @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  interviewer     User?            @relation("InterviewedBy", fields: [interviewerId], references: [id], onDelete: SetNull)
+
+  @@map("interviews")
+}
+
+model TrainerPmsLog {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("log_id")
+  trainerId          String          @db.Uuid @map("trainer_id")
+  batchId            String          @db.Uuid @map("batch_id")
+  studentFeedbackAvg Decimal?        @map("student_feedback_avg") @db.Decimal(3, 2)
+  completionRate     Decimal?        @map("completion_rate") @db.Decimal(5, 2)
+  pmsScoreCalculated Decimal?        @map("pms_score_calculated") @db.Decimal(5, 2)
+  recordedAt         DateTime        @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  trainer            TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  batch              Batch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("trainer_pms_logs")
+}
