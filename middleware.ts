@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const MOCK_AUTH_COOKIE = "gts_mock_session";
+import { getAuthSession } from "@/lib/auth/session";
 
 function appendPathnameHeader(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
@@ -14,13 +14,13 @@ function appendPathnameHeader(request: NextRequest) {
   });
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const session = request.cookies.get(MOCK_AUTH_COOKIE)?.value;
-  const isLoggedIn = Boolean(session);
+  const session = await getAuthSession(request);
+  const isFullyAuthenticated = session?.state === "authenticated";
 
   if (pathname === "/login") {
-    if (isLoggedIn) {
+    if (isFullyAuthenticated) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
     return appendPathnameHeader(request);
@@ -30,7 +30,7 @@ export function middleware(request: NextRequest) {
     return appendPathnameHeader(request);
   }
 
-  if (!isLoggedIn) {
+  if (!isFullyAuthenticated) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

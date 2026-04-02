@@ -17,12 +17,12 @@ import {
 
 type ViewState = "SIGN_IN" | "TWO_STEP" | "RECOVERY" | "FORGOT_PASSWORD" | "RESET_SENT";
 
-type LoginTab = "Internal User" | "Candidate" | "Client";
+type LoginTab = "Admin" | "Trainer";
 
 export default function LoginPage() {
   const router = useRouter();
   const [viewState, setViewState] = useState<ViewState>("SIGN_IN");
-  const [activeTab, setActiveTab] = useState<LoginTab>("Internal User");
+  const [activeTab, setActiveTab] = useState<LoginTab>("Admin");
   const [showPassword, setShowPassword] = useState(false);
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
@@ -31,49 +31,109 @@ export default function LoginPage() {
   const [isVerified, setIsVerified] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [twoFactorHint, setTwoFactorHint] = useState("");
 
-  const signInToApp = async () => {
+  const completeSignIn = async () => {
+    router.replace("/dashboard");
+    router.refresh();
+  };
+
+  const resendTwoFactorCode = async () => {
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch("/api/auth/2fa/resend", {
         method: "POST",
       });
 
+      const payload = (await response.json().catch(() => null)) as { data?: { maskedEmail?: string }; error?: string } | null;
+
       if (!response.ok) {
-        throw new Error("Unable to sign in right now. Please try again.");
+        throw new Error(payload?.error || "Unable to resend the verification code right now.");
       }
 
-      router.replace("/dashboard");
-      router.refresh();
-    } catch {
-      setError("Unable to sign in right now. Please try again.");
+      setTwoFactorHint(payload?.data?.maskedEmail ?? twoFactorHint);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Unable to resend the verification code right now.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleInitialSignIn = (e: React.FormEvent) => {
+  const handleInitialSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
-    setTimeout(() => {
-      setViewState("TWO_STEP");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: loginId,
+          password,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: { requiresTwoFactor?: boolean; maskedEmail?: string }; error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to sign in right now. Please try again.");
+      }
+
+      if (payload?.data?.requiresTwoFactor) {
+        setTwoFactorHint(payload.data.maskedEmail ?? "");
+        setAuthCode("");
+        setRecoveryCode("");
+        setIsVerified(false);
+        setViewState("TWO_STEP");
+        return;
+      }
+
+      await completeSignIn();
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : "Unable to sign in right now. Please try again.");
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   const handleCodeChange = (val: string) => {
     setAuthCode(val);
     setError("");
-    setIsVerified(val.trim().length > 0);
+    setIsVerified(val.trim().length === 6);
   };
 
   const handleTwoStepSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signInToApp();
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/auth/2fa/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: authCode,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to verify your code right now.");
+      }
+
+      await completeSignIn();
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : "Unable to verify your code right now.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRecoveryChange = (val: string) => {
@@ -83,23 +143,43 @@ export default function LoginPage() {
   };
 
   const handleRecoveryLogin = async () => {
-    await signInToApp();
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/auth/2fa/recovery", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recoveryCode,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to verify your recovery code right now.");
+      }
+
+      await completeSignIn();
+    } catch (recoveryError) {
+      setError(recoveryError instanceof Error ? recoveryError.message : "Unable to verify your recovery code right now.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSendResetLink = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setViewState("RESET_SENT");
-      setIsLoading(false);
-    }, 700);
+    setError("Password reset email is not implemented yet.");
   };
 
   const resetToSignIn = () => {
     setViewState("SIGN_IN");
     setAuthCode("");
     setRecoveryCode("");
+    setTwoFactorHint("");
     setIsVerified(false);
     setError("");
   };
@@ -119,14 +199,14 @@ export default function LoginPage() {
   };
 
   const getTwoStepTitle = () => {
-    if (activeTab === "Internal User") return "Internal Admin Panel Two-Step Verification Challenge";
-    if (activeTab === "Candidate") return "Candidate Portal Two-Factor Challenge";
-    return "Client Portal Two-Factor Challenge";
+    if (activeTab === "Admin") return "Internal Admin Panel Email Verification";
+    if (activeTab === "Trainer") return "Trainer Portal Email Verification";
+    return "Client Portal Email Verification";
   };
 
   const getRecoveryTitle = () => {
-    if (activeTab === "Internal User") return "Internal Admin Panel";
-    if (activeTab === "Candidate") return "Candidate Portal";
+    if (activeTab === "Admin") return "Internal Admin Panel";
+    if (activeTab === "Trainer") return "Trainer Portal";
     return "Client Portal";
   };
 
@@ -148,9 +228,9 @@ export default function LoginPage() {
               className="h-16 object-contain brightness-0 invert"
             />
           </div>
-          <h1 className="mb-6 text-4xl font-bold leading-tight lg:text-5xl">Powering Global Talent Mobility</h1>
+          <h1 className="mb-6 text-4xl font-bold leading-tight lg:text-5xl">Global Talent Square Academy</h1>
           <p className="text-lg font-light leading-relaxed opacity-90">
-            One platform to manage clients, candidates, compliance, payments, training, and deployment - seamlessly across borders.
+            One platform, infinite possibilities. Empowering you with the skills and connections to thrive in the global talent ecosystem. Join us and unlock your potential today.
           </p>
           <div className="mt-20 border-t border-white border-opacity-20 pt-8">
             <div className="mb-3 flex space-x-6 text-white text-opacity-80">
@@ -171,7 +251,7 @@ export default function LoginPage() {
                 <h2 className="text-2xl font-semibold tracking-tight text-gray-900">Signing into Global Talent Square</h2>
                 <p className="mb-6 mt-1 text-sm text-gray-500">Enter your credentials to continue</p>
                 <div className="mb-8 flex rounded-xl border border-[#DDE1E6] bg-[#F6F7F9] p-1 text-sm">
-                  {(["Internal User", "Candidate", "Client"] as const).map((tab) => (
+                  {(["Admin", "Trainer"] as const).map((tab) => (
                     <button
                       key={tab}
                       type="button"
@@ -258,8 +338,9 @@ export default function LoginPage() {
                 </button>
                 <h2 className="mb-2 text-xl font-bold leading-tight text-gray-900">{getTwoStepTitle()}</h2>
                 <p className="mb-8 text-sm font-medium leading-relaxed text-gray-500">
-                  Please confirm access to your account and enter your code provided to the authenticator application.
+                  Please confirm access to your account and enter the verification code sent to your registered email address.
                 </p>
+                {twoFactorHint ? <p className="mb-6 text-xs font-semibold uppercase tracking-[0.12em] text-[#0D3B84]">Code sent to {twoFactorHint}</p> : null}
                 <form onSubmit={handleTwoStepSubmit} className="space-y-6">
                   <div>
                     <div className="mb-2 flex items-center justify-between">
@@ -286,6 +367,15 @@ export default function LoginPage() {
                     />
                   </div>
                   {error && <p className="rounded-lg border border-red-100 bg-red-50 p-3 text-center text-xs font-bold text-red-600">{error}</p>}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={resendTwoFactorCode}
+                      className="text-[11px] font-bold text-[#0D3B84] hover:underline"
+                    >
+                      resend code
+                    </button>
+                  </div>
                   <button
                     type="submit"
                     disabled={isLoading}
@@ -367,7 +457,7 @@ export default function LoginPage() {
               <h3 className="mb-2 text-xl font-bold text-gray-600">{getRecoveryTitle()}</h3>
               <h2 className="text-3xl font-extrabold tracking-tight text-[#0D3B84]">Two Factor Challenge</h2>
               <p className="mx-auto mt-6 max-w-sm text-sm font-medium leading-relaxed text-gray-500">
-                Please confirm access to your account by entering the code provided by your authenticator application.
+                Enter one of your recovery codes if you cannot access the verification email for this account.
               </p>
             </div>
             <div className="space-y-8">

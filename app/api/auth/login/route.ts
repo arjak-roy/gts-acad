@@ -1,28 +1,70 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { z } from "zod";
 
-const MOCK_AUTH_COOKIE = "gts_mock_session";
+import { apiError, apiSuccess } from "@/lib/api-response";
+import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
+import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
+import { loginWithPassword } from "@/services/auth-service";
 
-function shouldUseSecureCookie(request: NextRequest) {
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  if (forwardedProto) {
-    return forwardedProto.split(",")[0]?.trim() === "https";
-  }
-
-  return request.nextUrl.protocol === "https:";
-}
+const loginSchema = z.object({
+  email: z.string().trim().email("Valid email is required."),
+  password: z.string().trim().min(1, "Password is required."),
+});
 
 export async function POST(request: NextRequest) {
-  const response = NextResponse.json({ ok: true });
+  try {
+    const body = await request.json();
+    const { email, password } = loginSchema.parse(body);
+    const result = await loginWithPassword(email, password);
 
-  response.cookies.set({
-    name: MOCK_AUTH_COOKIE,
-    value: "1",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: shouldUseSecureCookie(request),
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
+    if (result.status === "authenticated") {
+      const response = apiSuccess({
+        requiresTwoFactor: false,
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name,
+          role: result.user.role,
+        },
+      });
 
-  return response;
+      const token = await createAuthSessionToken(
+        {
+          userId: result.user.id,
+          email: result.user.email,
+          name: result.user.name,
+          role: result.user.role,
+          state: "authenticated",
+        },
+        FULL_SESSION_MAX_AGE_SECONDS,
+      );
+
+      response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
+      return response;
+    }
+
+    const pendingMaxAgeSeconds = getTwoFactorCodeTtlMinutes() * 60;
+    const response = apiSuccess({
+      requiresTwoFactor: true,
+      maskedEmail: result.maskedEmail,
+    });
+
+    const token = await createAuthSessionToken(
+      {
+        userId: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+        state: "pending",
+        challengeId: result.challengeId,
+        purpose: "LOGIN",
+      },
+      pendingMaxAgeSeconds,
+    );
+
+    response.cookies.set(buildAuthSessionCookie(request, token, pendingMaxAgeSeconds));
+    return response;
+  } catch (error) {
+    return apiError(error);
+  }
 }

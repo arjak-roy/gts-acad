@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 
 import { UserRole } from "@prisma/client";
 
+import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateTrainerInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
 
@@ -230,6 +231,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
   }
 
   const resolvedPrograms = matchingPrograms.map((program) => program.name);
+  const hashedTemporaryPassword = await hashPassword(randomUUID());
 
   const trainer = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
@@ -237,7 +239,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         email: normalizedEmail,
         name: normalizedFullName,
         phone: normalizedPhone,
-        password: randomUUID(),
+        password: hashedTemporaryPassword,
         role: UserRole.TRAINER,
         isActive,
         metadata: {

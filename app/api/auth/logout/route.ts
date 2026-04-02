@@ -1,28 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const MOCK_AUTH_COOKIE = "gts_mock_session";
-
-function shouldUseSecureCookie(request: NextRequest) {
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  if (forwardedProto) {
-    return forwardedProto.split(",")[0]?.trim() === "https";
-  }
-
-  return request.nextUrl.protocol === "https:";
-}
+import { buildClearedAuthSessionCookie } from "@/lib/auth/session";
 
 export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true });
-
-  response.cookies.set({
-    name: MOCK_AUTH_COOKIE,
-    value: "",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: shouldUseSecureCookie(request),
-    path: "/",
-    maxAge: 0,
-  });
-
+  response.cookies.set(buildClearedAuthSessionCookie(request));
   return response;
 }

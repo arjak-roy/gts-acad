@@ -1,4 +1,6 @@
 import {
+  randomBytes,
+  scryptSync,
   AssessmentMode,
   AssessmentType,
   AttendanceStatus,
@@ -22,6 +24,13 @@ loadLocalEnv({ preserveKeys: (process.env.PRISMA_PRESERVE_ENV_KEYS ?? "").split(
 const prisma = new PrismaClient();
 
 const makeUuid = (seed) => `00000000-0000-0000-0000-${seed.toString(16).padStart(12, "0")}`;
+
+const hashPassword = (password) => {
+  const normalizedPassword = password.trim();
+  const salt = randomBytes(16).toString("hex");
+  const derivedKey = scryptSync(normalizedPassword, salt, 64);
+  return `scrypt$${salt}$${derivedKey.toString("hex")}`;
+};
 
 const deriveCodePrefix = (value) => {
   const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -94,10 +103,12 @@ const LAST_NAMES = [
 ];
 
 async function upsertUser({ email, name, phone, password, role }) {
+  const hashedPassword = hashPassword(password);
+
   return prisma.user.upsert({
     where: { email },
-    update: { name, phone, password, role, isActive: true },
-    create: { email, name, phone, password, role, isActive: true, metadata: {} },
+    update: { name, phone, password: hashedPassword, role, isActive: true },
+    create: { email, name, phone, password: hashedPassword, role, isActive: true, metadata: {} },
   });
 }
 
