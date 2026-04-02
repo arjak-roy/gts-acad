@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { SectionPageSkeleton } from "@/components/modules/page-skeletons";
 import { SectionPageContent } from "@/components/modules/portal/section-page-content";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { listEmailTemplatesService } from "@/services/email-templates-service";
 import { PortalSectionContent } from "@/types";
 
 const sectionConfig = {
@@ -200,20 +201,24 @@ const sectionConfig = {
   },
   settings: {
     title: "System Configuration",
-    description: "Configuring readiness weights, operational thresholds, and sync rules.",
-    accent: "Policy controls",
-    summary: "System settings and configuration controls.",
+    description: "Manage the HTML email templates used by sign-in and other platform notifications.",
+    accent: "Template controls",
+    summary: "System-owned and custom mail templates stored in the database.",
     metrics: [],
     highlights: [],
-    tableTitle: "Configuration",
-    tableDescription: "System settings.",
+    tableTitle: "Email Templates",
+    tableDescription: "Create and edit reusable HTML templates for operational email flows.",
     tableColumns: [
-      { key: "setting", header: "Setting" },
-      { key: "value", header: "Value" },
+      { key: "name", header: "Template" },
+      { key: "key", header: "Key" },
+      { key: "subject", header: "Subject" },
+      { key: "variables", header: "Variables" },
+      { key: "updated", header: "Updated" },
+      { key: "status", header: "Status" },
     ],
     tableRows: [],
-    primaryAction: "Update Settings",
-    secondaryAction: "View Logs",
+    primaryAction: "Create Template",
+    secondaryAction: "View Usage",
   },
 };
 
@@ -227,6 +232,38 @@ type SectionKey = keyof typeof sectionConfig;
 
 async function resolveSectionContent(section: SectionKey): Promise<PortalSectionContent> {
   const base = sectionConfig[section] as PortalSectionContent;
+
+  if (section === "settings") {
+    const templates = await listEmailTemplatesService();
+    const activeTemplates = templates.filter((template) => template.isActive).length;
+    const systemTemplates = templates.filter((template) => template.isSystem).length;
+
+    return {
+      ...base,
+      accent: `${activeTemplates} active templates`,
+      metrics: [
+        { label: "Total Templates", value: String(templates.length), helper: "Rows currently available in the email template library" },
+        { label: "System Templates", value: String(systemTemplates), helper: "Reserved keys used by core product flows" },
+        { label: "Active", value: String(activeTemplates), helper: "Templates eligible for runtime delivery" },
+      ],
+      highlights: [
+        {
+          label: "Variable Coverage",
+          value: `${templates.filter((template) => template.variables.length > 0).length} templates include runtime placeholders`,
+          tone: "info",
+        },
+      ],
+      tableRows: templates.map((template) => ({
+        id: template.id,
+        name: template.name,
+        key: template.key,
+        subject: template.subject.length > 48 ? `${template.subject.slice(0, 45)}...` : template.subject,
+        variables: template.variables.length > 0 ? template.variables.join(", ") : "None",
+        updated: new Date(template.updatedAt).toLocaleDateString("en-IN"),
+        status: template.isActive ? "ACTIVE" : "INACTIVE",
+      })),
+    };
+  }
 
   if (!isDatabaseConfigured) {
     return base;
