@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { getLearnerByCode, getLearners } from "@/app/actions/learners";
 import { AttendanceBulkForm } from "@/components/modules/learners/attendance-bulk-form";
+import { LearnerEditSheet } from "@/components/modules/learners/learner-edit-sheet";
 import { LearnerSheet } from "@/components/modules/learners/learner-sheet";
 import { LearnersTable } from "@/components/modules/learners/learners-table";
 import { LearnersPageSkeleton } from "@/components/modules/page-skeletons";
@@ -16,6 +17,7 @@ type LearnersPageProps = {
     sortBy?: "fullName" | "attendancePercentage" | "averageScore" | "readinessPercentage";
     sortDirection?: "asc" | "desc";
     id?: string;
+    edit?: string;
   };
 };
 
@@ -38,16 +40,21 @@ async function LearnersPageContent({ searchParams }: LearnersPageProps) {
     sortDirection: searchParams?.sortDirection ?? "asc",
   };
 
-  const [response, learner] = await Promise.all([
-    getLearners(filters),
-    searchParams?.id ? getLearnerByCode({ learnerCode: searchParams.id }) : Promise.resolve(null),
-  ]);
+  const learnerPromise = searchParams?.id ? getLearnerByCode({ learnerCode: searchParams.id }) : Promise.resolve(null);
+  const editLearnerPromise = searchParams?.edit
+    ? searchParams.edit === searchParams.id
+      ? learnerPromise
+      : getLearnerByCode({ learnerCode: searchParams.edit })
+    : Promise.resolve(null);
+
+  const [response, learner, editLearner] = await Promise.all([getLearners(filters), learnerPromise, editLearnerPromise]);
 
   return (
     <div className="space-y-6">
       <LearnersTable response={response} filters={filters} />
       <AttendanceBulkForm />
       <LearnerSheet learner={learner} />
+      <LearnerEditSheet learner={editLearner} />
     </div>
   );
 }

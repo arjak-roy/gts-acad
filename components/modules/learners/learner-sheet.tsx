@@ -4,10 +4,10 @@ import { startTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ExternalLink, GraduationCap, MapPin, Phone, ShieldCheck, UserRound } from "lucide-react";
 
+import { LearnerAssignmentsCard } from "@/components/modules/learners/learner-assignments-card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { createSearchParams } from "@/lib/utils";
 import { useSyncReadiness } from "@/hooks/use-sync-readiness";
 import { LearnerDetail, PlacementStatus, SyncStatus } from "@/types";
 
@@ -55,6 +55,21 @@ export function LearnerSheet({ learner }: LearnerSheetProps) {
 
     await syncMutation.mutateAsync({ learnerCode: learner.learnerCode });
     startTransition(() => router.refresh());
+  };
+
+  const handleEdit = () => {
+    if (!learner) {
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("id");
+    next.set("edit", learner.learnerCode);
+
+    startTransition(() => {
+      const queryString = next.toString();
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+    });
   };
 
   return (
@@ -159,10 +174,15 @@ export function LearnerSheet({ learner }: LearnerSheetProps) {
                 </div>
                 <p className="mt-3 text-sm text-slate-600">{learner.latestSyncMessage ?? "No recruiter sync has been triggered yet."}</p>
               </div>
+
+              <LearnerAssignmentsCard enrollments={learner.activeEnrollments} />
             </div>
             <SheetFooter>
               <Button variant="secondary" onClick={() => handleOpenChange(false)}>
                 Close
+              </Button>
+              <Button variant="secondary" onClick={handleEdit}>
+                Edit Learner
               </Button>
               <Button onClick={handleSync} disabled={syncMutation.isPending}>
                 <ExternalLink className="h-4 w-4" />

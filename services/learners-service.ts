@@ -3,8 +3,8 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import { CreateLearnerInput, GetLearnersInput } from "@/lib/validation-schemas/learners";
-import { LearnerDetail, LearnerListItem, LearnersResponse } from "@/types";
+import { CreateLearnerEnrollmentInput, CreateLearnerInput, GetLearnersInput } from "@/lib/validation-schemas/learners";
+import { LearnerActiveEnrollment, LearnerDetail, LearnerListItem, LearnersResponse } from "@/types";
 
 const MOCK_LEARNERS: LearnerListItem[] = [
   {
@@ -57,37 +57,225 @@ const MOCK_LEARNERS: LearnerListItem[] = [
   },
 ];
 
+const MOCK_ENROLLMENT_CATALOG: Record<
+  string,
+  Omit<LearnerActiveEnrollment, "id" | "status" | "joinedAt" | "completedAt">
+> = {
+  "B-GER-NOV": {
+    batchId: "mock-batch-1",
+    batchCode: "B-GER-NOV",
+    batchName: "German B1 November Cohort",
+    batchStatus: "IN_SESSION",
+    campus: "Main Campus",
+    startDate: new Date("2026-01-05T08:00:00Z").toISOString(),
+    endDate: new Date("2026-06-05T08:00:00Z").toISOString(),
+    mode: "OFFLINE",
+    programId: "mock-program-1",
+    programCode: "P-GER-001",
+    programName: "German Language (B1)",
+    programType: "LANGUAGE",
+    courseCode: "C-GER-001",
+    courseName: "German Language",
+    trainerNames: ["Dr. Markus S."],
+  },
+  "B-CLI-OCT": {
+    batchId: "mock-batch-2",
+    batchCode: "B-CLI-OCT",
+    batchName: "Clinical Bridging October Cohort",
+    batchStatus: "IN_SESSION",
+    campus: "South Wing",
+    startDate: new Date("2026-02-01T09:00:00Z").toISOString(),
+    endDate: new Date("2026-06-01T09:00:00Z").toISOString(),
+    mode: "OFFLINE",
+    programId: "mock-program-2",
+    programCode: "P-CLI-001",
+    programName: "Clinical Bridging",
+    programType: "CLINICAL",
+    courseCode: "C-CLI-001",
+    courseName: "Clinical Foundations",
+    trainerNames: ["Dr. Leena P."],
+  },
+  "B-GER-OCT-01": {
+    batchId: "mock-batch-3",
+    batchCode: "B-GER-OCT-01",
+    batchName: "German B1 October Cohort 01",
+    batchStatus: "IN_SESSION",
+    campus: "Main Campus",
+    startDate: new Date("2025-10-01T08:00:00Z").toISOString(),
+    endDate: new Date("2026-03-15T08:00:00Z").toISOString(),
+    mode: "OFFLINE",
+    programId: "mock-program-1",
+    programCode: "P-GER-001",
+    programName: "German Language (B1)",
+    programType: "LANGUAGE",
+    courseCode: "C-GER-001",
+    courseName: "German Language",
+    trainerNames: ["Dr. Markus S."],
+  },
+  "B-TECH-APR": {
+    batchId: "mock-batch-4",
+    batchCode: "B-TECH-APR",
+    batchName: "Healthcare IT April Cohort",
+    batchStatus: "PLANNED",
+    campus: "Innovation Hub",
+    startDate: new Date("2026-04-15T10:00:00Z").toISOString(),
+    endDate: new Date("2026-08-15T10:00:00Z").toISOString(),
+    mode: "ONLINE",
+    programId: "mock-program-3",
+    programCode: "P-TECH-001",
+    programName: "Healthcare IT Enablement",
+    programType: "TECHNICAL",
+    courseCode: "C-TECH-001",
+    courseName: "Healthcare IT",
+    trainerNames: ["Coach Priya Nair"],
+  },
+};
+
+const MOCK_ACTIVE_ENROLLMENTS: Record<string, LearnerActiveEnrollment[]> = {
+  "GTS-240901": [buildMockActiveEnrollment("B-GER-NOV", "240901-a"), buildMockActiveEnrollment("B-TECH-APR", "240901-b")],
+  "GTS-240902": [buildMockActiveEnrollment("B-CLI-OCT", "240902-a")],
+  "GTS-240903": [buildMockActiveEnrollment("B-GER-OCT-01", "240903-a")],
+};
+
+const learnerEnrollmentArgs = Prisma.validator<Prisma.BatchEnrollmentDefaultArgs>()({
+  include: {
+    batch: {
+      include: {
+        program: {
+          include: {
+            course: true,
+          },
+        },
+        trainer: { include: { user: true } },
+        trainers: { include: { user: true } },
+      },
+    },
+  },
+});
+
+const learnerListArgs = Prisma.validator<Prisma.LearnerDefaultArgs>()({
+  include: {
+    enrollments: {
+      where: { status: "ACTIVE" },
+      orderBy: { joinedAt: "desc" },
+      take: 1,
+      include: learnerEnrollmentArgs.include,
+    },
+  },
+});
+
+const learnerDetailArgs = Prisma.validator<Prisma.LearnerDefaultArgs>()({
+  include: {
+    recruiterSyncLogs: { orderBy: { createdAt: "desc" }, take: 1 },
+    enrollments: {
+      where: { status: "ACTIVE" },
+      orderBy: { joinedAt: "desc" },
+      include: learnerEnrollmentArgs.include,
+    },
+  },
+});
+
+const batchDetailArgs = Prisma.validator<Prisma.BatchDefaultArgs>()({
+  include: {
+    program: {
+      include: {
+        course: true,
+      },
+    },
+    trainer: { include: { user: true } },
+    trainers: { include: { user: true } },
+  },
+});
+
+type LearnerEnrollmentRecord = Prisma.BatchEnrollmentGetPayload<typeof learnerEnrollmentArgs>;
+type LearnerDetailRecord = Prisma.LearnerGetPayload<typeof learnerDetailArgs>;
+
+type LearnerWithEnrollments = {
+  id: string;
+  learnerCode: string;
+  fullName: string;
+  email: string;
+  latestAttendancePercentage: Prisma.Decimal;
+  latestAssessmentAverage: Prisma.Decimal;
+  readinessPercentage: number;
+  placementStatus: LearnerListItem["placementStatus"];
+  recruiterSyncStatus: LearnerListItem["recruiterSyncStatus"];
+  enrollments: LearnerEnrollmentRecord[];
+};
+
+function buildMockActiveEnrollment(batchCode: string, idSuffix: string): LearnerActiveEnrollment {
+  const batch = MOCK_ENROLLMENT_CATALOG[batchCode];
+
+  if (!batch) {
+    throw new Error(`Unknown mock batch code: ${batchCode}`);
+  }
+
+  return {
+    id: `mock-enrollment-${idSuffix}`,
+    status: "ACTIVE",
+    joinedAt: batch.startDate,
+    completedAt: null,
+    ...batch,
+  };
+}
+
+function getBatchTrainerNames(batch: LearnerEnrollmentRecord["batch"] | Prisma.BatchGetPayload<typeof batchDetailArgs>) {
+  return Array.from(
+    new Set(
+      [batch.trainer?.user.name, ...batch.trainers.map((trainer) => trainer.user.name)].filter(
+        (trainerName): trainerName is string => Boolean(trainerName),
+      ),
+    ),
+  );
+}
+
+function mapEnrollmentToActiveEnrollment(enrollment: LearnerEnrollmentRecord): LearnerActiveEnrollment {
+  return {
+    id: enrollment.id,
+    status: enrollment.status,
+    joinedAt: enrollment.joinedAt.toISOString(),
+    completedAt: enrollment.completedAt?.toISOString() ?? null,
+    batchId: enrollment.batch.id,
+    batchCode: enrollment.batch.code,
+    batchName: enrollment.batch.name,
+    batchStatus: enrollment.batch.status,
+    campus: enrollment.batch.campus,
+    startDate: enrollment.batch.startDate.toISOString(),
+    endDate: enrollment.batch.endDate?.toISOString() ?? null,
+    mode: enrollment.batch.mode,
+    programId: enrollment.batch.program.id,
+    programCode: enrollment.batch.program.code,
+    programName: enrollment.batch.program.name,
+    programType: enrollment.batch.program.type,
+    courseCode: enrollment.batch.program.course.code,
+    courseName: enrollment.batch.program.course.name,
+    trainerNames: getBatchTrainerNames(enrollment.batch),
+  };
+}
+
+function mapLearnerToDetail(learner: LearnerDetailRecord): LearnerDetail {
+  const base = mapLearnerToListItem(learner);
+
+  return {
+    ...base,
+    phone: learner.phone,
+    country: learner.country,
+    softSkillsScore: learner.softSkillsScore,
+    latestSyncMessage: learner.recruiterSyncLogs[0]?.message ?? null,
+    activeEnrollments: learner.enrollments.map(mapEnrollmentToActiveEnrollment),
+  };
+}
+
 /**
  * Converts a Prisma learner record into the lean table row shape.
  * Flattens active enrollment metadata needed by list views.
  * Keeps mapping logic isolated so DB schema changes are easier to contain.
  */
 function mapLearnerToListItem(
-  learner: Prisma.LearnerGetPayload<{
-    include: {
-      enrollments: {
-        include: {
-          batch: {
-            include: {
-              program: true;
-              trainer: { include: { user: true } };
-              trainers: { include: { user: true } };
-            };
-          };
-        };
-      };
-    };
-  }>,
+  learner: LearnerWithEnrollments,
 ): LearnerListItem {
   const enrollment = learner.enrollments[0];
-  const trainerNames = enrollment?.batch
-    ? Array.from(
-        new Set([
-          ...enrollment.batch.trainers.map((trainer) => trainer.user.name),
-          enrollment.batch.trainer?.user.name,
-        ].filter(Boolean)),
-      )
-    : [];
+  const trainerNames = enrollment?.batch ? getBatchTrainerNames(enrollment.batch) : [];
 
   return {
     id: learner.id,
@@ -173,6 +361,7 @@ function buildMockLearnerDetail(learnerCode: string): LearnerDetail | null {
         country: "India",
         softSkillsScore: 81,
         latestSyncMessage: learner.recruiterSyncStatus === "SYNCED" ? "Synced to Recruiter Workspace" : null,
+        activeEnrollments: MOCK_ACTIVE_ENROLLMENTS[learner.learnerCode] ?? [],
       }
     : null;
 }
@@ -272,22 +461,7 @@ export async function getLearnersService(input: GetLearnersInput): Promise<Learn
         orderBy: sortMap[input.sortBy],
         skip: (input.page - 1) * input.pageSize,
         take: input.pageSize,
-        include: {
-          enrollments: {
-            where: { status: "ACTIVE" },
-            orderBy: { joinedAt: "desc" },
-            take: 1,
-            include: {
-              batch: {
-                include: {
-                  program: true,
-                  trainer: { include: { user: true } },
-                  trainers: { include: { user: true } },
-                },
-              },
-            },
-          },
-        },
+        ...learnerListArgs,
       }),
     ]);
 
@@ -408,39 +582,13 @@ export async function getLearnerByCodeService(learnerCode: string): Promise<Lear
   }
 
   try {
-    const learner = await prisma.learner.findUnique({
-      where: { learnerCode },
-      include: {
-        recruiterSyncLogs: { orderBy: { createdAt: "desc" }, take: 1 },
-        enrollments: {
-          where: { status: "ACTIVE" },
-          orderBy: { joinedAt: "desc" },
-          take: 1,
-          include: {
-            batch: {
-              include: {
-                program: true,
-                trainer: { include: { user: true } },
-                trainers: { include: { user: true } },
-              },
-            },
-          },
-        },
-      },
-    });
+    const learner = await prisma.learner.findUnique({ where: { learnerCode }, ...learnerDetailArgs });
 
     if (!learner) {
       return null;
     }
 
-    const base = mapLearnerToListItem(learner);
-    return {
-      ...base,
-      phone: learner.phone,
-      country: learner.country,
-      softSkillsScore: learner.softSkillsScore,
-      latestSyncMessage: learner.recruiterSyncLogs[0]?.message ?? null,
-    };
+    return mapLearnerToDetail(learner);
   } catch (error) {
     console.warn("Learner detail fallback activated", error);
     return buildMockLearnerDetail(learnerCode);
@@ -462,6 +610,8 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
 
   if (!isDatabaseConfigured) {
     const nowId = `mock-${Date.now()}`;
+    const activeEnrollments = normalizedBatchCode ? [buildMockActiveEnrollment(normalizedBatchCode, nowId)] : [];
+
     return {
       id: nowId,
       learnerCode: buildMockLearnerCode(),
@@ -481,6 +631,7 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
       programType: null,
       softSkillsScore: 0,
       latestSyncMessage: null,
+      activeEnrollments,
     };
   }
 
@@ -514,22 +665,7 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
             phone: normalizedPhone,
             country: normalizedCampus,
           },
-          include: {
-            enrollments: {
-              where: { status: "ACTIVE" },
-              orderBy: { joinedAt: "desc" },
-              take: 1,
-              include: {
-                batch: {
-                  include: {
-                    program: true,
-                    trainer: { include: { user: true } },
-                    trainers: { include: { user: true } },
-                  },
-                },
-              },
-            },
-          },
+          select: { id: true },
         });
 
         if (batch) {
@@ -540,39 +676,12 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
               status: "ACTIVE",
             },
           });
-
-          return tx.learner.findUniqueOrThrow({
-            where: { id: created.id },
-            include: {
-              enrollments: {
-                where: { status: "ACTIVE" },
-                orderBy: { joinedAt: "desc" },
-                take: 1,
-                include: {
-                  batch: {
-                    include: {
-                      program: true,
-                      trainer: { include: { user: true } },
-                      trainers: { include: { user: true } },
-                    },
-                  },
-                },
-              },
-            },
-          });
         }
 
-        return created;
+        return tx.learner.findUniqueOrThrow({ where: { id: created.id }, ...learnerDetailArgs });
       });
 
-      const mapped = mapLearnerToListItem(learner);
-      return {
-        ...mapped,
-        phone: learner.phone,
-        country: learner.country,
-        softSkillsScore: learner.softSkillsScore,
-        latestSyncMessage: null,
-      };
+      return mapLearnerToDetail(learner);
     } catch (error) {
       if (isLearnerCodeConflict(error)) {
         continue;
@@ -583,4 +692,98 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
   }
 
   throw new Error("Unable to generate learner code.");
+}
+
+export async function addLearnerEnrollmentService(learnerCode: string, input: CreateLearnerEnrollmentInput): Promise<LearnerDetail> {
+  const normalizedLearnerCode = learnerCode.trim();
+  const normalizedBatchCode = input.batchCode.trim();
+
+  if (!isDatabaseConfigured) {
+    const learner = buildMockLearnerDetail(normalizedLearnerCode);
+
+    if (!learner) {
+      throw new Error("Learner not found.");
+    }
+
+    const existingEnrollment = learner.activeEnrollments.find(
+      (enrollment) => enrollment.batchCode.toLowerCase() === normalizedBatchCode.toLowerCase(),
+    );
+
+    if (existingEnrollment) {
+      throw new Error("Learner is already enrolled in this batch.");
+    }
+
+    const mockEnrollment = Object.entries(MOCK_ENROLLMENT_CATALOG).find(
+      ([batchCode]) => batchCode.toLowerCase() === normalizedBatchCode.toLowerCase(),
+    );
+
+    if (!mockEnrollment) {
+      throw new Error("Invalid batch code.");
+    }
+
+    return {
+      ...learner,
+      activeEnrollments: [buildMockActiveEnrollment(mockEnrollment[0], `${learner.learnerCode}-new`), ...learner.activeEnrollments],
+    };
+  }
+
+  try {
+    const learner = await prisma.$transaction(async (tx) => {
+      const learnerRecord = await tx.learner.findUnique({
+        where: { learnerCode: normalizedLearnerCode },
+        select: { id: true },
+      });
+
+      if (!learnerRecord) {
+        throw new Error("Learner not found.");
+      }
+
+      const batch = await tx.batch.findFirst({
+        where: {
+          code: { equals: normalizedBatchCode, mode: "insensitive" },
+        },
+        ...batchDetailArgs,
+      });
+
+      if (!batch) {
+        throw new Error("Invalid batch code.");
+      }
+
+      if (batch.status !== "PLANNED" && batch.status !== "IN_SESSION") {
+        throw new Error("Only planned or in-session batches can accept enrollments.");
+      }
+
+      const existingEnrollment = await tx.batchEnrollment.findFirst({
+        where: {
+          learnerId: learnerRecord.id,
+          batchId: batch.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (existingEnrollment) {
+        throw new Error("Learner is already enrolled in this batch.");
+      }
+
+      await tx.batchEnrollment.create({
+        data: {
+          learnerId: learnerRecord.id,
+          batchId: batch.id,
+          status: "ACTIVE",
+        },
+      });
+
+      return tx.learner.findUniqueOrThrow({ where: { id: learnerRecord.id }, ...learnerDetailArgs });
+    });
+
+    return mapLearnerToDetail(learner);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error("Learner is already enrolled in this batch.");
+    }
+
+    throw error;
+  }
 }
