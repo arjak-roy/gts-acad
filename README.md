@@ -167,6 +167,24 @@ These endpoints are available for other apps to consume:
 - `npm run prisma:push` Push schema to database
 - `npm run prisma:migrate` Run migration workflow
 
+## Vercel Deployment
+
+This repo includes [vercel.json](vercel.json) with the production build command:
+
+```bash
+npm run prisma:generate && npm run build
+```
+
+If Vercel Project Settings already define a custom Build Command, that dashboard value overrides the repo config.
+
+Use one of these options:
+
+- clear the custom Build Command and let `vercel.json` apply
+- set the custom Build Command to `npm run prisma:generate && npm run build`
+
+Do not use `npm run prisma build npm run build`.
+That makes npm look for a script named `prisma` and the deployment fails with `Missing script: "prisma"`.
+
 ## Notes
 
 - If `DATABASE_URL` is not set, several services use mock fallback data.

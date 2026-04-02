@@ -3,6 +3,7 @@ import "server-only";
 import { ProgramType } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { deriveGeneratedCodePrefix, formatGeneratedCode } from "@/lib/utils";
 import { CreateProgramInput, UpdateProgramInput } from "@/lib/validation-schemas/programs";
 
 export type ProgramOption = {
@@ -157,6 +158,28 @@ async function resolveUniqueSlug(baseSlug: string) {
   }
 
   throw new Error("Unable to generate unique program slug.");
+}
+
+export async function generateProgramCode(programName: string): Promise<string> {
+  const prefix = deriveGeneratedCodePrefix(programName);
+
+  if (!isDatabaseConfigured) {
+    return formatGeneratedCode("P", programName, 1);
+  }
+
+  const lastProgram = await prisma.program.findFirst({
+    where: { code: { startsWith: `P-${prefix}-` } },
+    orderBy: { code: "desc" },
+    select: { code: true },
+  });
+
+  let number = 1;
+  if (lastProgram) {
+    const match = lastProgram.code.match(/-(\d+)$/);
+    number = match ? Number.parseInt(match[1], 10) + 1 : 1;
+  }
+
+  return formatGeneratedCode("P", programName, number);
 }
 
 async function requireCourse(courseId: string) {
@@ -467,6 +490,11 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
   const normalizedDescription = input.description.trim() || null;
   const selectedTrainerIds = Array.from(new Set((input.trainerIds ?? []).map((trainerId) => trainerId.trim()).filter(Boolean)));
   const selectedBatchIds = Array.from(new Set((input.batchIds ?? []).map((batchId) => batchId.trim()).filter(Boolean)));
+  let normalizedCode = input.code.trim().toUpperCase();
+
+  if (!normalizedCode) {
+    normalizedCode = await generateProgramCode(normalizedName);
+  }
 
   if (!isDatabaseConfigured) {
     const courseName = MOCK_PROGRAMS.find((program) => program.courseId === input.courseId)?.courseName ?? "Assigned Course";
@@ -484,9 +512,13 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
     };
   }
 
-  const [existingName, course] = await Promise.all([
+  const [existingName, existingCode, course] = await Promise.all([
     prisma.program.findFirst({
       where: { name: { equals: normalizedName, mode: "insensitive" } },
+      select: { id: true },
+    }),
+    prisma.program.findUnique({
+      where: { code: normalizedCode },
       select: { id: true },
     }),
     requireCourse(input.courseId),
@@ -496,12 +528,17 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
     throw new Error("Program name already exists.");
   }
 
+  if (existingCode) {
+    throw new Error("Program code already exists.");
+  }
+
   const slug = await resolveUniqueSlug(slugify(normalizedName));
 
   return prisma.$transaction(async (tx) => {
     const program = await tx.program.create({
       data: {
         courseId: course.id,
+        code: normalizedCode,
         slug,
         name: normalizedName,
         type: input.type,

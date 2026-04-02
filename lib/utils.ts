@@ -28,3 +28,18 @@ export function createSearchParams(entries: Record<string, string | number | und
 
   return params.toString();
 }
+
+export function deriveGeneratedCodePrefix(value: string) {
+  const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (!normalized) {
+    return "GEN";
+  }
+
+  return normalized.slice(0, 3).padEnd(3, "X");
+}
+
+export function formatGeneratedCode(kind: "B" | "C" | "P", source: string, sequence: number) {
+  const prefix = deriveGeneratedCodePrefix(source);
+  return `${kind}-${prefix}-${String(sequence).padStart(3, "0")}`;
+}

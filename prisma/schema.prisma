@@ -231,6 +231,7 @@ model TrainerProfile {
 
 model Course {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("course_id")
+  code        String    @unique @db.VarChar(50)
   name        String    @unique @map("course_name") @db.VarChar(255)
   description String?   @map("course_desc")
   isActive    Boolean   @default(true) @map("is_active")
@@ -245,6 +246,7 @@ model Course {
 model Program {
   id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("program_id")
   courseId      String        @db.Uuid @map("course_id")
+  code          String        @unique @db.VarChar(50)
   slug          String        @unique @db.VarChar(120)
   name          String        @map("program_name") @db.VarChar(255)
   type          ProgramType

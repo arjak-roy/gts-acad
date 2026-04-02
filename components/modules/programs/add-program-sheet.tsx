@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
+import { cn, formatGeneratedCode } from "@/lib/utils";
 
 type ProgramTypeValue = "LANGUAGE" | "CLINICAL" | "TECHNICAL";
 
 type AddProgramForm = {
+  code: string;
   courseId: string;
   name: string;
   type: ProgramTypeValue;
@@ -48,6 +50,7 @@ type ProgramBatchOption = {
 };
 
 const initialForm: AddProgramForm = {
+  code: "",
   courseId: "",
   name: "",
   type: "LANGUAGE",
@@ -65,12 +68,66 @@ export function AddProgramSheet() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [trainers, setTrainers] = useState<ProgramTrainerOption[]>([]);
   const [batches, setBatches] = useState<ProgramBatchOption[]>([]);
   const [trainerSearchTerm, setTrainerSearchTerm] = useState("");
   const [batchSearchTerm, setBatchSearchTerm] = useState("");
   const [form, setForm] = useState<AddProgramForm>(initialForm);
+  const debouncedProgramName = useDebounce(form.name, 300);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const normalizedName = debouncedProgramName.trim();
+    if (!normalizedName) {
+      setIsGeneratingCode(false);
+      setForm((prev) => (prev.code ? { ...prev, code: "" } : prev));
+      return;
+    }
+
+    let active = true;
+
+    const generateCode = async () => {
+      setIsGeneratingCode(true);
+
+      try {
+        const response = await fetch("/api/programs/generate-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ programName: normalizedName }),
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate program code.");
+        }
+
+        const result = (await response.json()) as { data: { code: string } };
+        if (active) {
+          setForm((prev) => ({ ...prev, code: result.data.code }));
+        }
+      } catch (generateError) {
+        console.warn("Program code generation failed, using client fallback:", generateError);
+        if (active) {
+          setForm((prev) => ({ ...prev, code: formatGeneratedCode("P", normalizedName, 1) }));
+        }
+      } finally {
+        if (active) {
+          setIsGeneratingCode(false);
+        }
+      }
+    };
+
+    void generateCode();
+
+    return () => {
+      active = false;
+    };
+  }, [debouncedProgramName, open]);
 
   useEffect(() => {
     if (!open) {
@@ -191,6 +248,11 @@ export function AddProgramSheet() {
       return;
     }
 
+    if (isGeneratingCode || !form.code.trim()) {
+      setError("Please wait while the program code is generated.");
+      return;
+    }
+
     setError(null);
     setStep("confirm");
   };
@@ -224,6 +286,7 @@ export function AddProgramSheet() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          code: form.code,
           courseId: form.courseId,
           name: form.name,
           type: form.type,
@@ -265,7 +328,19 @@ export function AddProgramSheet() {
         {step === "form" ? (
           <form className="space-y-4 p-6" onSubmit={handleDone}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5 sm:col-span-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Program Code</label>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  {!form.name.trim() ? (
+                    <p className="text-sm text-slate-400">Enter a program name to generate code</p>
+                  ) : isGeneratingCode ? (
+                    <p className="text-sm text-slate-500">Generating code...</p>
+                  ) : (
+                    <p className="text-sm font-semibold text-slate-700">{form.code}</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course</label>
                 <select
                   className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
@@ -457,6 +532,9 @@ export function AddProgramSheet() {
 
             <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <p>
+                <span className="font-semibold text-slate-900">Code:</span> {form.code.trim().toUpperCase()}
+              </p>
+              <p>
                 <span className="font-semibold text-slate-900">Course:</span> {courses.find((course) => course.id === form.courseId)?.name ?? "N/A"}
               </p>
               <p>
@@ -497,7 +575,7 @@ export function AddProgramSheet() {
             <Card className="border-blue-200 bg-blue-50">
               <CardContent className="space-y-2 p-4">
                 <p className="text-sm font-bold text-blue-800">Program Created</p>
-                <p className="text-sm text-blue-700">{form.name.trim()} has been added successfully.</p>
+                <p className="text-sm text-blue-700">{form.code.trim().toUpperCase()} · {form.name.trim()} has been added successfully.</p>
               </CardContent>
             </Card>
 

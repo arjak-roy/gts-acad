@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const createCourseSchema = z.object({
+  code: z.string().trim().max(50).optional().default(""),
   name: z.string().trim().min(2).max(255),
   description: z.string().trim().max(2000).optional().default(""),
   isActive: z.coerce.boolean().optional().default(true),

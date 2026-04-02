@@ -23,6 +23,18 @@ const prisma = new PrismaClient();
 
 const makeUuid = (seed) => `00000000-0000-0000-0000-${seed.toString(16).padStart(12, "0")}`;
 
+const deriveCodePrefix = (value) => {
+  const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (!normalized) {
+    return "GEN";
+  }
+
+  return normalized.slice(0, 3).padEnd(3, "X");
+};
+
+const formatEntityCode = (kind, value, sequence) => `${kind}-${deriveCodePrefix(value)}-${String(sequence).padStart(3, "0")}`;
+
 const COURSES = [
   {
     name: "Language Career Track",
@@ -170,13 +182,16 @@ async function seed() {
 
   const courseRecords = [];
   for (const course of COURSES) {
+    const courseSequence = courseRecords.filter((record) => deriveCodePrefix(record.name) === deriveCodePrefix(course.name)).length + 1;
     const record = await prisma.course.upsert({
       where: { name: course.name },
       update: {
+        code: formatEntityCode("C", course.name, courseSequence),
         description: course.description,
         isActive: true,
       },
       create: {
+        code: formatEntityCode("C", course.name, courseSequence),
         name: course.name,
         description: course.description,
         isActive: true,
@@ -195,10 +210,13 @@ async function seed() {
       throw new Error(`Missing seeded course for program type ${program.type}.`);
     }
 
+    const programSequence = programRecords.filter((record) => deriveCodePrefix(record.name) === deriveCodePrefix(program.name)).length + 1;
+
     const record = await prisma.program.upsert({
       where: { slug: program.slug },
       update: {
         courseId: mappedCourse.id,
+        code: formatEntityCode("P", program.name, programSequence),
         name: program.name,
         type: program.type,
         category: program.category,
@@ -208,6 +226,7 @@ async function seed() {
       },
       create: {
         courseId: mappedCourse.id,
+        code: formatEntityCode("P", program.name, programSequence),
         slug: program.slug,
         name: program.name,
         type: program.type,

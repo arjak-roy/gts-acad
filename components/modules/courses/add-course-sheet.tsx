@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
+import { cn, formatGeneratedCode } from "@/lib/utils";
 
 type ProgramOption = {
   id: string;
@@ -19,12 +20,14 @@ type ProgramOption = {
 };
 
 type AddCourseForm = {
+  code: string;
   name: string;
   description: string;
   programIds: string[];
 };
 
 const initialForm: AddCourseForm = {
+  code: "",
   name: "",
   description: "",
   programIds: [],
@@ -38,8 +41,62 @@ export function AddCourseSheet() {
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [programSearchTerm, setProgramSearchTerm] = useState("");
   const [isLoadingPrograms, setIsLoadingPrograms] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const debouncedCourseName = useDebounce(form.name, 300);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const normalizedName = debouncedCourseName.trim();
+    if (!normalizedName) {
+      setIsGeneratingCode(false);
+      setForm((prev) => (prev.code ? { ...prev, code: "" } : prev));
+      return;
+    }
+
+    let active = true;
+
+    const generateCode = async () => {
+      setIsGeneratingCode(true);
+
+      try {
+        const response = await fetch("/api/courses/generate-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ courseName: normalizedName }),
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate course code.");
+        }
+
+        const result = (await response.json()) as { data: { code: string } };
+        if (active) {
+          setForm((prev) => ({ ...prev, code: result.data.code }));
+        }
+      } catch (generateError) {
+        console.warn("Course code generation failed, using client fallback:", generateError);
+        if (active) {
+          setForm((prev) => ({ ...prev, code: formatGeneratedCode("C", normalizedName, 1) }));
+        }
+      } finally {
+        if (active) {
+          setIsGeneratingCode(false);
+        }
+      }
+    };
+
+    void generateCode();
+
+    return () => {
+      active = false;
+    };
+  }, [debouncedCourseName, open]);
 
   useEffect(() => {
     if (!open) {
@@ -134,6 +191,11 @@ export function AddCourseSheet() {
       return;
     }
 
+    if (isGeneratingCode || !form.code.trim()) {
+      setError("Please wait while the course code is generated.");
+      return;
+    }
+
     setError(null);
     setStep("confirm");
   };
@@ -149,6 +211,7 @@ export function AddCourseSheet() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          code: form.code,
           name: form.name,
           description: form.description,
           isActive: true,
@@ -183,6 +246,18 @@ export function AddCourseSheet() {
 
         {step === "form" ? (
           <form className="space-y-4 p-6" onSubmit={handleDone}>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course Code</label>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                {!form.name.trim() ? (
+                  <p className="text-sm text-slate-400">Enter a course name to generate code</p>
+                ) : isGeneratingCode ? (
+                  <p className="text-sm text-slate-500">Generating code...</p>
+                ) : (
+                  <p className="text-sm font-semibold text-slate-700">{form.code}</p>
+                )}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course Name</label>
               <Input value={form.name} placeholder="Clinical Career Track" onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
@@ -271,6 +346,9 @@ export function AddCourseSheet() {
 
             <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <p>
+                <span className="font-semibold text-slate-900">Code:</span> {form.code.trim().toUpperCase()}
+              </p>
+              <p>
                 <span className="font-semibold text-slate-900">Course:</span> {form.name.trim()}
               </p>
               <p>
@@ -299,7 +377,7 @@ export function AddCourseSheet() {
             <Card className="border-blue-200 bg-blue-50">
               <CardContent className="space-y-2 p-4">
                 <p className="text-sm font-bold text-blue-800">Course Created</p>
-                <p className="text-sm text-blue-700">{form.name.trim()} has been added successfully.</p>
+                <p className="text-sm text-blue-700">{form.code.trim().toUpperCase()} · {form.name.trim()} has been added successfully.</p>
               </CardContent>
             </Card>
             <SheetFooter className="p-0 pt-2 sm:justify-end sm:border-0">

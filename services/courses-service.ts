@@ -3,6 +3,7 @@ import "server-only";
 import { ProgramType } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { deriveGeneratedCodePrefix, formatGeneratedCode } from "@/lib/utils";
 import { CreateCourseInput, UpdateCourseInput } from "@/lib/validation-schemas/courses";
 
 export type CourseProgramSummary = {
@@ -59,6 +60,28 @@ function mapCourseOption(course: CourseDetail): CourseOption {
 
 function normalizeProgramIds(programIds: string[]) {
   return Array.from(new Set(programIds.map((programId) => programId.trim()).filter(Boolean)));
+}
+
+export async function generateCourseCode(courseName: string): Promise<string> {
+  const prefix = deriveGeneratedCodePrefix(courseName);
+
+  if (!isDatabaseConfigured) {
+    return formatGeneratedCode("C", courseName, 1);
+  }
+
+  const lastCourse = await prisma.course.findFirst({
+    where: { code: { startsWith: `C-${prefix}-` } },
+    orderBy: { code: "desc" },
+    select: { code: true },
+  });
+
+  let number = 1;
+  if (lastCourse) {
+    const match = lastCourse.code.match(/-(\d+)$/);
+    number = match ? Number.parseInt(match[1], 10) + 1 : 1;
+  }
+
+  return formatGeneratedCode("C", courseName, number);
 }
 
 export async function listCoursesService(): Promise<CourseOption[]> {
@@ -176,6 +199,11 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
   const normalizedName = input.name.trim();
   const normalizedDescription = input.description.trim() || null;
   const selectedProgramIds = normalizeProgramIds(input.programIds ?? []);
+  let normalizedCode = input.code.trim().toUpperCase();
+
+  if (!normalizedCode) {
+    normalizedCode = await generateCourseCode(normalizedName);
+  }
 
   if (!isDatabaseConfigured) {
     return {
@@ -187,9 +215,13 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     };
   }
 
-  const [existingName, selectedPrograms] = await Promise.all([
+  const [existingName, existingCode, selectedPrograms] = await Promise.all([
     prisma.course.findFirst({
       where: { name: { equals: normalizedName, mode: "insensitive" } },
+      select: { id: true },
+    }),
+    prisma.course.findUnique({
+      where: { code: normalizedCode },
       select: { id: true },
     }),
     selectedProgramIds.length > 0
@@ -201,6 +233,10 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     throw new Error("Course name already exists.");
   }
 
+  if (existingCode) {
+    throw new Error("Course code already exists.");
+  }
+
   if (selectedPrograms.length !== selectedProgramIds.length) {
     throw new Error("One or more selected programs were not found.");
   }
@@ -208,6 +244,7 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
   return prisma.$transaction(async (tx) => {
     const course = await tx.course.create({
       data: {
+        code: normalizedCode,
         name: normalizedName,
         description: normalizedDescription,
         isActive: input.isActive,
