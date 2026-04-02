@@ -1,21 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ASSIGNABLE_STAFF_MODULES, type AssignableStaffModuleKey } from "@/lib/auth/module-access";
 import type { ManagedAccessUser } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type AccessControlManagerProps = {
   users: ManagedAccessUser[];
 };
 
 export function AccessControlManager({ users }: AccessControlManagerProps) {
-  const [query, setQuery] = useState("");
+  const [selectedRole, setSelectedRole] = useState<ManagedAccessUser["role"]>("ADMIN");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [assignedModules, setAssignedModules] = useState<Record<string, AssignableStaffModuleKey[]>>(
     Object.fromEntries(users.map((user) => [user.userId, user.modules as AssignableStaffModuleKey[]])),
   );
@@ -25,17 +24,23 @@ export function AccessControlManager({ users }: AccessControlManagerProps) {
   const [submittingUserId, setSubmittingUserId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, string>>({});
 
-  const filteredUsers = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+  const roleUsers = useMemo(() => users.filter((user) => user.role === selectedRole), [selectedRole, users]);
 
-    return users.filter((user) => {
-      if (!normalizedQuery) {
-        return true;
-      }
+  useEffect(() => {
+    if (roleUsers.length === 0) {
+      setSelectedUserId("");
+      return;
+    }
 
-      return [user.fullName, user.email, user.role, user.specialization ?? ""].some((value) => value.toLowerCase().includes(normalizedQuery));
-    });
-  }, [query, users]);
+    if (!roleUsers.some((user) => user.userId === selectedUserId)) {
+      setSelectedUserId(roleUsers[0]?.userId ?? "");
+    }
+  }, [roleUsers, selectedUserId]);
+
+  const selectedUser = useMemo(
+    () => roleUsers.find((user) => user.userId === selectedUserId) ?? null,
+    [roleUsers, selectedUserId],
+  );
 
   const dirtyUserIds = useMemo(
     () =>
@@ -123,81 +128,96 @@ export function AccessControlManager({ users }: AccessControlManagerProps) {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <CardTitle>Admins and Trainers</CardTitle>
-            <CardDescription>Only admin and trainer accounts are manageable here.</CardDescription>
-          </div>
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, email, role, or specialization" className="max-w-sm" />
+        <CardHeader>
+          <CardTitle>Role To User Access Flow</CardTitle>
+          <CardDescription>Select a role first, then choose a user from that role, then configure module permissions below.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Module Access</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user) => {
-                const currentModules = assignedModules[user.userId] ?? [];
-                const isDirty = dirtyUserIds.includes(user.userId);
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Role</label>
+              <select
+                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                value={selectedRole}
+                onChange={(event) => setSelectedRole(event.target.value as ManagedAccessUser["role"])}
+              >
+                <option value="ADMIN">Admin</option>
+                <option value="TRAINER">Trainer</option>
+              </select>
+            </div>
 
-                return (
-                  <TableRow key={user.userId}>
-                    <TableCell>
-                      <div>
-                        <p className="font-semibold text-slate-900">{user.fullName}</p>
-                        <p className="text-sm text-slate-500">{user.email}</p>
-                        {user.specialization ? <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{user.specialization}</p> : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-2">
-                        <Badge variant={user.role === "ADMIN" ? "default" : "info"}>{user.role}</Badge>
-                        <p className="text-xs text-slate-500">{user.isActive ? "Active account" : "Inactive account"}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                        {ASSIGNABLE_STAFF_MODULES.map((module) => {
-                          const checked = currentModules.includes(module.key);
+            <div>
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">{selectedRole === "ADMIN" ? "Admin Name" : "Trainer Name"}</label>
+              <select
+                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                value={selectedUserId}
+                onChange={(event) => setSelectedUserId(event.target.value)}
+              >
+                {roleUsers.length === 0 ? <option value="">No users available</option> : null}
+                {roleUsers.map((user) => (
+                  <option key={user.userId} value={user.userId}>
+                    {user.fullName} - {user.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-                          return (
-                            <label key={module.key} className={`rounded-2xl border px-3 py-3 text-sm transition-colors ${checked ? "border-[#0d3b84] bg-blue-50" : "border-slate-200 bg-white"}`}>
-                              <div className="flex items-start gap-3">
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
-                                  checked={checked}
-                                  onChange={() => toggleModule(user.userId, module.key)}
-                                />
-                                <div>
-                                  <p className="font-semibold text-slate-900">{module.label}</p>
-                                  <p className="mt-1 text-xs text-slate-500">{module.description}</p>
-                                </div>
-                              </div>
-                            </label>
-                          );
-                        })}
+          {selectedUser ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                <InfoTile label="User" value={selectedUser.fullName} helper={selectedUser.email} />
+                <InfoTile label="Role" value={selectedUser.role} helper={selectedUser.specialization ?? "No specialization"} />
+                <InfoTile label="Permission Tab" value="Module Access" helper="Toggle permissions below" />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {ASSIGNABLE_STAFF_MODULES.map((module) => {
+                  const checked = (assignedModules[selectedUser.userId] ?? []).includes(module.key);
+
+                  return (
+                    <button
+                      key={module.key}
+                      type="button"
+                      onClick={() => toggleModule(selectedUser.userId, module.key)}
+                      className={`rounded-2xl border px-3 py-3 text-left text-sm transition-colors ${checked ? "border-[#0d3b84] bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">{module.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">{module.description}</p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${checked ? "bg-[#0d3b84] text-white" : "bg-slate-100 text-slate-500"}`}>
+                          {checked ? "On" : "Off"}
+                        </span>
                       </div>
-                      {feedback[user.userId] ? <p className="mt-3 text-sm text-slate-600">{feedback[user.userId]}</p> : null}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button type="button" onClick={() => void saveModules(user.userId)} disabled={!isDirty || submittingUserId === user.userId}>
-                        {submittingUserId === user.userId ? "Saving..." : "Save Access"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          {filteredUsers.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">No matching staff users found.</p> : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <p className="text-sm text-slate-600">{feedback[selectedUser.userId] ?? "Save after changing permissions for the selected user."}</p>
+                <Button type="button" onClick={() => void saveModules(selectedUser.userId)} disabled={!dirtyUserIds.includes(selectedUser.userId) || submittingUserId === selectedUser.userId}>
+                  {submittingUserId === selectedUser.userId ? "Saving..." : "Save Access"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-slate-500">No users found for the selected role.</p>
+          )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function InfoTile({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">{label}</p>
+      <p className="mt-2 font-semibold text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-500">{helper}</p>
     </div>
   );
 }

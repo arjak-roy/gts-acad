@@ -16,6 +16,7 @@ export async function markAttendance(input: unknown) {
   const parsed = markAttendanceSchema.parse(input);
   const result = await markAttendanceService(parsed);
 
+  revalidatePath("/staff/learners");
   revalidatePath("/learners");
   revalidatePath("/attendance");
   revalidatePath("/dashboard");

@@ -144,7 +144,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
           return (
             <div className="text-right">
               <Button asChild variant="ghost" className="text-primary hover:text-primary">
-                <Link href={`/learners?${nextQuery}`} scroll={false}>
+                <Link href={`/staff/learners?${nextQuery}`} scroll={false}>
                   Open
                 </Link>
               </Button>
@@ -317,7 +317,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
 
                         <div className="flex justify-end">
                           <Button asChild variant="ghost" className="text-primary hover:text-primary">
-                            <Link href={`/learners?${nextQuery}`} scroll={false}>
+                            <Link href={`/staff/learners?${nextQuery}`} scroll={false}>
                               Open
                             </Link>
                           </Button>

@@ -1,0 +1,1 @@
+export { prisma, isDatabaseConfigured } from "@/lib/prisma-client";

@@ -4,21 +4,21 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mic2, Network, Settings, UserCog, Users, Wallet } from "lucide-react";
+import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mic2, Network, Settings, ShieldCheck, UserCog, Users, Wallet } from "lucide-react";
 
 import academyLogo from "@/Logo 9-02.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
 import { canAccessModule } from "@/lib/auth/module-access";
 import type { AuthSessionClaims } from "@/lib/auth/session";
-import { cn } from "@/lib/utils";
+import { cn, formatRoleLabel } from "@/lib/utils";
 
 const navGroups = [
   {
     label: "Main",
     items: [
       { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { key: "learners", href: "/learners", label: "Learners", icon: Users },
+      { key: "learners", href: "/staff/learners", label: "Learners", icon: Users },
       { key: "courses", href: "/courses", label: "Courses", icon: BookOpen },
       { key: "programs", href: "/programs", label: "Programs", icon: BookOpen },
       { key: "batches", href: "/batches", label: "Batches", icon: Layers },
@@ -41,7 +41,13 @@ const navGroups = [
     items: [
       { key: "payments", href: "/payments", label: "Fees & Payments", icon: Wallet },
       { key: "support", href: "/support", label: "Support Tickets", icon: HelpCircle },
-      { key: "settings", href: "/settings", label: "System Config", icon: Settings },
+    ],
+  },
+  {
+    label: "Super Admin",
+    items: [
+      { key: "roles", href: "/super-admin/roles", label: "Roles", icon: ShieldCheck },
+      { key: "settings", href: "/settings", label: "Access Management", icon: Settings },
     ],
   },
  ] as const;
@@ -60,7 +66,7 @@ export function SidebarNav({ session }: SidebarNavProps) {
       items: group.items.filter((item) => canAccessModule(session, item.key)),
     }))
     .filter((group) => group.items.length > 0);
-  const identityLabel = session?.roles[0] ?? session?.role ?? "Staff User";
+  const identityLabel = formatRoleLabel(session?.roles[0] ?? session?.role) || "Staff User";
   const displayName = session?.name ?? "Access Controlled";
   const initials = displayName
     .split(" ")

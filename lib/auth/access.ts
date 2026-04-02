@@ -3,9 +3,19 @@ import "server-only";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
-import { AUTH_SESSION_COOKIE, getAuthSession, hasPermission, hasRole, verifyAuthSessionToken, type AuthSessionClaims } from "@/lib/auth/session";
+import {
+  AUTH_SESSION_COOKIE,
+  CANDIDATE_SESSION_COOKIE,
+  getAuthSession,
+  getCandidateSession,
+  hasPermission,
+  verifyAuthSessionToken,
+  verifyCandidateSessionToken,
+  type AuthSessionClaims,
+  type CandidateSessionClaims,
+} from "@/lib/auth/session";
 import { canAccessModule, isStaffSession, isSuperAdminSession, type StaffModuleKey } from "@/lib/auth/module-access";
-import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { isDatabaseConfigured, prisma } from "@/lib/prisma";
 
 export async function getCurrentAuthSession() {
   const token = cookies().get(AUTH_SESSION_COOKIE)?.value;
@@ -14,6 +24,15 @@ export async function getCurrentAuthSession() {
   }
 
   return verifyAuthSessionToken(token);
+}
+
+export async function getCurrentCandidateSession() {
+  const token = cookies().get(CANDIDATE_SESSION_COOKIE)?.value;
+  if (!token) {
+    return null;
+  }
+
+  return verifyCandidateSessionToken(token);
 }
 
 export async function requireCurrentAuthSession() {
@@ -26,11 +45,31 @@ export async function requireCurrentAuthSession() {
   return session;
 }
 
+export async function requireCurrentCandidateSession() {
+  const session = await getCurrentCandidateSession();
+
+  if (!session || session.state !== "authenticated") {
+    throw new Error("Candidate authentication required.");
+  }
+
+  return session;
+}
+
 export async function requireRequestAuthSession(request: NextRequest) {
   const session = await getAuthSession(request);
 
   if (!session || session.state !== "authenticated") {
     throw new Error("Authentication required.");
+  }
+
+  return session;
+}
+
+export async function requireRequestCandidateSession(request: NextRequest) {
+  const session = await getCandidateSession(request);
+
+  if (!session || session.state !== "authenticated") {
+    throw new Error("Candidate authentication required.");
   }
 
   return session;
@@ -48,7 +87,7 @@ export function requireAdminSession<T extends Pick<AuthSessionClaims, "role" | "
   return session;
 }
 
-export function requireSuperAdminSession<T extends Pick<AuthSessionClaims, "roles" | "permissions">>(session: T) {
+export function requireSuperAdminSession<T extends Pick<AuthSessionClaims, "role" | "roles" | "permissions">>(session: T) {
   if (!isSuperAdminSession(session)) {
     throw new Error("Forbidden.");
   }
@@ -88,14 +127,14 @@ export async function requireRequestModuleAccess(request: NextRequest, moduleKey
   return requireModuleAccess(await requireRequestAuthSession(request), moduleKey);
 }
 
-export async function getCurrentCandidateLearner(session: Pick<AuthSessionClaims, "userId" | "role" | "roles" | "permissions">) {
-  if (isStaffSession(session) || !hasPermission(session, "candidate:read_own") || !isDatabaseConfigured) {
+export async function getCurrentCandidateLearner(session: Pick<CandidateSessionClaims, "learnerId" | "learnerCode"> | null | undefined) {
+  if (!session || !isDatabaseConfigured) {
     return null;
   }
 
   return prisma.learner.findFirst({
     where: {
-      userId: session.userId,
+      id: session.learnerId,
     },
     select: {
       id: true,
@@ -104,7 +143,18 @@ export async function getCurrentCandidateLearner(session: Pick<AuthSessionClaims
   });
 }
 
-export async function assertCanAccessLearnerCode(session: Pick<AuthSessionClaims, "userId" | "role" | "roles" | "permissions">, learnerCode: string) {
+export async function assertCanAccessLearnerCode(
+  session: Pick<AuthSessionClaims, "userId" | "role" | "roles" | "permissions"> | Pick<CandidateSessionClaims, "learnerId" | "learnerCode">,
+  learnerCode: string,
+) {
+  if ("learnerCode" in session) {
+    if (session.learnerCode !== learnerCode) {
+      throw new Error("Forbidden.");
+    }
+
+    return;
+  }
+
   if (canAccessModule(session, "learners") || hasPermission(session, "candidate:read")) {
     return;
   }

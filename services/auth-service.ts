@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
+import { prisma, isDatabaseConfigured } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   generateEmailOtpCode,
@@ -80,18 +80,15 @@ function shouldBypassTwoFactorForLocal(email: string) {
 
 function getRbacSelect() {
   return {
-    rbacAssignments: {
+    staffRole: {
       select: {
-        role: {
+        id: true,
+        name: true,
+        permissions: {
           select: {
-            name: true,
-            rolePermissions: {
+            permission: {
               select: {
-                permission: {
-                  select: {
-                    name: true,
-                  },
-                },
+                key: true,
               },
             },
           },
@@ -102,7 +99,7 @@ function getRbacSelect() {
       select: {
         permission: {
           select: {
-            name: true,
+            key: true,
           },
         },
       },
@@ -111,40 +108,36 @@ function getRbacSelect() {
 }
 
 function deriveAccessFromAssignments(
-  assignments: Array<{
-    role: {
-      name: string;
-      rolePermissions: Array<{
-        permission: {
-          name: string;
-        };
-      }>;
-    };
-  }>,
+  staffRole:
+    | {
+        name: string;
+        permissions: Array<{
+          permission: {
+            key: string;
+          };
+        }>;
+      }
+    | null
+    | undefined,
   directPermissions: Array<{
     permission: {
-      name: string;
+      key: string;
     };
   }>,
 ) {
-  const roleNames = new Set<string>();
-  const permissionNames = new Set<string>();
-
-  for (const assignment of assignments) {
-    roleNames.add(assignment.role.name);
-
-    for (const rolePermission of assignment.role.rolePermissions) {
-      permissionNames.add(rolePermission.permission.name);
-    }
-  }
-
-  for (const directPermission of directPermissions) {
-    permissionNames.add(directPermission.permission.name);
-  }
+  const normalizedRole = staffRole?.name?.trim().toLowerCase() ?? "";
+  const roleNames = normalizedRole ? [normalizedRole] : [];
+  const permissionNames = Array.from(
+    new Set([
+      ...(staffRole?.permissions ?? []).map((entry) => entry.permission.key),
+      ...directPermissions.map((entry) => entry.permission.key),
+    ]),
+  ).sort();
 
   return {
-    roles: Array.from(roleNames).sort(),
-    permissions: Array.from(permissionNames).sort(),
+    role: normalizedRole,
+    roles: roleNames,
+    permissions: permissionNames,
   };
 }
 
@@ -158,29 +151,27 @@ function mapAuthUser(record: {
     twoFactorEnabled: boolean;
     recoveryCodes: string[];
   } | null;
-  rbacAssignments: Array<{
-    role: {
-      name: string;
-      rolePermissions: Array<{
-        permission: {
-          name: string;
-        };
-      }>;
-    };
-  }>;
+  staffRole?: {
+    name: string;
+    permissions: Array<{
+      permission: {
+        key: string;
+      };
+    }>;
+  } | null;
   directPermissions: Array<{
     permission: {
-      name: string;
+      key: string;
     };
   }>;
 }) {
-  const access = deriveAccessFromAssignments(record.rbacAssignments, record.directPermissions);
+  const access = deriveAccessFromAssignments(record.staffRole, record.directPermissions);
 
   return {
     id: record.id,
     email: record.email,
     name: record.name,
-    role: String(record.role),
+    role: access.role || String(record.role).toLowerCase(),
     roles: access.roles,
     permissions: access.permissions,
     security: record.security ?? null,
@@ -460,6 +451,10 @@ export async function loginWithPassword(email: string, password: string): Promis
   const user = await getUserByEmail(normalizedEmail);
   if (!user) {
     throw new Error("Invalid email or password.");
+  }
+
+  if (user.role.toLowerCase() === "candidate") {
+    throw new Error("Use the learner portal to sign in with a learner code.");
   }
 
   const passwordCheck = await verifyPassword(normalizedPassword, user.password);

@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     const result = await syncReadinessStatusService(input);
 
     revalidatePath("/dashboard");
+    revalidatePath("/staff/learners");
     revalidatePath("/learners");
     revalidatePath("/readiness");
 

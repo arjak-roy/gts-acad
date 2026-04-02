@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     const input = markAttendanceSchema.parse(body);
     const result = await markAttendanceService(input);
 
+    revalidatePath("/staff/learners");
     revalidatePath("/learners");
     revalidatePath("/attendance");
     revalidatePath("/dashboard");

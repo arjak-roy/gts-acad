@@ -3,7 +3,7 @@ import "server-only";
 import { UserRole } from "@prisma/client";
 
 import { ASSIGNABLE_STAFF_MODULES, getModulePermissionName, type AssignableStaffModuleKey } from "@/lib/auth/module-access";
-import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { isDatabaseConfigured, prisma } from "@/lib/prisma";
 import type { ManagedAccessUser } from "@/types";
 
 function requireDatabase() {
@@ -33,20 +33,16 @@ export async function listManagedAccessUsers(): Promise<ManagedAccessUser[]> {
           specialization: true,
         },
       },
-      rbacAssignments: {
+      staffRole: {
         select: {
-          role: {
-            select: {
-              name: true,
-            },
-          },
+          name: true,
         },
       },
       directPermissions: {
         select: {
           permission: {
             select: {
-              name: true,
+              key: true,
             },
           },
         },
@@ -55,7 +51,7 @@ export async function listManagedAccessUsers(): Promise<ManagedAccessUser[]> {
   });
 
   return users
-    .filter((user) => !user.rbacAssignments.some((assignment) => assignment.role.name === "Super Admin"))
+    .filter((user) => user.staffRole?.name !== "superadmin")
     .map((user) => {
       const role: ManagedAccessUser["role"] = user.role === UserRole.ADMIN ? "ADMIN" : "TRAINER";
 
@@ -67,7 +63,7 @@ export async function listManagedAccessUsers(): Promise<ManagedAccessUser[]> {
         isActive: user.isActive,
         specialization: user.trainerProfile?.specialization ?? null,
         modules: ASSIGNABLE_STAFF_MODULES.filter((module) =>
-          user.directPermissions.some((assignment) => assignment.permission.name === module.permissionName),
+          user.directPermissions.some((assignment) => assignment.permission.key === module.permissionName),
         ).map((module) => module.key),
       } satisfies ManagedAccessUser;
     });
@@ -81,13 +77,9 @@ export async function assignUserModulePermissions(userId: string, modules: Assig
     select: {
       id: true,
       role: true,
-      rbacAssignments: {
+      staffRole: {
         select: {
-          role: {
-            select: {
-              name: true,
-            },
-          },
+          name: true,
         },
       },
     },
@@ -97,7 +89,7 @@ export async function assignUserModulePermissions(userId: string, modules: Assig
     throw new Error("User not found.");
   }
 
-  if (targetUser.rbacAssignments.some((assignment) => assignment.role.name === "Super Admin")) {
+  if (targetUser.staffRole?.name === "superadmin") {
     throw new Error("Super Admin access cannot be scoped here.");
   }
 
@@ -108,13 +100,14 @@ export async function assignUserModulePermissions(userId: string, modules: Assig
   const permissionNames = modules.map((moduleKey) => getModulePermissionName(moduleKey)).filter(Boolean);
   const permissions = await prisma.permission.findMany({
     where: {
-      name: {
+      key: {
         in: permissionNames,
       },
     },
     select: {
       id: true,
-      name: true,
+      key: true,
+      module: true,
     },
   });
 
@@ -129,7 +122,9 @@ export async function assignUserModulePermissions(userId: string, modules: Assig
       where: {
         userId,
         permission: {
-          resource: "module",
+          module: {
+            in: ASSIGNABLE_STAFF_MODULES.map((module) => module.permissionName.split(":")[0]),
+          },
         },
       },
     });

@@ -1,6 +1,6 @@
 "use server";
 
-import { assertCanAccessLearnerCode, getCurrentCandidateLearner, requireCurrentAuthSession, requireModuleAccess } from "@/lib/auth/access";
+import { assertCanAccessLearnerCode, requireCurrentAuthSession, requireModuleAccess } from "@/lib/auth/access";
 import { getLearnersSchema, learnerIdSchema } from "@/lib/validation-schemas/learners";
 import { getLearnerByCodeService, getLearnersService } from "@/services/learners-service";
 
@@ -11,11 +11,6 @@ import { getLearnerByCodeService, getLearnersService } from "@/services/learners
  */
 export async function getLearners(input: unknown) {
   const session = await requireCurrentAuthSession();
-  const candidateLearner = await getCurrentCandidateLearner(session);
-
-  if (candidateLearner) {
-    throw new Error("Forbidden.");
-  }
 
   requireModuleAccess(session, "learners");
 

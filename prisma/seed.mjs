@@ -88,155 +88,49 @@ const TRAINERS = [
 
 const RBAC_ROLES = [
   {
-    name: "Super Admin",
-    description: "Full unrestricted access across all resources.",
+    name: "superadmin",
+    description: "Full unrestricted access across all academy modules and controls.",
     isSystem: true,
   },
   {
-    name: "Admin",
-    description: "Administrative access with scoped system and candidate permissions.",
+    name: "admin",
+    description: "Administrative access across operational modules excluding user and role governance.",
     isSystem: true,
   },
   {
-    name: "Candidate",
-    description: "End-user access limited to self-service actions.",
+    name: "trainer",
+    description: "Instructional access focused on dashboard, learners, and attendance workflows.",
     isSystem: true,
   },
 ];
 
 const RBAC_PERMISSIONS = [
-  {
-    name: "all:*",
-    resource: "all",
-    action: "*",
-    description: "Master permission granting unrestricted access to all resources and actions.",
-  },
-  {
-    name: "candidate:read_own",
-    resource: "candidate",
-    action: "read_own",
-    description: "Read the authenticated candidate profile and related records.",
-  },
-  {
-    name: "candidate:update_own",
-    resource: "candidate",
-    action: "update_own",
-    description: "Update the authenticated candidate profile.",
-  },
-  {
-    name: "module:dashboard",
-    resource: "module",
-    action: "dashboard",
-    description: "Access dashboard KPIs, alerts, and search.",
-  },
-  {
-    name: "module:overview",
-    resource: "module",
-    action: "overview",
-    description: "Access cross-module overview pages.",
-  },
-  {
-    name: "module:learners",
-    resource: "module",
-    action: "learners",
-    description: "Access learner management pages and APIs.",
-  },
-  {
-    name: "module:courses",
-    resource: "module",
-    action: "courses",
-    description: "Access courses module.",
-  },
-  {
-    name: "module:programs",
-    resource: "module",
-    action: "programs",
-    description: "Access programs module.",
-  },
-  {
-    name: "module:batches",
-    resource: "module",
-    action: "batches",
-    description: "Access batches module.",
-  },
-  {
-    name: "module:trainers",
-    resource: "module",
-    action: "trainers",
-    description: "Access trainers module.",
-  },
-  {
-    name: "module:attendance",
-    resource: "module",
-    action: "attendance",
-    description: "Access attendance module.",
-  },
-  {
-    name: "module:assessments",
-    resource: "module",
-    action: "assessments",
-    description: "Access assessments module.",
-  },
-  {
-    name: "module:certifications",
-    resource: "module",
-    action: "certifications",
-    description: "Access certifications module.",
-  },
-  {
-    name: "module:readiness",
-    resource: "module",
-    action: "readiness",
-    description: "Access readiness module.",
-  },
-  {
-    name: "module:language_lab",
-    resource: "module",
-    action: "language_lab",
-    description: "Access language lab module.",
-  },
-  {
-    name: "module:payments",
-    resource: "module",
-    action: "payments",
-    description: "Access payments module.",
-  },
-  {
-    name: "module:support",
-    resource: "module",
-    action: "support",
-    description: "Access support module.",
-  },
-  {
-    name: "candidate:read",
-    resource: "candidate",
-    action: "read",
-    description: "Read candidate records.",
-  },
-  {
-    name: "candidate:update",
-    resource: "candidate",
-    action: "update",
-    description: "Update candidate records.",
-  },
-  {
-    name: "system:manage_users",
-    resource: "system",
-    action: "manage_users",
-    description: "Create, update, deactivate, and assign roles to users.",
-  },
-  {
-    name: "system:manage_roles",
-    resource: "system",
-    action: "manage_roles",
-    description: "Create, update, and assign roles and permissions.",
-  },
+  { key: "dashboard:view", module: "dashboard", action: "view", label: "View dashboard" },
+  { key: "learners:view", module: "learners", action: "view", label: "View learners" },
+  { key: "learners:edit", module: "learners", action: "edit", label: "Edit learners" },
+  { key: "attendance:view", module: "attendance", action: "view", label: "View attendance" },
+  { key: "attendance:mark", module: "attendance", action: "mark", label: "Mark attendance" },
+  { key: "programs:view", module: "programs", action: "view", label: "View programs" },
+  { key: "programs:manage", module: "programs", action: "manage", label: "Manage programs" },
+  { key: "batches:view", module: "batches", action: "view", label: "View batches" },
+  { key: "batches:manage", module: "batches", action: "manage", label: "Manage batches" },
+  { key: "trainers:view", module: "trainers", action: "view", label: "View trainers" },
+  { key: "trainers:manage", module: "trainers", action: "manage", label: "Manage trainers" },
+  { key: "reports:view", module: "reports", action: "view", label: "View reports" },
+  { key: "users:manage", module: "users", action: "manage", label: "Manage users" },
+  { key: "roles:manage", module: "roles", action: "manage", label: "Manage roles" },
 ];
 
+const toLegacyPermissionFields = (permission) => ({
+  legacyName: permission.key,
+  legacyResource: permission.module,
+  legacyDescription: permission.label,
+});
+
 const RBAC_ROLE_PERMISSIONS = {
-  "Super Admin": ["all:*"],
-  Admin: ["candidate:read", "candidate:update", "system:manage_users", "system:manage_roles"],
-  Candidate: ["candidate:read_own", "candidate:update_own"],
+  superadmin: RBAC_PERMISSIONS.map((permission) => permission.key),
+  admin: RBAC_PERMISSIONS.map((permission) => permission.key).filter((key) => key !== "roles:manage" && key !== "users:manage"),
+  trainer: ["dashboard:view", "learners:view", "attendance:view", "attendance:mark"],
 };
 
 const FIRST_NAMES = [
@@ -255,17 +149,17 @@ const LAST_NAMES = [
   "Chopra", "Bhatt", "Shetty", "Ghosh", "Kohli", "Rastogi", "Tiwari", "Lal", "Nambiar", "Raman",
 ];
 
-async function upsertUser({ email, name, phone, password, role }) {
+async function upsertUser({ email, name, phone, password, role, roleId = null }) {
   const hashedPassword = hashPassword(password);
 
   return prisma.user.upsert({
     where: { email },
-    update: { name, phone, password: hashedPassword, role, isActive: true },
-    create: { email, name, phone, password: hashedPassword, role, isActive: true, metadata: {} },
+    update: { name, phone, password: hashedPassword, role, roleId, isActive: true },
+    create: { email, name, phone, password: hashedPassword, role, roleId, isActive: true, metadata: {} },
   });
 }
 
-async function seedRbac({ adminUserId, candidateUserId }) {
+async function seedRbac() {
   const rolesByName = new Map();
 
   for (const role of RBAC_ROLES) {
@@ -285,16 +179,20 @@ async function seedRbac({ adminUserId, candidateUserId }) {
 
   for (const permission of RBAC_PERMISSIONS) {
     const permissionRecord = await prisma.permission.upsert({
-      where: { name: permission.name },
+      where: { key: permission.key },
       update: {
-        resource: permission.resource,
+        module: permission.module,
         action: permission.action,
-        description: permission.description,
+        label: permission.label,
+        ...toLegacyPermissionFields(permission),
       },
-      create: permission,
+      create: {
+        ...permission,
+        ...toLegacyPermissionFields(permission),
+      },
     });
 
-    permissionsByName.set(permissionRecord.name, permissionRecord);
+    permissionsByName.set(permissionRecord.key, permissionRecord);
   }
 
   for (const [roleName, permissionNames] of Object.entries(RBAC_ROLE_PERMISSIONS)) {
@@ -325,90 +223,11 @@ async function seedRbac({ adminUserId, candidateUserId }) {
     }
   }
 
-  const adminRole = rolesByName.get("Admin");
-  const superAdminRole = rolesByName.get("Super Admin");
-  const candidateRole = rolesByName.get("Candidate");
-
-  if (adminRole) {
-    const adminUsers = await prisma.user.findMany({
-      where: {
-        role: UserRole.ADMIN,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    for (const user of adminUsers) {
-      await prisma.userRoleAssignment.upsert({
-        where: {
-          userId_roleId: {
-            userId: user.id,
-            roleId: adminRole.id,
-          },
-        },
-        update: {},
-        create: {
-          userId: user.id,
-          roleId: adminRole.id,
-        },
-      });
-    }
-  }
-
-  if (superAdminRole && adminUserId) {
-    await prisma.userRoleAssignment.upsert({
-      where: {
-        userId_roleId: {
-          userId: adminUserId,
-          roleId: superAdminRole.id,
-        },
-      },
-      update: {},
-      create: {
-        userId: adminUserId,
-        roleId: superAdminRole.id,
-      },
-    });
-  }
-
-  if (candidateRole) {
-    const candidateUsers = await prisma.user.findMany({
-      where: {
-        role: UserRole.CANDIDATE,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    for (const user of candidateUsers) {
-      await prisma.userRoleAssignment.upsert({
-        where: {
-          userId_roleId: {
-            userId: user.id,
-            roleId: candidateRole.id,
-          },
-        },
-        update: {},
-        create: {
-          userId: user.id,
-          roleId: candidateRole.id,
-        },
-      });
-    }
-  }
-
   return {
+    rolesByName,
     roleCount: rolesByName.size,
     permissionCount: permissionsByName.size,
-    assignmentCount: await prisma.userRoleAssignment.count({
-      where: {
-        userId: {
-          in: [adminUserId, candidateUserId].filter(Boolean),
-        },
-      },
-    }),
+    assignmentCount: 0,
   };
 }
 
@@ -440,12 +259,27 @@ function placementForIndex(index) {
 }
 
 async function seed() {
+  const rbacSummary = await seedRbac();
+  const superAdminRole = rbacSummary.rolesByName.get("superadmin");
+  const adminRole = rbacSummary.rolesByName.get("admin");
+  const trainerRole = rbacSummary.rolesByName.get("trainer");
+
+  const superAdminUser = await upsertUser({
+    email: "superadmin@gts-superadmin.com",
+    name: "GTS SuperAdmin",
+    phone: "+91-9000000000",
+    password: "dev-password",
+    role: UserRole.ADMIN,
+    roleId: superAdminRole?.id,
+  });
+
   const adminUser = await upsertUser({
-    email: "admin@gts-academy.test",
+    email: "admin@gts-admin.com",
     name: "Academy Admin",
     phone: "+91-9000000001",
     password: "dev-password",
     role: UserRole.ADMIN,
+    roleId: adminRole?.id,
   });
 
   const candidateUser = await upsertUser({
@@ -568,6 +402,7 @@ async function seed() {
       phone: profile.phone,
       password: "dev-password",
       role: UserRole.TRAINER,
+      roleId: trainerRole?.id,
     });
 
     const assignedPrograms = [programRecords[i % programRecords.length].name, programRecords[(i + 3) % programRecords.length].name];
@@ -984,10 +819,13 @@ async function seed() {
     });
   }
 
-  const rbacSummary = await seedRbac({
-    adminUserId: adminUser.id,
-    candidateUserId: candidateUser.id,
+  await prisma.user.updateMany({
+    where: { role: UserRole.TRAINER },
+    data: { roleId: trainerRole?.id ?? null },
   });
+
+  await prisma.user.update({ where: { id: superAdminUser.id }, data: { roleId: superAdminRole?.id ?? null } });
+  await prisma.user.update({ where: { id: adminUser.id }, data: { roleId: adminRole?.id ?? null } });
 
   const readyCount = await prisma.learner.count({ where: { placementStatus: PlacementStatus.PLACEMENT_READY } });
 

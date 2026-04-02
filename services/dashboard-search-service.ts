@@ -43,7 +43,7 @@ export async function searchDashboardService(input: DashboardSearchInput): Promi
     section: "learners",
     title: learner.fullName,
     description: [learner.learnerCode, learner.email, learner.programName].filter(Boolean).join(" | "),
-    href: `/learners?${createSearchParams({ search: query, id: learner.learnerCode })}`,
+    href: `/staff/learners?${createSearchParams({ search: query, id: learner.learnerCode })}`,
   }));
 
   const batchItems: DashboardSearchItem[] = batches.map((batch) => ({

@@ -17,6 +17,7 @@ export async function syncReadinessStatus(input: unknown) {
   const result = await syncReadinessStatusService(parsed);
 
   revalidatePath("/dashboard");
+  revalidatePath("/staff/learners");
   revalidatePath("/learners");
   revalidatePath("/readiness");
 

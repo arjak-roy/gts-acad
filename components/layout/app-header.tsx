@@ -19,7 +19,7 @@ type AppHeaderProps = {
 };
 
 const quickLinks = [
-  { href: "/learners", label: "Enroll Learner", module: "learners" },
+  { href: "/staff/learners", label: "Enroll Learner", module: "learners" },
   { href: "/courses", label: "Create Course", module: "courses" },
   { href: "/programs", label: "Create Program", module: "programs" },
   { href: "/batches", label: "Create Batch", module: "batches" },

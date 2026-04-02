@@ -1,25 +1,26 @@
-import type { AuthSessionClaims } from "@/lib/auth/session";
+import type { AuthSessionClaims, CandidateSessionClaims } from "@/lib/auth/session";
 
 export const ASSIGNABLE_STAFF_MODULES = [
-  { key: "dashboard", href: "/dashboard", label: "Dashboard", permissionName: "module:dashboard", description: "KPIs, alerts, and global search.", routePrefixes: ["/dashboard", "/search"] },
-  { key: "overview", href: "/overview", label: "Overview", permissionName: "module:overview", description: "Cross-module academy hierarchy overview.", routePrefixes: ["/overview"] },
-  { key: "learners", href: "/learners", label: "Learners", permissionName: "module:learners", description: "Learner directory, sheets, and enrollment operations.", routePrefixes: ["/learners"] },
-  { key: "courses", href: "/courses", label: "Courses", permissionName: "module:courses", description: "Course catalog management.", routePrefixes: ["/courses"] },
-  { key: "programs", href: "/programs", label: "Programs", permissionName: "module:programs", description: "Program catalog and mappings.", routePrefixes: ["/programs"] },
-  { key: "batches", href: "/batches", label: "Batches", permissionName: "module:batches", description: "Batch planning and scheduling.", routePrefixes: ["/batches"] },
-  { key: "trainers", href: "/trainers", label: "Trainers", permissionName: "module:trainers", description: "Trainer registry and profile operations.", routePrefixes: ["/trainers"] },
-  { key: "attendance", href: "/attendance", label: "Attendance", permissionName: "module:attendance", description: "Attendance records and marking.", routePrefixes: ["/attendance"] },
-  { key: "assessments", href: "/assessments", label: "Assessments", permissionName: "module:assessments", description: "Assessment bank and results views.", routePrefixes: ["/assessments"] },
-  { key: "certifications", href: "/certifications", label: "Certifications", permissionName: "module:certifications", description: "Certificates and credential issuance.", routePrefixes: ["/certifications"] },
-  { key: "readiness", href: "/readiness", label: "Readiness", permissionName: "module:readiness", description: "Placement readiness workflows.", routePrefixes: ["/readiness"] },
-  { key: "language-lab", href: "/language-lab", label: "Language Lab", permissionName: "module:language_lab", description: "Language lab sessions and scoring.", routePrefixes: ["/language-lab"] },
-  { key: "payments", href: "/payments", label: "Payments", permissionName: "module:payments", description: "Fees and payment records.", routePrefixes: ["/payments"] },
-  { key: "support", href: "/support", label: "Support", permissionName: "module:support", description: "Support ticket queues.", routePrefixes: ["/support"] },
+  { key: "dashboard", href: "/dashboard", label: "Dashboard", permissionName: "dashboard:view", description: "KPIs, alerts, and global search.", routePrefixes: ["/dashboard", "/search"] },
+  { key: "overview", href: "/overview", label: "Overview", permissionName: "dashboard:view", description: "Cross-module academy hierarchy overview.", routePrefixes: ["/overview"] },
+  { key: "learners", href: "/staff/learners", label: "Learners", permissionName: "learners:view", description: "Learner directory, sheets, and enrollment operations.", routePrefixes: ["/staff/learners"] },
+  { key: "courses", href: "/courses", label: "Courses", permissionName: "programs:view", description: "Course catalog management.", routePrefixes: ["/courses"] },
+  { key: "programs", href: "/programs", label: "Programs", permissionName: "programs:view", description: "Program catalog and mappings.", routePrefixes: ["/programs"] },
+  { key: "batches", href: "/batches", label: "Batches", permissionName: "batches:view", description: "Batch planning and scheduling.", routePrefixes: ["/batches"] },
+  { key: "trainers", href: "/trainers", label: "Trainers", permissionName: "trainers:view", description: "Trainer registry and profile operations.", routePrefixes: ["/trainers"] },
+  { key: "attendance", href: "/attendance", label: "Attendance", permissionName: "attendance:view", description: "Attendance records and marking.", routePrefixes: ["/attendance"] },
+  { key: "assessments", href: "/assessments", label: "Assessments", permissionName: "reports:view", description: "Assessment bank and results views.", routePrefixes: ["/assessments"] },
+  { key: "certifications", href: "/certifications", label: "Certifications", permissionName: "reports:view", description: "Certificates and credential issuance.", routePrefixes: ["/certifications"] },
+  { key: "readiness", href: "/readiness", label: "Readiness", permissionName: "reports:view", description: "Placement readiness workflows.", routePrefixes: ["/readiness"] },
+  { key: "language-lab", href: "/language-lab", label: "Language Lab", permissionName: "reports:view", description: "Language lab sessions and scoring.", routePrefixes: ["/language-lab"] },
+  { key: "payments", href: "/payments", label: "Payments", permissionName: "reports:view", description: "Fees and payment records.", routePrefixes: ["/payments"] },
+  { key: "support", href: "/support", label: "Support", permissionName: "reports:view", description: "Support ticket queues.", routePrefixes: ["/support"] },
 ] as const;
 
 export const STAFF_ONLY_MODULES = [
   ...ASSIGNABLE_STAFF_MODULES,
-  { key: "settings", href: "/settings", label: "Settings", permissionName: "module:settings", description: "Super-admin access control and system settings.", routePrefixes: ["/settings"] },
+  { key: "roles", href: "/super-admin/roles", label: "Roles", permissionName: "roles:manage", description: "Custom role creation and permission management.", routePrefixes: ["/super-admin/roles"] },
+  { key: "settings", href: "/settings", label: "Settings", permissionName: "users:manage", description: "Super-admin access control and system settings.", routePrefixes: ["/settings"] },
 ] as const;
 
 export type StaffModuleKey = (typeof STAFF_ONLY_MODULES)[number]["key"];
@@ -30,19 +31,45 @@ export const assignableStaffModuleKeys = ASSIGNABLE_STAFF_MODULES.map((module) =
   ...Array<AssignableStaffModuleKey>,
 ];
 
-export function isSuperAdminSession(session: Pick<AuthSessionClaims, "roles" | "permissions"> | null | undefined) {
+const modulePermissionFallbacks: Record<StaffModuleKey, string[]> = {
+  dashboard: ["dashboard:view"],
+  overview: ["dashboard:view"],
+  learners: ["learners:view", "learners:edit"],
+  courses: ["programs:view", "programs:manage"],
+  programs: ["programs:view", "programs:manage"],
+  batches: ["batches:view", "batches:manage"],
+  trainers: ["trainers:view", "trainers:manage"],
+  attendance: ["attendance:view", "attendance:mark"],
+  assessments: ["reports:view"],
+  certifications: ["reports:view"],
+  readiness: ["reports:view"],
+  "language-lab": ["reports:view"],
+  payments: ["reports:view"],
+  support: ["reports:view"],
+  roles: ["roles:manage"],
+  settings: ["roles:manage", "users:manage"],
+};
+
+type StaffSessionLike = Pick<AuthSessionClaims, "role" | "roles" | "permissions">;
+type SessionLike = StaffSessionLike | Pick<CandidateSessionClaims, "learnerId"> | null | undefined;
+
+export function isSuperAdminSession(session: Pick<AuthSessionClaims, "role" | "roles" | "permissions"> | null | undefined) {
   if (!session) {
     return false;
   }
 
-  return session.permissions.includes("all:*") || session.roles.includes("Super Admin");
+  return session.role.toLowerCase() === "superadmin" || session.roles.includes("superadmin");
 }
 
-export function isCandidateSession(session: Pick<AuthSessionClaims, "role"> | null | undefined) {
-  return session?.role?.toLowerCase() === "candidate";
+export function isCandidateSession(session: Pick<AuthSessionClaims, "role"> | Pick<CandidateSessionClaims, "learnerId"> | null | undefined): session is Pick<CandidateSessionClaims, "learnerId"> {
+  if (!session) {
+    return false;
+  }
+
+  return "learnerId" in session || session.role?.toLowerCase() === "candidate";
 }
 
-export function isStaffSession(session: Pick<AuthSessionClaims, "role" | "roles" | "permissions"> | null | undefined) {
+export function isStaffSession(session: Pick<AuthSessionClaims, "role" | "roles" | "permissions"> | null | undefined): session is StaffSessionLike {
   if (!session) {
     return false;
   }
@@ -63,25 +90,22 @@ export function getModulePermissionName(moduleKey: AssignableStaffModuleKey) {
   return ASSIGNABLE_STAFF_MODULES.find((module) => module.key === moduleKey)?.permissionName ?? "";
 }
 
-export function canAccessModule(session: Pick<AuthSessionClaims, "role" | "roles" | "permissions"> | null | undefined, moduleKey: StaffModuleKey) {
-  if (!session) {
+export function canAccessModule(session: SessionLike, moduleKey: StaffModuleKey) {
+  if (!session || isCandidateSession(session)) {
     return false;
   }
 
-  if (moduleKey === "settings") {
-    return isSuperAdminSession(session);
-  }
+  const staffSession = session as StaffSessionLike;
 
-  if (isSuperAdminSession(session)) {
+  if (isSuperAdminSession(staffSession)) {
     return true;
   }
 
-  if (!isStaffSession(session)) {
+  if (!isStaffSession(staffSession)) {
     return false;
   }
 
-  const module = ASSIGNABLE_STAFF_MODULES.find((entry) => entry.key === moduleKey);
-  return Boolean(module && session.permissions.includes(module.permissionName));
+  return modulePermissionFallbacks[moduleKey].some((permissionKey) => staffSession.permissions.includes(permissionKey));
 }
 
 export function resolveModuleForPathname(pathname: string): StaffModuleKey | null {

@@ -181,6 +181,7 @@ model User {
   phone             String?            @db.VarChar(20)
   password          String             @db.VarChar(255)
   role              UserRole
+  roleId            String?            @map("staff_role_id")
   emailVerifiedAt   DateTime?          @map("email_verified_at") @db.Timestamptz(6)
   isActive          Boolean            @default(true) @map("is_active")
   lastLoginAt       DateTime?          @map("last_login_at") @db.Timestamptz(6)
@@ -192,6 +193,7 @@ model User {
   rbacAssignments   UserRoleAssignment[]
   directPermissions UserPermission[]
   authSessions      UserSession[]
+  staffRole         Role?              @relation("StaffUsersRole", fields: [roleId], references: [id], onDelete: SetNull)
   trainerProfile    TrainerProfile?
   learnerAccount    Learner?           @relation("LearnerUser")
   markedAttendance  AttendanceRecord[] @relation("AttendanceMarkedBy")
@@ -218,34 +220,35 @@ model Role {
   name            String               @unique @db.VarChar(100)
   description     String?
   isSystem        Boolean              @default(false) @map("is_system")
+  permissions     RolePermission[]
+  users           User[]               @relation("StaffUsersRole")
+  userAssignments UserRoleAssignment[]
   createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  userAssignments UserRoleAssignment[]
-  rolePermissions RolePermission[]
 
   @@map("roles")
 }
 
 model Permission {
-  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name            String           @unique @db.VarChar(150)
-  resource        String           @db.VarChar(100)
-  action          String           @db.VarChar(100)
-  description     String?
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  rolePermissions RolePermission[]
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key               String           @unique @db.VarChar(150)
+  module            String           @db.VarChar(100)
+  action            String           @db.VarChar(100)
+  label             String           @db.VarChar(255)
+  legacyName        String           @map("name") @db.VarChar(150)
+  legacyResource    String           @map("resource") @db.VarChar(100)
+  legacyDescription String?          @map("description")
+  rolePerms         RolePermission[]
   directAssignments UserPermission[]
 
-  @@unique([resource, action], map: "permissions_resource_action_key")
-  @@index([resource, action], map: "idx_permissions_resource_action")
+  @@index([module, action], map: "idx_permissions_module_action")
   @@map("permissions")
 }
 
 model RolePermission {
   id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  roleId       String     @db.Uuid @map("role_id")
-  permissionId String     @db.Uuid @map("permission_id")
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
