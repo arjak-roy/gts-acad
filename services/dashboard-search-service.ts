@@ -3,6 +3,7 @@ import "server-only";
 import { searchLearnersService } from "@/services/learners-service";
 import { searchBatchesService } from "@/services/batches-service";
 import { searchTrainersService } from "@/services/trainers-service";
+import { searchCoursesService } from "@/services/courses-service";
 import { searchProgramsService } from "@/services/programs-service";
 import { createSearchParams } from "@/lib/utils";
 import { DashboardSearchInput } from "@/lib/validation-schemas/dashboard";
@@ -29,11 +30,12 @@ function buildGroup(key: DashboardSearchGroup["key"], label: string, items: Dash
 export async function searchDashboardService(input: DashboardSearchInput): Promise<DashboardSearchResult> {
   const query = input.query.trim();
 
-  const [learners, batches, trainers, programs] = await Promise.all([
+  const [learners, batches, trainers, programs, courses] = await Promise.all([
     searchLearnersService(query, RESULT_LIMIT),
     searchBatchesService(query, RESULT_LIMIT),
     searchTrainersService(query, RESULT_LIMIT),
     searchProgramsService(query, RESULT_LIMIT),
+    searchCoursesService(query, RESULT_LIMIT),
   ]);
 
   const learnerItems: DashboardSearchItem[] = learners.map((learner) => ({
@@ -64,14 +66,23 @@ export async function searchDashboardService(input: DashboardSearchInput): Promi
     id: program.id,
     section: "programs",
     title: program.name,
-    description: `${program.type} | ${program.isActive ? "Active" : "Inactive"}`,
+    description: `${program.courseName} | ${program.type} | ${program.isActive ? "Active" : "Inactive"}`,
     href: `/programs?${createSearchParams({ viewId: program.id })}`,
+  }));
+
+  const courseItems: DashboardSearchItem[] = courses.map((course) => ({
+    id: course.id,
+    section: "courses",
+    title: course.name,
+    description: [course.description, `${course.programCount} programs`].filter(Boolean).join(" | "),
+    href: `/courses?${createSearchParams({ viewId: course.id })}`,
   }));
 
   const groups = [
     buildGroup("learners", "Learners", learnerItems),
     buildGroup("batches", "Batches", batchItems),
     buildGroup("trainers", "Trainers", trainerItems),
+    buildGroup("courses", "Courses", courseItems),
     buildGroup("programs", "Programs", programItems),
   ].filter((group): group is DashboardSearchGroup => Boolean(group));
 

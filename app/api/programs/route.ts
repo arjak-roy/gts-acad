@@ -2,9 +2,11 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { createProgramSchema } from "@/lib/validation-schemas/programs";
 import { createProgramService, listProgramsService } from "@/services/programs-service";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const programs = await listProgramsService();
+    const { searchParams } = new URL(request.url);
+    const courseId = searchParams.get("courseId") ?? undefined;
+    const programs = await listProgramsService(courseId);
     return apiSuccess(programs);
   } catch (error) {
     return apiError(error);

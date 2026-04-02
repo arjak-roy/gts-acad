@@ -63,7 +63,7 @@ export type DashboardStats = {
   trends: DashboardTrendPoint[];
 };
 
-export type DashboardSearchSection = "insights" | "learners" | "batches" | "trainers" | "programs";
+export type DashboardSearchSection = "insights" | "learners" | "batches" | "trainers" | "programs" | "courses";
 
 export type DashboardSearchItem = {
   id: string;

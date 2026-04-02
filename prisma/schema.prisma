@@ -229,10 +229,24 @@ model TrainerProfile {
   @@map("trainers")
 }
 
+model Course {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("course_id")
+  name        String    @unique @map("course_name") @db.VarChar(255)
+  description String?   @map("course_desc")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  programs    Program[]
+
+  @@index([isActive], map: "idx_courses_active")
+  @@map("courses")
+}
+
 model Program {
-  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("course_id")
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("program_id")
+  courseId      String        @db.Uuid @map("course_id")
   slug          String        @unique @db.VarChar(120)
-  name          String        @map("title") @db.VarChar(255)
+  name          String        @map("program_name") @db.VarChar(255)
   type          ProgramType
   category      String?       @db.VarChar(100)
   description   String?
@@ -240,12 +254,14 @@ model Program {
   isActive      Boolean       @default(true) @map("is_active")
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  course        Course        @relation(fields: [courseId], references: [id], onDelete: Restrict)
   batches       Batch[]
   assessments   Assessment[]
   certificates  Certificate[]
 
-  @@index([type, isActive], map: "idx_courses_type")
-  @@map("courses")
+  @@index([courseId, isActive], map: "idx_programs_course_active")
+  @@index([type, isActive], map: "idx_programs_type")
+  @@map("programs")
 }
 
 model TrainingCentre {
@@ -268,7 +284,7 @@ model Batch {
   id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("batch_id")
   code               String             @unique @db.VarChar(50)
   name               String             @map("batch_name") @db.VarChar(100)
-  programId          String             @db.Uuid @map("course_id")
+  programId          String             @db.Uuid @map("program_id")
   centreId           String?            @db.Uuid @map("centre_id")
   campus             String?            @db.VarChar(120)
   trainerId          String?            @db.Uuid @map("trainer_id")
@@ -291,7 +307,7 @@ model Batch {
   roleplays          Roleplay[]
   trainerPmsLogs     TrainerPmsLog[]
 
-  @@index([programId, status], map: "idx_batches_course_status")
+  @@index([programId, status], map: "idx_batches_program_status")
   @@index([trainerId], map: "idx_batches_trainer")
   @@map("batches")
 }
@@ -406,7 +422,7 @@ model Assessment {
   type        AssessmentType
   mode        AssessmentMode   @default(ONLINE)
   maxScore    Int              @default(100) @map("max_score")
-  programId   String?          @db.Uuid @map("course_id")
+  programId   String?          @db.Uuid @map("program_id")
   batchId     String?          @db.Uuid @map("batch_id")
   scheduledAt DateTime?        @map("scheduled_at") @db.Timestamptz(6)
   status      EvaluationStatus @default(SCHEDULED)
@@ -469,7 +485,7 @@ model ReadinessSnapshot {
 model Certificate {
   id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("certificate_id")
   learnerId        String            @db.Uuid @map("candidate_id")
-  programId        String            @db.Uuid @map("course_id")
+  programId        String            @db.Uuid @map("program_id")
   status           CertificateStatus @default(ISSUED)
   issuedAt         DateTime          @default(now()) @map("issued_at") @db.Timestamptz(6)
   verificationCode String            @unique @map("verification_code") @db.VarChar(100)

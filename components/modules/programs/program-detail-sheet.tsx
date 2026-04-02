@@ -38,6 +38,8 @@ type LearnersResponse = {
 
 type ProgramDetail = {
   id: string;
+  courseId: string;
+  courseName: string;
   name: string;
   type: ProgramType;
   durationWeeks: number;
@@ -204,6 +206,15 @@ export function ProgramDetailSheet({ programId, open, onOpenChange, onEdit }: Pr
 
             <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-6">
               <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Course</p>
+                  <div className="mt-3 flex items-start gap-3">
+                    <BookOpen className="mt-0.5 h-4 w-4 text-primary" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{program.courseName}</p>
+                    </div>
+                  </div>
+                </div>
                 <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Duration</p>
                   <div className="mt-3 flex items-start gap-3">

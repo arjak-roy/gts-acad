@@ -7,6 +7,8 @@ import { CreateProgramInput, UpdateProgramInput } from "@/lib/validation-schemas
 
 export type ProgramOption = {
   id: string;
+  courseId: string;
+  courseName: string;
   name: string;
   type: ProgramType;
   isActive: boolean;
@@ -14,6 +16,8 @@ export type ProgramOption = {
 
 export type ProgramCreateResult = {
   id: string;
+  courseId: string;
+  courseName: string;
   slug: string;
   name: string;
   type: ProgramType;
@@ -23,8 +27,11 @@ export type ProgramCreateResult = {
   isActive: boolean;
 };
 
-export type ProgramDetail = {
+export type ProgramDetail = ProgramCreateResult;
+
+type ProgramRecord = {
   id: string;
+  courseId: string;
   slug: string;
   name: string;
   type: ProgramType;
@@ -32,19 +39,45 @@ export type ProgramDetail = {
   category: string | null;
   description: string | null;
   isActive: boolean;
+  course: {
+    name: string;
+  };
 };
 
-const MOCK_PROGRAMS: ProgramOption[] = [
+type ProgramSummaryRecord = {
+  id: string;
+  courseId: string;
+  name: string;
+  type: ProgramType;
+  isActive: boolean;
+  course: {
+    name: string;
+  };
+};
+
+const MOCK_PROGRAMS: ProgramCreateResult[] = [
   {
     id: "mock-program-1",
+    courseId: "mock-course-language",
+    courseName: "Language Career Track",
+    slug: "german-language-b1",
     name: "German Language B1",
     type: "LANGUAGE",
+    durationWeeks: 20,
+    category: "Language",
+    description: "Language preparation curriculum.",
     isActive: true,
   },
   {
     id: "mock-program-2",
+    courseId: "mock-course-clinical",
+    courseName: "Clinical Career Track",
+    slug: "clinical-bridging",
     name: "Clinical Bridging",
     type: "CLINICAL",
+    durationWeeks: 16,
+    category: "Clinical",
+    description: "Clinical transition curriculum.",
     isActive: true,
   },
 ];
@@ -56,6 +89,58 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "")
     .slice(0, 120);
+}
+
+function mapProgramOption(program: ProgramCreateResult): ProgramOption {
+  return {
+    id: program.id,
+    courseId: program.courseId,
+    courseName: program.courseName,
+    name: program.name,
+    type: program.type,
+    isActive: program.isActive,
+  };
+}
+
+function mapProgramSummaryRecord(program: ProgramSummaryRecord): ProgramOption {
+  return {
+    id: program.id,
+    courseId: program.courseId,
+    courseName: program.course.name,
+    name: program.name,
+    type: program.type,
+    isActive: program.isActive,
+  };
+}
+
+function mapProgramRecord(program: ProgramRecord): ProgramCreateResult {
+  return {
+    id: program.id,
+    courseId: program.courseId,
+    courseName: program.course.name,
+    slug: program.slug,
+    name: program.name,
+    type: program.type,
+    durationWeeks: program.durationWeeks,
+    category: program.category,
+    description: program.description,
+    isActive: program.isActive,
+  };
+}
+
+function selectProgramRecord() {
+  return {
+    id: true,
+    courseId: true,
+    slug: true,
+    name: true,
+    type: true,
+    durationWeeks: true,
+    category: true,
+    description: true,
+    isActive: true,
+    course: { select: { name: true } },
+  } as const;
 }
 
 async function resolveUniqueSlug(baseSlug: string) {
@@ -74,24 +159,44 @@ async function resolveUniqueSlug(baseSlug: string) {
   throw new Error("Unable to generate unique program slug.");
 }
 
-export async function listProgramsService(): Promise<ProgramOption[]> {
+async function requireCourse(courseId: string) {
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, name: true },
+  });
+
+  if (!course) {
+    throw new Error("Invalid course selection.");
+  }
+
+  return course;
+}
+
+export async function listProgramsService(courseId?: string): Promise<ProgramOption[]> {
+  const normalizedCourseId = courseId?.trim();
+
   if (!isDatabaseConfigured) {
-    return MOCK_PROGRAMS;
+    return (normalizedCourseId ? MOCK_PROGRAMS.filter((program) => program.courseId === normalizedCourseId) : MOCK_PROGRAMS).map(mapProgramOption);
   }
 
   try {
-    return await prisma.program.findMany({
+    const programs = await prisma.program.findMany({
+      where: normalizedCourseId ? { courseId: normalizedCourseId } : undefined,
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
       select: {
         id: true,
+        courseId: true,
         name: true,
         type: true,
         isActive: true,
+        course: { select: { name: true } },
       },
     });
+
+    return programs.map(mapProgramSummaryRecord);
   } catch (error) {
     console.warn("Program list fallback activated", error);
-    return MOCK_PROGRAMS;
+    return (normalizedCourseId ? MOCK_PROGRAMS.filter((program) => program.courseId === normalizedCourseId) : MOCK_PROGRAMS).map(mapProgramOption);
   }
 }
 
@@ -102,71 +207,61 @@ export async function searchProgramsService(query: string, limit: number): Promi
     return MOCK_PROGRAMS.filter(
       (program) =>
         program.name.toLowerCase().includes(normalizedQuery) ||
-        program.type.toLowerCase().includes(normalizedQuery),
-    ).slice(0, limit);
+        program.type.toLowerCase().includes(normalizedQuery) ||
+        program.courseName.toLowerCase().includes(normalizedQuery),
+    )
+      .slice(0, limit)
+      .map(mapProgramOption);
   }
 
   try {
-    return await prisma.program.findMany({
+    const programs = await prisma.program.findMany({
       where: {
         OR: [
           { name: { contains: query, mode: "insensitive" } },
           { category: { contains: query, mode: "insensitive" } },
           { description: { contains: query, mode: "insensitive" } },
+          { course: { name: { contains: query, mode: "insensitive" } } },
         ],
       },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
       take: limit,
       select: {
         id: true,
+        courseId: true,
         name: true,
         type: true,
         isActive: true,
+        course: { select: { name: true } },
       },
     });
+
+    return programs.map(mapProgramSummaryRecord);
   } catch (error) {
     console.warn("Program search fallback activated", error);
     return MOCK_PROGRAMS.filter(
       (program) =>
         program.name.toLowerCase().includes(normalizedQuery) ||
-        program.type.toLowerCase().includes(normalizedQuery),
-    ).slice(0, limit);
+        program.type.toLowerCase().includes(normalizedQuery) ||
+        program.courseName.toLowerCase().includes(normalizedQuery),
+    )
+      .slice(0, limit)
+      .map(mapProgramOption);
   }
 }
 
 export async function getProgramByIdService(programId: string): Promise<ProgramDetail | null> {
   if (!isDatabaseConfigured) {
-    const mock = MOCK_PROGRAMS.find((program) => program.id === programId);
-    if (!mock) {
-      return null;
-    }
-
-    return {
-      id: mock.id,
-      slug: slugify(mock.name),
-      name: mock.name,
-      type: mock.type,
-      durationWeeks: 24,
-      category: null,
-      description: null,
-      isActive: mock.isActive,
-    };
+    return MOCK_PROGRAMS.find((program) => program.id === programId) ?? null;
   }
 
   try {
-    return await prisma.program.findUnique({
+    const program = await prisma.program.findUnique({
       where: { id: programId },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        type: true,
-        durationWeeks: true,
-        category: true,
-        description: true,
-        isActive: true,
-      },
+      select: selectProgramRecord(),
     });
+
+    return program ? mapProgramRecord(program) : null;
   } catch (error) {
     console.warn("Program detail fallback activated", error);
     return null;
@@ -181,8 +276,11 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
   const selectedBatchIds = input.batchIds ? Array.from(new Set(input.batchIds.map((batchId) => batchId.trim()).filter(Boolean))) : null;
 
   if (!isDatabaseConfigured) {
+    const courseName = MOCK_PROGRAMS.find((program) => program.courseId === input.courseId)?.courseName ?? "Assigned Course";
     return {
       id: input.programId,
+      courseId: input.courseId,
+      courseName,
       slug: slugify(normalizedName) || `program-${Date.now()}`,
       name: normalizedName,
       type: input.type,
@@ -202,13 +300,16 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
     throw new Error("Program not found.");
   }
 
-  const duplicateName = await prisma.program.findFirst({
-    where: {
-      id: { not: input.programId },
-      name: { equals: normalizedName, mode: "insensitive" },
-    },
-    select: { id: true },
-  });
+  const [duplicateName, nextCourse] = await Promise.all([
+    prisma.program.findFirst({
+      where: {
+        id: { not: input.programId },
+        name: { equals: normalizedName, mode: "insensitive" },
+      },
+      select: { id: true },
+    }),
+    requireCourse(input.courseId),
+  ]);
 
   if (duplicateName) {
     throw new Error("Program name already exists.");
@@ -220,9 +321,10 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
       : await resolveUniqueSlug(slugify(normalizedName));
 
   if (!selectedTrainerIds && !selectedBatchIds) {
-    return prisma.program.update({
+    const program = await prisma.program.update({
       where: { id: input.programId },
       data: {
+        courseId: nextCourse.id,
         slug: nextSlug,
         name: normalizedName,
         type: input.type,
@@ -231,17 +333,10 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
         description: normalizedDescription,
         isActive: input.isActive,
       },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        type: true,
-        durationWeeks: true,
-        category: true,
-        description: true,
-        isActive: true,
-      },
+      select: selectProgramRecord(),
     });
+
+    return mapProgramRecord(program);
   }
 
   return prisma.$transaction(async (tx) => {
@@ -255,10 +350,7 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
           : Promise.resolve([]),
         tx.trainerProfile.findMany({
           where: {
-            OR: [
-              { programs: { has: existingProgram.name } },
-              { programs: { has: normalizedName } },
-            ],
+            OR: [{ programs: { has: existingProgram.name } }, { programs: { has: normalizedName } }],
           },
           select: { id: true, programs: true },
         }),
@@ -296,9 +388,7 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
 
         await tx.trainerProfile.update({
           where: { id: trainerId },
-          data: {
-            programs: filteredPrograms,
-          },
+          data: { programs: filteredPrograms },
         });
       }
     }
@@ -306,6 +396,7 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
     const updatedProgram = await tx.program.update({
       where: { id: input.programId },
       data: {
+        courseId: nextCourse.id,
         slug: nextSlug,
         name: normalizedName,
         type: input.type,
@@ -314,37 +405,26 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
         description: normalizedDescription,
         isActive: input.isActive,
       },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        type: true,
-        durationWeeks: true,
-        category: true,
-        description: true,
-        isActive: true,
-      },
+      select: selectProgramRecord(),
     });
 
-    if (selectedBatchIds) {
-      if (selectedBatchIds.length > 0) {
-        const selectedBatches = await tx.batch.findMany({
-          where: { id: { in: selectedBatchIds } },
-          select: { id: true },
-        });
+    if (selectedBatchIds && selectedBatchIds.length > 0) {
+      const selectedBatches = await tx.batch.findMany({
+        where: { id: { in: selectedBatchIds } },
+        select: { id: true },
+      });
 
-        if (selectedBatches.length !== selectedBatchIds.length) {
-          throw new Error("One or more selected batches were not found.");
-        }
-
-        await tx.batch.updateMany({
-          where: { id: { in: selectedBatchIds } },
-          data: { programId: updatedProgram.id },
-        });
+      if (selectedBatches.length !== selectedBatchIds.length) {
+        throw new Error("One or more selected batches were not found.");
       }
+
+      await tx.batch.updateMany({
+        where: { id: { in: selectedBatchIds } },
+        data: { programId: updatedProgram.id },
+      });
     }
 
-    return updatedProgram;
+    return mapProgramRecord(updatedProgram);
   });
 }
 
@@ -356,21 +436,29 @@ export async function archiveProgramService(programId: string): Promise<ProgramO
     }
 
     return {
-      ...mock,
+      id: mock.id,
+      courseId: mock.courseId,
+      courseName: mock.courseName,
+      name: mock.name,
+      type: mock.type,
       isActive: false,
     };
   }
 
-  return prisma.program.update({
+  const program = await prisma.program.update({
     where: { id: programId },
     data: { isActive: false },
     select: {
       id: true,
+      courseId: true,
       name: true,
       type: true,
       isActive: true,
+      course: { select: { name: true } },
     },
   });
+
+  return mapProgramSummaryRecord(program);
 }
 
 export async function createProgramService(input: CreateProgramInput): Promise<ProgramCreateResult> {
@@ -381,8 +469,11 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
   const selectedBatchIds = Array.from(new Set((input.batchIds ?? []).map((batchId) => batchId.trim()).filter(Boolean)));
 
   if (!isDatabaseConfigured) {
+    const courseName = MOCK_PROGRAMS.find((program) => program.courseId === input.courseId)?.courseName ?? "Assigned Course";
     return {
       id: `mock-${Date.now()}`,
+      courseId: input.courseId,
+      courseName,
       slug: slugify(normalizedName) || `program-${Date.now()}`,
       name: normalizedName,
       type: input.type,
@@ -393,10 +484,13 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
     };
   }
 
-  const existingName = await prisma.program.findFirst({
-    where: { name: { equals: normalizedName, mode: "insensitive" } },
-    select: { id: true },
-  });
+  const [existingName, course] = await Promise.all([
+    prisma.program.findFirst({
+      where: { name: { equals: normalizedName, mode: "insensitive" } },
+      select: { id: true },
+    }),
+    requireCourse(input.courseId),
+  ]);
 
   if (existingName) {
     throw new Error("Program name already exists.");
@@ -407,6 +501,7 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
   return prisma.$transaction(async (tx) => {
     const program = await tx.program.create({
       data: {
+        courseId: course.id,
         slug,
         name: normalizedName,
         type: input.type,
@@ -415,16 +510,7 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
         description: normalizedDescription,
         isActive: input.isActive,
       },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        type: true,
-        durationWeeks: true,
-        category: true,
-        description: true,
-        isActive: true,
-      },
+      select: selectProgramRecord(),
     });
 
     if (selectedTrainerIds.length > 0) {
@@ -474,6 +560,6 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
       });
     }
 
-    return program;
+    return mapProgramRecord(program);
   });
 }

@@ -7,6 +7,25 @@ import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { PortalSectionContent } from "@/types";
 
 const sectionConfig = {
+  courses: {
+    title: "Course Library",
+    description: "Top-level academic groupings that organize the academy program catalog.",
+    accent: "Hierarchy root",
+    summary: "Manage course groupings and the programs mapped into each course.",
+    metrics: [],
+    highlights: [],
+    tableTitle: "Courses",
+    tableDescription: "Top-level course records.",
+    tableColumns: [
+      { key: "name", header: "Course Name" },
+      { key: "courseId", header: "Course ID" },
+      { key: "description", header: "Course Desc" },
+      { key: "programs", header: "Programs", align: "right" },
+    ],
+    tableRows: [],
+    primaryAction: "Create Course",
+    secondaryAction: "View Details",
+  },
   programs: {
     title: "Course Catalogue",
     description: "Academy pathways for global nursing and technical roles.",
@@ -17,6 +36,7 @@ const sectionConfig = {
     tableTitle: "Programs",
     tableDescription: "Available academic pathways.",
     tableColumns: [
+      { key: "course", header: "Course" },
       { key: "name", header: "Program Name" },
       { key: "type", header: "Type" },
     ],
@@ -212,12 +232,58 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
   }
 
   try {
+    if (section === "courses") {
+      const courses = await prisma.course.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          isActive: true,
+          _count: {
+            select: {
+              programs: true,
+            },
+          },
+        },
+      });
+
+      const activeCourses = courses.filter((course) => course.isActive).length;
+      const totalPrograms = courses.reduce((sum, course) => sum + course._count.programs, 0);
+
+      return {
+        ...base,
+        accent: `${activeCourses} active courses`,
+        metrics: [
+          { label: "Total Courses", value: String(courses.length), helper: "Top-level hierarchy entities" },
+          { label: "Active", value: String(activeCourses), helper: "Currently available for mapping" },
+          { label: "Programs Mapped", value: String(totalPrograms), helper: "Programs linked across all courses" },
+        ],
+        highlights: [
+          {
+            label: "Catalog Health",
+            value: `${courses.filter((course) => course._count.programs === 0).length} courses currently without programs`,
+            tone: "info",
+          },
+        ],
+        tableRows: courses.map((course) => ({
+          id: course.id,
+          name: course.name,
+          courseId: course.id,
+          description: course.description ?? "No description",
+          programs: String(course._count.programs),
+        })),
+      };
+    }
+
     if (section === "programs") {
       const programs = await prisma.program.findMany({
         orderBy: { createdAt: "desc" },
         take: 12,
         select: {
           id: true,
+          course: { select: { name: true } },
           name: true,
           type: true,
           durationWeeks: true,
@@ -249,6 +315,7 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
           },
         ],
         tableColumns: [
+          { key: "course", header: "Course" },
           { key: "program", header: "Program" },
           { key: "type", header: "Type" },
           { key: "duration", header: "Duration" },
@@ -257,6 +324,7 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
         ],
         tableRows: programs.map((program) => ({
           id: program.id,
+          course: program.course.name,
           program: program.name,
           type: program.type,
           duration: `${program.durationWeeks} weeks`,

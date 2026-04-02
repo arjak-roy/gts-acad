@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BatchDetailSheet } from "@/components/modules/batches/batch-detail-sheet";
 import { EditBatchSheet } from "@/components/modules/batches/edit-batch-sheet";
+import { AddCourseSheet } from "@/components/modules/courses/add-course-sheet";
+import { CourseDetailSheet } from "@/components/modules/courses/course-detail-sheet";
+import { EditCourseSheet } from "@/components/modules/courses/edit-course-sheet";
 import { ProgramDetailSheet } from "@/components/modules/programs/program-detail-sheet";
 import { EditProgramSheet } from "@/components/modules/programs/edit-program-sheet";
 import { TrainerDetailSheet } from "@/components/modules/trainers/trainer-detail-sheet";
@@ -51,9 +54,11 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [viewingCourseId, setViewingCourseId] = useState<string | null>(null);
   const [viewingBatchId, setViewingBatchId] = useState<string | null>(null);
   const [viewingProgramId, setViewingProgramId] = useState<string | null>(null);
   const [viewingTrainerId, setViewingTrainerId] = useState<string | null>(null);
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [editingTrainerId, setEditingTrainerId] = useState<string | null>(null);
@@ -64,21 +69,24 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [studentsError, setStudentsError] = useState<string | null>(null);
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
-  const hasDetailActions = sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers";
+  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers";
 
   useEffect(() => {
     const viewId = searchParams.get("viewId");
     const editId = searchParams.get("editId");
 
     // Reset all viewer/editor states first
+    setViewingCourseId(null);
     setViewingBatchId(null);
     setViewingProgramId(null);
     setViewingTrainerId(null);
+    setEditingCourseId(null);
     setEditingBatchId(null);
     setEditingProgramId(null);
     setEditingTrainerId(null);
 
     if (viewId) {
+      if (sectionKey === "courses") setViewingCourseId(viewId);
       if (sectionKey === "batches") setViewingBatchId(viewId);
       else if (sectionKey === "programs") setViewingProgramId(viewId);
       else if (sectionKey === "trainers") setViewingTrainerId(viewId);
@@ -86,6 +94,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     }
 
     if (editId) {
+      if (sectionKey === "courses") setEditingCourseId(editId);
       if (sectionKey === "batches") setEditingBatchId(editId);
       else if (sectionKey === "programs") setEditingProgramId(editId);
       else if (sectionKey === "trainers") setEditingTrainerId(editId);
@@ -267,7 +276,9 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
           ) : null}
           <Badge variant="accent">{section.accent}</Badge>
           <Button variant="secondary">{section.secondaryAction}</Button>
-          {sectionKey === "programs" ? (
+          {sectionKey === "courses" ? (
+            <AddCourseSheet />
+          ) : sectionKey === "programs" ? (
             <AddProgramSheet />
           ) : sectionKey === "batches" ? (
             <CreateBatchSheet />
@@ -397,6 +408,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         </Card>
       </div>
 
+      <CourseDetailSheet
+        courseId={viewingCourseId}
+        open={Boolean(viewingCourseId)}
+        onOpenChange={(nextOpen) => !nextOpen && closePanel()}
+        onEdit={(id) => openEditor(id)}
+      />
       <BatchDetailSheet
         batchId={viewingBatchId}
         open={Boolean(viewingBatchId)}
@@ -415,6 +432,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         onOpenChange={(nextOpen) => !nextOpen && closePanel()}
         onEdit={(id) => openEditor(id)}
       />
+      <EditCourseSheet courseId={editingCourseId} open={Boolean(editingCourseId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditBatchSheet batchId={editingBatchId} open={Boolean(editingBatchId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditProgramSheet programId={editingProgramId} open={Boolean(editingProgramId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditTrainerSheet trainerId={editingTrainerId} open={Boolean(editingTrainerId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />

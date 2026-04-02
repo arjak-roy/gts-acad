@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const createProgramSchema = z.object({
+  courseId: z.string().trim().min(1, "Course is required."),
   name: z.string().trim().min(2).max(255),
   type: z.enum(["LANGUAGE", "CLINICAL", "TECHNICAL"]),
   durationWeeks: z.coerce.number().int().min(1).max(260),

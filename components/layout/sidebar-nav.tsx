@@ -17,6 +17,7 @@ const navGroups = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/learners", label: "Learners", icon: Users },
+      { href: "/courses", label: "Courses", icon: BookOpen },
       { href: "/programs", label: "Programs", icon: BookOpen },
       { href: "/batches", label: "Batches", icon: Layers },
       { href: "/trainers", label: "Trainers", icon: UserCog },

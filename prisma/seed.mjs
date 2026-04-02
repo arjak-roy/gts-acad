@@ -23,6 +23,24 @@ const prisma = new PrismaClient();
 
 const makeUuid = (seed) => `00000000-0000-0000-0000-${seed.toString(16).padStart(12, "0")}`;
 
+const COURSES = [
+  {
+    name: "Language Career Track",
+    description: "Language preparation pathways for international academy placement.",
+    type: ProgramType.LANGUAGE,
+  },
+  {
+    name: "Clinical Career Track",
+    description: "Clinical upskilling pathways for nursing and healthcare deployment.",
+    type: ProgramType.CLINICAL,
+  },
+  {
+    name: "Technical Career Track",
+    description: "Technical programs aligned with healthcare operations and IT roles.",
+    type: ProgramType.TECHNICAL,
+  },
+];
+
 const PROGRAMS = [
   { slug: "german-language-b1", name: "German Language B1", type: ProgramType.LANGUAGE, category: "Language", durationWeeks: 20 },
   { slug: "german-language-b2", name: "German Language B2", type: ProgramType.LANGUAGE, category: "Language", durationWeeks: 22 },
@@ -150,11 +168,37 @@ async function seed() {
     },
   });
 
+  const courseRecords = [];
+  for (const course of COURSES) {
+    const record = await prisma.course.upsert({
+      where: { name: course.name },
+      update: {
+        description: course.description,
+        isActive: true,
+      },
+      create: {
+        name: course.name,
+        description: course.description,
+        isActive: true,
+      },
+    });
+
+    courseRecords.push(record);
+  }
+
+  const courseByType = new Map(courseRecords.map((course, index) => [COURSES[index].type, course]));
+
   const programRecords = [];
   for (const program of PROGRAMS) {
+    const mappedCourse = courseByType.get(program.type);
+    if (!mappedCourse) {
+      throw new Error(`Missing seeded course for program type ${program.type}.`);
+    }
+
     const record = await prisma.program.upsert({
       where: { slug: program.slug },
       update: {
+        courseId: mappedCourse.id,
         name: program.name,
         type: program.type,
         category: program.category,
@@ -163,6 +207,7 @@ async function seed() {
         isActive: true,
       },
       create: {
+        courseId: mappedCourse.id,
         slug: program.slug,
         name: program.name,
         type: program.type,

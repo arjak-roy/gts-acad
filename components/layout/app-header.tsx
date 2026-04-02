@@ -129,6 +129,9 @@ export function AppHeader() {
                 <Link href="/learners">Enroll Learner</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
+                <Link href="/courses">Create Course</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/programs">Create Program</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>

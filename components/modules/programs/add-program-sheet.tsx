@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 type ProgramTypeValue = "LANGUAGE" | "CLINICAL" | "TECHNICAL";
 
 type AddProgramForm = {
+  courseId: string;
   name: string;
   type: ProgramTypeValue;
   durationWeeks: string;
@@ -19,6 +20,14 @@ type AddProgramForm = {
   description: string;
   trainerIds: string[];
   batchIds: string[];
+};
+
+type CourseOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  programCount: number;
 };
 
 type ProgramTrainerOption = {
@@ -39,6 +48,7 @@ type ProgramBatchOption = {
 };
 
 const initialForm: AddProgramForm = {
+  courseId: "",
   name: "",
   type: "LANGUAGE",
   durationWeeks: "",
@@ -55,6 +65,7 @@ export function AddProgramSheet() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
   const [trainers, setTrainers] = useState<ProgramTrainerOption[]>([]);
   const [batches, setBatches] = useState<ProgramBatchOption[]>([]);
   const [trainerSearchTerm, setTrainerSearchTerm] = useState("");
@@ -72,15 +83,17 @@ export function AddProgramSheet() {
       setIsLoadingOptions(true);
 
       try {
-        const [trainersResponse, batchesResponse] = await Promise.all([
+        const [coursesResponse, trainersResponse, batchesResponse] = await Promise.all([
+          fetch("/api/courses", { cache: "no-store" }),
           fetch("/api/trainers", { cache: "no-store" }),
           fetch("/api/batches", { cache: "no-store" }),
         ]);
 
-        if (!trainersResponse.ok || !batchesResponse.ok) {
-          throw new Error("Failed to load trainers and batches.");
+        if (!coursesResponse.ok || !trainersResponse.ok || !batchesResponse.ok) {
+          throw new Error("Failed to load course, trainer, and batch options.");
         }
 
+        const coursesPayload = (await coursesResponse.json()) as { data?: CourseOption[] };
         const trainersPayload = (await trainersResponse.json()) as { data?: ProgramTrainerOption[] };
         const batchesPayload = (await batchesResponse.json()) as { data?: ProgramBatchOption[] };
 
@@ -88,6 +101,7 @@ export function AddProgramSheet() {
           return;
         }
 
+        setCourses((coursesPayload.data ?? []).filter((course) => course.isActive));
         setTrainers((trainersPayload.data ?? []).filter((trainer) => trainer.isActive));
         setBatches((batchesPayload.data ?? []).filter((batch) => batch.status !== "ARCHIVED"));
       } catch (loadError) {
@@ -95,7 +109,7 @@ export function AddProgramSheet() {
           return;
         }
 
-        const message = loadError instanceof Error ? loadError.message : "Failed to load trainers and batches.";
+        const message = loadError instanceof Error ? loadError.message : "Failed to load course, trainer, and batch options.";
         setError(message);
       } finally {
         if (active) {
@@ -172,8 +186,8 @@ export function AddProgramSheet() {
 
     const duration = Number(form.durationWeeks);
 
-    if (!form.name.trim() || !form.type || !Number.isFinite(duration) || duration < 1) {
-      setError("Please complete Program Name, Type, and a valid Duration before continuing.");
+    if (!form.courseId || !form.name.trim() || !form.type || !Number.isFinite(duration) || duration < 1) {
+      setError("Please complete Course, Program Name, Type, and a valid Duration before continuing.");
       return;
     }
 
@@ -210,6 +224,7 @@ export function AddProgramSheet() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          courseId: form.courseId,
           name: form.name,
           type: form.type,
           durationWeeks: Number(form.durationWeeks),
@@ -250,6 +265,21 @@ export function AddProgramSheet() {
         {step === "form" ? (
           <form className="space-y-4 p-6" onSubmit={handleDone}>
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course</label>
+                <select
+                  className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                  value={form.courseId}
+                  onChange={(event) => setForm((prev) => ({ ...prev, courseId: event.target.value }))}
+                >
+                  <option value="">{isLoadingOptions ? "Loading courses..." : courses.length === 0 ? "No courses available" : "Select a course"}</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Program Name</label>
                 <Input
@@ -426,6 +456,9 @@ export function AddProgramSheet() {
             </Card>
 
             <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p>
+                <span className="font-semibold text-slate-900">Course:</span> {courses.find((course) => course.id === form.courseId)?.name ?? "N/A"}
+              </p>
               <p>
                 <span className="font-semibold text-slate-900">Program:</span> {form.name.trim()}
               </p>

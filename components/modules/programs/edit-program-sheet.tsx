@@ -22,6 +22,8 @@ type BatchSummary = {
 
 type ProgramDetail = {
   id: string;
+  courseId: string;
+  courseName: string;
   name: string;
   type: ProgramTypeValue;
   durationWeeks: number;
@@ -40,6 +42,7 @@ type ProgramTrainerOption = {
 };
 
 type EditProgramForm = {
+  courseId: string;
   name: string;
   type: ProgramTypeValue;
   durationWeeks: string;
@@ -51,6 +54,7 @@ type EditProgramForm = {
 };
 
 const emptyForm: EditProgramForm = {
+  courseId: "",
   name: "",
   type: "LANGUAGE",
   durationWeeks: "",
@@ -67,12 +71,21 @@ type EditProgramSheetProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+type CourseOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  programCount: number;
+};
+
 export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramSheetProps) {
   const router = useRouter();
   const [step, setStep] = useState<"form" | "confirm" | "updated">("form");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
   const [trainers, setTrainers] = useState<ProgramTrainerOption[]>([]);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [trainerSearchTerm, setTrainerSearchTerm] = useState("");
@@ -91,17 +104,19 @@ export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramS
       setError(null);
 
       try {
-        const [programResponse, trainersResponse, batchesResponse] = await Promise.all([
+        const [programResponse, coursesResponse, trainersResponse, batchesResponse] = await Promise.all([
           fetch(`/api/programs/${programId}`, { cache: "no-store" }),
+          fetch("/api/courses", { cache: "no-store" }),
           fetch("/api/trainers", { cache: "no-store" }),
           fetch("/api/batches", { cache: "no-store" }),
         ]);
 
-        if (!programResponse.ok || !trainersResponse.ok || !batchesResponse.ok) {
+        if (!programResponse.ok || !coursesResponse.ok || !trainersResponse.ok || !batchesResponse.ok) {
           throw new Error("Failed to load program details.");
         }
 
         const payload = (await programResponse.json()) as { data?: ProgramDetail };
+        const coursesPayload = (await coursesResponse.json()) as { data?: CourseOption[] };
         const trainersPayload = (await trainersResponse.json()) as { data?: ProgramTrainerOption[] };
         const batchesPayload = (await batchesResponse.json()) as { data?: BatchSummary[] };
 
@@ -111,16 +126,19 @@ export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramS
 
         const availableTrainers = (trainersPayload.data ?? []).filter((trainer) => trainer.isActive);
         const availableBatches = (batchesPayload.data ?? []).filter((batch) => batch.status !== "ARCHIVED");
+        const availableCourses = (coursesPayload.data ?? []).filter((course) => course.isActive);
         const normalizedProgramName = payload.data.name.trim().toLowerCase();
         const selectedTrainerIds = availableTrainers
           .filter((trainer) => trainer.programs.some((program) => program.trim().toLowerCase() === normalizedProgramName))
           .map((trainer) => trainer.id);
         const selectedBatchIds: string[] = [];
 
+        setCourses(availableCourses);
         setTrainers(availableTrainers);
         setBatches(availableBatches);
 
         setForm({
+          courseId: payload.data.courseId,
           name: payload.data.name,
           type: payload.data.type,
           durationWeeks: String(payload.data.durationWeeks),
@@ -214,8 +232,8 @@ export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramS
     event.preventDefault();
 
     const duration = Number(form.durationWeeks);
-    if (!form.name.trim() || !form.type || !Number.isFinite(duration) || duration < 1) {
-      setError("Please complete Program Name, Type, and a valid Duration before continuing.");
+    if (!form.courseId || !form.name.trim() || !form.type || !Number.isFinite(duration) || duration < 1) {
+      setError("Please complete Course, Program Name, Type, and a valid Duration before continuing.");
       return;
     }
 
@@ -238,6 +256,7 @@ export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramS
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          courseId: form.courseId,
           name: form.name,
           type: form.type,
           durationWeeks: Number(form.durationWeeks),
@@ -322,6 +341,21 @@ export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramS
             ) : (
               <>
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course</label>
+                <select
+                  className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                  value={form.courseId}
+                  onChange={(event) => setForm((prev) => ({ ...prev, courseId: event.target.value }))}
+                >
+                  <option value="">Select a course</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Program Name</label>
                 <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
@@ -509,6 +543,9 @@ export function EditProgramSheet({ programId, open, onOpenChange }: EditProgramS
             </Card>
 
             <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p>
+                <span className="font-semibold text-slate-900">Course:</span> {courses.find((course) => course.id === form.courseId)?.name ?? "N/A"}
+              </p>
               <p>
                 <span className="font-semibold text-slate-900">Trainers:</span> {selectedTrainerNames.length > 0 ? selectedTrainerNames.join(", ") : "Unassigned"}
               </p>
