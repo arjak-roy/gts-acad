@@ -13,6 +13,8 @@ export type AuthSessionClaims = {
   email: string;
   name: string;
   role: string;
+  roles: string[];
+  permissions: string[];
   state: AuthSessionState;
   challengeId?: string;
   purpose?: string;
@@ -54,6 +56,8 @@ export async function verifyAuthSessionToken(token: string) {
       email: String(payload.email ?? ""),
       name: String(payload.name ?? ""),
       role: String(payload.role ?? ""),
+      roles: Array.isArray(payload.roles) ? payload.roles.map((value) => String(value)) : [],
+      permissions: Array.isArray(payload.permissions) ? payload.permissions.map((value) => String(value)) : [],
       state: payload.state === "pending" ? "pending" : "authenticated",
       challengeId: typeof payload.challengeId === "string" ? payload.challengeId : undefined,
       purpose: typeof payload.purpose === "string" ? payload.purpose : undefined,
@@ -94,4 +98,20 @@ export function buildClearedAuthSessionCookie(request: NextRequest): ResponseCoo
     path: "/",
     maxAge: 0,
   };
+}
+
+export function hasPermission(claims: Pick<AuthSessionClaims, "permissions"> | null | undefined, permission: string) {
+  if (!claims) {
+    return false;
+  }
+
+  return claims.permissions.includes("all:*") || claims.permissions.includes(permission);
+}
+
+export function hasRole(claims: Pick<AuthSessionClaims, "roles"> | null | undefined, roleName: string) {
+  if (!claims) {
+    return false;
+  }
+
+  return claims.roles.includes(roleName);
 }

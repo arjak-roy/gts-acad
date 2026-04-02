@@ -168,3 +168,13 @@ export type PortalSectionContent = {
   primaryAction: string;
   secondaryAction: string;
 };
+
+export type ManagedAccessUser = {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: "ADMIN" | "TRAINER";
+  isActive: boolean;
+  modules: string[];
+  specialization: string | null;
+};

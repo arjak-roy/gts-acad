@@ -42,6 +42,14 @@ export function apiError(error: unknown) {
 function resolveErrorStatus(message: string) {
   const normalizedMessage = message.toLowerCase();
 
+  if (normalizedMessage.includes("authentication required") || normalizedMessage.includes("unauthorized")) {
+    return 401;
+  }
+
+  if (normalizedMessage.includes("forbidden")) {
+    return 403;
+  }
+
   if (normalizedMessage.includes("not found")) {
     return 404;
   }

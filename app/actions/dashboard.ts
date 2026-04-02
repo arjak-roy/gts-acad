@@ -1,5 +1,6 @@
 "use server";
 
+import { requireCurrentModuleAccess } from "@/lib/auth/access";
 import { dashboardSearchSchema, getDashboardStatsSchema } from "@/lib/validation-schemas/dashboard";
 import { getDashboardStatsService } from "@/services/dashboard-service";
 import { searchDashboardService } from "@/services/dashboard-search-service";
@@ -10,6 +11,7 @@ import { searchDashboardService } from "@/services/dashboard-search-service";
  * Returns service output so UI can remain independent of data source details.
  */
 export async function getDashboardStats(input?: unknown) {
+  await requireCurrentModuleAccess("dashboard");
   getDashboardStatsSchema.parse(input ?? {});
   return getDashboardStatsService();
 }
@@ -19,6 +21,7 @@ export async function getDashboardStats(input?: unknown) {
  * Keeps dashboard search orchestration behind a single action entry point.
  */
 export async function searchDashboard(input: unknown) {
+  await requireCurrentModuleAccess("dashboard");
   const parsed = dashboardSearchSchema.parse(input);
   return searchDashboardService(parsed);
 }

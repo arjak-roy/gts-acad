@@ -2,8 +2,11 @@ import { Suspense } from "react";
 
 import { SectionPageSkeleton } from "@/components/modules/page-skeletons";
 import { ProgramTreeView } from "@/components/modules/programs/program-tree-view";
+import { requireCurrentModuleAccess } from "@/lib/auth/access";
 
-export default function OverviewPage() {
+export default async function OverviewPage() {
+  await requireCurrentModuleAccess("overview");
+
   return (
     <div className="space-y-6">
       <div>

@@ -1,5 +1,6 @@
 "use server";
 
+import { assertCanAccessLearnerCode, getCurrentCandidateLearner, requireCurrentAuthSession, requireModuleAccess } from "@/lib/auth/access";
 import { getLearnersSchema, learnerIdSchema } from "@/lib/validation-schemas/learners";
 import { getLearnerByCodeService, getLearnersService } from "@/services/learners-service";
 
@@ -9,6 +10,15 @@ import { getLearnerByCodeService, getLearnersService } from "@/services/learners
  * Returns a stable response contract for table rendering and pagination UI.
  */
 export async function getLearners(input: unknown) {
+  const session = await requireCurrentAuthSession();
+  const candidateLearner = await getCurrentCandidateLearner(session);
+
+  if (candidateLearner) {
+    throw new Error("Forbidden.");
+  }
+
+  requireModuleAccess(session, "learners");
+
   const parsed = getLearnersSchema.parse(input);
   return getLearnersService(parsed);
 }
@@ -19,6 +29,8 @@ export async function getLearners(input: unknown) {
  * Keeps detail access centralized so all consumers share one lookup rule.
  */
 export async function getLearnerByCode(input: unknown) {
+  const session = await requireCurrentAuthSession();
   const parsed = learnerIdSchema.parse(input);
+  await assertCanAccessLearnerCode(session, parsed.learnerCode);
   return getLearnerByCodeService(parsed.learnerCode);
 }

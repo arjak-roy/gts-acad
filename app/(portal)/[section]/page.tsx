@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { SectionPageSkeleton } from "@/components/modules/page-skeletons";
 import { SectionPageContent } from "@/components/modules/portal/section-page-content";
+import { requireCurrentModuleAccess } from "@/lib/auth/access";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { PortalSectionContent } from "@/types";
 
@@ -472,6 +473,7 @@ export default function SectionPage({ params }: SectionPageProps) {
 }
 
 async function SectionPageContentLoader({ params }: SectionPageProps) {
+  await requireCurrentModuleAccess(params.section);
   const section = await resolveSectionContent(params.section);
 
   if (!section) {

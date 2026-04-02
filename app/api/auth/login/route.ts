@@ -4,7 +4,7 @@ import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
 import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
-import { loginWithPassword } from "@/services/auth-service";
+import { loginWithPassword, persistAuthenticatedSession } from "@/services/auth-service";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Valid email is required."),
@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
           email: result.user.email,
           name: result.user.name,
           role: result.user.role,
+          roles: result.user.roles,
+          permissions: result.user.permissions,
         },
       });
 
@@ -34,10 +36,14 @@ export async function POST(request: NextRequest) {
           email: result.user.email,
           name: result.user.name,
           role: result.user.role,
+          roles: result.user.roles,
+          permissions: result.user.permissions,
           state: "authenticated",
         },
         FULL_SESSION_MAX_AGE_SECONDS,
       );
+
+      await persistAuthenticatedSession(result.user, token, FULL_SESSION_MAX_AGE_SECONDS);
 
       response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
       return response;
@@ -55,6 +61,8 @@ export async function POST(request: NextRequest) {
         email: result.user.email,
         name: result.user.name,
         role: result.user.role,
+        roles: result.user.roles,
+        permissions: result.user.permissions,
         state: "pending",
         challengeId: result.challengeId,
         purpose: "LOGIN",

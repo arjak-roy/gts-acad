@@ -1,4 +1,7 @@
+import { NextRequest } from "next/server";
+
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { requireRequestModuleAccess } from "@/lib/auth/access";
 import { createLearnerSchema, getLearnersSchema } from "@/lib/validation-schemas/learners";
 import { createLearnerService, getLearnersService } from "@/services/learners-service";
 
@@ -7,8 +10,9 @@ import { createLearnerService, getLearnersService } from "@/services/learners-se
  * Parses query-string filters using the learners validation schema.
  * Returns normalized success or error payloads for predictable consumption.
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    await requireRequestModuleAccess(request, "learners");
     const { searchParams } = new URL(request.url);
     const input = getLearnersSchema.parse(Object.fromEntries(searchParams.entries()));
     const learners = await getLearnersService(input);
@@ -23,8 +27,9 @@ export async function GET(request: Request) {
  * Validates JSON payload with shared schema before DB writes.
  * Returns created learner in standardized API envelope.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    await requireRequestModuleAccess(request, "learners");
     const body = await request.json();
     const input = createLearnerSchema.parse(body);
     const learner = await createLearnerService(input);
