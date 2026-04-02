@@ -17,6 +17,7 @@ const sectionConfig = {
     tableTitle: "Courses",
     tableDescription: "Top-level course records.",
     tableColumns: [
+      { key: "code", header: "Course Code" },
       { key: "name", header: "Course Name" },
       { key: "courseId", header: "Course ID" },
       { key: "description", header: "Course Desc" },
@@ -238,6 +239,7 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
         take: 12,
         select: {
           id: true,
+          code: true,
           name: true,
           description: true,
           isActive: true,
@@ -269,6 +271,7 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
         ],
         tableRows: courses.map((course) => ({
           id: course.id,
+          code: course.code,
           name: course.name,
           courseId: course.id,
           description: course.description ?? "No description",
