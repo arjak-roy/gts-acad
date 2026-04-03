@@ -9,7 +9,9 @@ import { getAllRolesService } from "@/services/roles-service";
 
 export default async function SuperAdminRolesPage() {
   const roles = await getAllRolesService();
-  const systemRoles = ["superadmin", "admin", "trainer"].map((name) => roles.find((role) => role.name === name)).filter(Boolean);
+  const systemRoles = ["superadmin", "admin", "trainer"]
+    .map((name) => roles.find((role) => role.name === name))
+    .filter((role): role is (typeof roles)[number] => Boolean(role));
   const customRoles = roles.filter((role) => !role.isSystem);
   const roleCards = [
     ...systemRoles.map((role) => ({
