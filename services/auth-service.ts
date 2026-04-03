@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
@@ -12,12 +13,15 @@ import {
   hashSensitiveToken,
   maskEmail,
 } from "@/lib/auth/two-factor";
-import { TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
+import { PASSWORD_RESET_EMAIL_TEMPLATE_KEY, TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
-import { deliverLoggedEmail } from "@/services/logs-actions-service";
+import { createAuditLogEntry, deliverLoggedEmail } from "@/services/logs-actions-service";
 
 const LOGIN_CHALLENGE_PURPOSE = "LOGIN";
 const ENABLE_2FA_CHALLENGE_PURPOSE = "ENABLE_2FA";
+const DEFAULT_PASSWORD_RESET_TOKEN_TTL_MINUTES = 30;
+const DEFAULT_PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60;
+const PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH = 8;
 
 type AuthUser = {
   id: string;
@@ -54,10 +58,78 @@ type ChallengeRecord = {
   user: AuthUser;
 };
 
+type PasswordResetTokenRecord = {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  tokenHash: string;
+  expiresAt: Date;
+  sentAt: Date;
+  consumedAt: Date | null;
+};
+
+type PasswordResetRequestMetadata = {
+  requestIp?: string | null;
+  userAgent?: string | null;
+};
+
 function requireDatabase() {
   if (!isDatabaseConfigured) {
     throw new Error("Authentication requires database configuration.");
   }
+}
+
+function parsePositiveInteger(rawValue: string | undefined, fallbackValue: number, minimumValue: number, maximumValue: number) {
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  const parsedValue = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsedValue)) {
+    return fallbackValue;
+  }
+
+  return Math.min(Math.max(parsedValue, minimumValue), maximumValue);
+}
+
+function getPasswordResetTokenTtlMinutes() {
+  return parsePositiveInteger(process.env.AUTH_PASSWORD_RESET_TOKEN_TTL_MINUTES, DEFAULT_PASSWORD_RESET_TOKEN_TTL_MINUTES, 5, 240);
+}
+
+function getPasswordResetResendCooldownSeconds() {
+  return parsePositiveInteger(
+    process.env.AUTH_PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
+    DEFAULT_PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
+    15,
+    3600,
+  );
+}
+
+function getPasswordResetUrlBase() {
+  const candidateOrigin = process.env.AUTH_PASSWORD_RESET_URL_BASE?.trim();
+  if (candidateOrigin) {
+    return candidateOrigin.replace(/\/$/, "");
+  }
+
+  const fallbackOrigin =
+    process.env.CANDIDATE_APP_ORIGIN?.trim() ?? process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN?.trim() ?? process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  return fallbackOrigin ? fallbackOrigin.replace(/\/$/, "") : null;
+}
+
+function buildPasswordResetUrl(resetToken: string) {
+  const urlBase = getPasswordResetUrlBase();
+
+  if (!urlBase) {
+    return null;
+  }
+
+  return `${urlBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
+}
+
+function generatePasswordResetToken() {
+  return randomBytes(32).toString("hex").toUpperCase();
 }
 
 async function getUserByEmail(email: string) {
@@ -83,6 +155,21 @@ async function getUserByEmail(email: string) {
   });
 }
 
+async function getPasswordResetUserByEmail(email: string) {
+  return prisma.user.findFirst({
+    where: {
+      email: { equals: email, mode: "insensitive" },
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+    },
+  });
+}
+
 async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, code: string, purposeLabel: string) {
   const template = await renderEmailTemplateByKeyService(TWO_FACTOR_EMAIL_TEMPLATE_KEY, {
     appName: process.env.APP_NAME ?? "GTS Academy App",
@@ -104,6 +191,155 @@ async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, cod
       entityId: user.email,
     },
   });
+}
+
+async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "email" | "name">, resetToken: string) {
+  const resetUrl = buildPasswordResetUrl(resetToken) ?? "Open the GTS Academy app to continue password reset.";
+
+  const template = await renderEmailTemplateByKeyService(PASSWORD_RESET_EMAIL_TEMPLATE_KEY, {
+    appName: process.env.APP_NAME ?? "GTS Academy App",
+    recipientName: user.name,
+    resetUrl,
+    resetToken,
+    expiresInMinutes: getPasswordResetTokenTtlMinutes(),
+  });
+
+  await deliverLoggedEmail({
+    to: user.email,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+    category: "SYSTEM",
+    templateKey: PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+    metadata: {
+      purpose: "password-reset",
+    },
+    audit: {
+      entityType: "AUTH",
+      entityId: user.id,
+    },
+  });
+}
+
+function mapPasswordResetTokenRows(
+  rows: Array<{
+    id: string;
+    userId: string;
+    userEmail: string;
+    userName: string;
+    tokenHash: string;
+    expiresAt: Date;
+    sentAt: Date;
+    consumedAt: Date | null;
+  }>,
+) {
+  return rows.map(
+    (row) =>
+      ({
+        id: row.id,
+        userId: row.userId,
+        userEmail: row.userEmail,
+        userName: row.userName,
+        tokenHash: row.tokenHash,
+        expiresAt: row.expiresAt,
+        sentAt: row.sentAt,
+        consumedAt: row.consumedAt,
+      }) satisfies PasswordResetTokenRecord,
+  );
+}
+
+async function createPasswordResetToken(userId: string, metadata: PasswordResetRequestMetadata = {}) {
+  const existingRows = await prisma.$queryRaw<Array<{ sentAt: Date }>>(
+    Prisma.sql`
+      SELECT "sent_at" AS "sentAt"
+      FROM "password_reset_tokens"
+      WHERE "user_id" = ${userId}::uuid
+        AND "consumed_at" IS NULL
+        AND "expires_at" > NOW()
+      ORDER BY "created_at" DESC
+      LIMIT 1
+    `,
+  );
+
+  const [existingToken] = existingRows;
+  if (existingToken) {
+    const cooldownUntil = existingToken.sentAt.getTime() + getPasswordResetResendCooldownSeconds() * 1_000;
+    if (cooldownUntil > Date.now()) {
+      return null;
+    }
+  }
+
+  await prisma.$executeRaw(
+    Prisma.sql`
+      UPDATE "password_reset_tokens"
+      SET "consumed_at" = NOW()
+      WHERE "user_id" = ${userId}::uuid
+        AND "consumed_at" IS NULL
+    `,
+  );
+
+  const resetToken = generatePasswordResetToken();
+  const expiresAt = new Date(Date.now() + getPasswordResetTokenTtlMinutes() * 60_000);
+
+  await prisma.$executeRaw(
+    Prisma.sql`
+      INSERT INTO "password_reset_tokens" (
+        "user_id",
+        "token_hash",
+        "expires_at",
+        "request_ip",
+        "user_agent"
+      )
+      VALUES (
+        ${userId}::uuid,
+        ${hashSensitiveToken(resetToken)},
+        ${expiresAt},
+        ${metadata.requestIp?.slice(0, 64) ?? null},
+        ${metadata.userAgent?.slice(0, 255) ?? null}
+      )
+    `,
+  );
+
+  return resetToken;
+}
+
+async function getPasswordResetTokenRecord(resetToken: string) {
+  const rows = await prisma.$queryRaw<Array<{
+    id: string;
+    userId: string;
+    userEmail: string;
+    userName: string;
+    tokenHash: string;
+    expiresAt: Date;
+    sentAt: Date;
+    consumedAt: Date | null;
+  }>>(
+    Prisma.sql`
+      SELECT
+        t."reset_token_id" AS "id",
+        t."user_id" AS "userId",
+        u."email" AS "userEmail",
+        u."full_name" AS "userName",
+        t."token_hash" AS "tokenHash",
+        t."expires_at" AS "expiresAt",
+        t."sent_at" AS "sentAt",
+        t."consumed_at" AS "consumedAt"
+      FROM "password_reset_tokens" t
+      INNER JOIN "users" u ON u."user_id" = t."user_id"
+      WHERE t."token_hash" = ${hashSensitiveToken(resetToken)}
+        AND u."is_active" = true
+      ORDER BY t."created_at" DESC
+      LIMIT 1
+    `,
+  );
+
+  const [tokenRecord] = mapPasswordResetTokenRows(rows);
+
+  if (!tokenRecord || tokenRecord.consumedAt || tokenRecord.expiresAt.getTime() < Date.now()) {
+    throw new Error("Invalid or expired password reset token.");
+  }
+
+  return tokenRecord;
 }
 
 function mapChallengeRows(rows: Array<{
@@ -290,7 +526,7 @@ async function finalizeLogin(userId: string) {
 export async function loginWithPassword(email: string, password: string): Promise<LoginResult> {
   requireDatabase();
 
-  const normalizedEmail = email.trim();
+  const normalizedEmail = email.trim().toLowerCase();
   const normalizedPassword = password.trim();
 
   if (!normalizedEmail || !normalizedPassword) {
@@ -415,6 +651,99 @@ export async function resendLoginTwoFactor(userId: string, challengeId: string) 
     challengeId: nextChallenge.id,
     maskedEmail: maskEmail(challenge.user.email),
   };
+}
+
+export async function requestPasswordReset(email: string, metadata: PasswordResetRequestMetadata = {}) {
+  requireDatabase();
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw new Error("Valid email is required.");
+  }
+
+  const user = await getPasswordResetUserByEmail(normalizedEmail);
+  if (!user) {
+    return;
+  }
+
+  const resetToken = await createPasswordResetToken(user.id, metadata);
+  if (!resetToken) {
+    return;
+  }
+
+  await deliverPasswordResetEmail(user, resetToken);
+}
+
+export async function resetPasswordWithToken(resetToken: string, nextPassword: string) {
+  requireDatabase();
+
+  const normalizedToken = resetToken.trim();
+  const normalizedPassword = nextPassword.trim();
+
+  if (!normalizedToken) {
+    throw new Error("Password reset token is required.");
+  }
+
+  if (normalizedPassword.length < PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH} characters long.`);
+  }
+
+  const tokenRecord = await getPasswordResetTokenRecord(normalizedToken);
+  const nextPasswordHash = await hashPassword(normalizedPassword);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: tokenRecord.userId },
+      data: {
+        password: nextPasswordHash,
+      },
+    });
+
+    await tx.userSecurity.upsert({
+      where: { userId: tokenRecord.userId },
+      update: {
+        passwordChangedAt: new Date(),
+      },
+      create: {
+        userId: tokenRecord.userId,
+        recoveryCodes: [],
+        passwordChangedAt: new Date(),
+      },
+    });
+
+    await tx.$executeRaw(
+      Prisma.sql`
+        UPDATE "password_reset_tokens"
+        SET "consumed_at" = NOW()
+        WHERE "user_id" = ${tokenRecord.userId}::uuid
+          AND "consumed_at" IS NULL
+      `,
+    );
+
+    await tx.$executeRaw(
+      Prisma.sql`
+        UPDATE "two_factor_challenges"
+        SET "consumed_at" = NOW()
+        WHERE "user_id" = ${tokenRecord.userId}::uuid
+          AND "consumed_at" IS NULL
+      `,
+    );
+  });
+
+  try {
+    await createAuditLogEntry({
+      entityType: "AUTH",
+      entityId: tokenRecord.userId,
+      action: "UPDATED",
+      status: "PASSWORD_RESET",
+      message: `Password reset completed for ${maskEmail(tokenRecord.userEmail)}.`,
+      metadata: {
+        reason: "password-reset-token",
+      },
+    });
+  } catch (error) {
+    console.warn("Password reset audit logging failed.", error);
+  }
 }
 
 export async function startTwoFactorSetup(userId: string) {

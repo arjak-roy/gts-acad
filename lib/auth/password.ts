@@ -1,11 +1,39 @@
 import "server-only";
 
-import { randomBytes, scrypt as nodeScrypt, timingSafeEqual } from "node:crypto";
+import { scrypt as nodeScrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { compare as bcryptCompare, hash as bcryptHash } from "bcryptjs";
+
+import { AUTH_SECURITY_CONFIG } from "@/lib/auth/config";
 
 const scrypt = promisify(nodeScrypt);
-const HASH_PREFIX = "scrypt";
+const BCRYPT_PREFIX = "bcrypt";
+const LEGACY_SCRYPT_PREFIX = "scrypt";
 const KEY_LENGTH = 64;
+const BCRYPT_HASH_PATTERN = /^\$2[aby]\$\d{2}\$.+/;
+
+function extractBcryptHash(storedPassword: string) {
+  if (storedPassword.startsWith(`${BCRYPT_PREFIX}$`)) {
+    return storedPassword.slice(BCRYPT_PREFIX.length + 1);
+  }
+
+  if (BCRYPT_HASH_PATTERN.test(storedPassword)) {
+    return storedPassword;
+  }
+
+  return null;
+}
+
+function verifyLegacyPlaintextPassword(password: string, storedPassword: string) {
+  const passwordBuffer = Buffer.from(password);
+  const storedPasswordBuffer = Buffer.from(storedPassword);
+
+  if (passwordBuffer.length !== storedPasswordBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(passwordBuffer, storedPasswordBuffer);
+}
 
 export async function hashPassword(password: string) {
   const normalizedPassword = password.trim();
@@ -13,18 +41,34 @@ export async function hashPassword(password: string) {
     throw new Error("Password is required.");
   }
 
-  const salt = randomBytes(16).toString("hex");
-  const derivedKey = (await scrypt(normalizedPassword, salt, KEY_LENGTH)) as Buffer;
-  return `${HASH_PREFIX}$${salt}$${derivedKey.toString("hex")}`;
+  const hash = await bcryptHash(normalizedPassword, AUTH_SECURITY_CONFIG.bcryptRounds);
+  return `${BCRYPT_PREFIX}$${hash}`;
 }
 
 export async function verifyPassword(password: string, storedPassword: string) {
   const normalizedPassword = password.trim();
 
-  if (!storedPassword.startsWith(`${HASH_PREFIX}$`)) {
+  const bcryptStoredHash = extractBcryptHash(storedPassword);
+  if (bcryptStoredHash) {
+    const isValid = await bcryptCompare(normalizedPassword, bcryptStoredHash);
     return {
-      isValid: normalizedPassword === storedPassword,
-      needsUpgrade: normalizedPassword === storedPassword,
+      isValid,
+      needsUpgrade: false,
+    };
+  }
+
+  if (!storedPassword.startsWith(`${LEGACY_SCRYPT_PREFIX}$`)) {
+    if (!AUTH_SECURITY_CONFIG.allowLegacyPlaintextPasswords) {
+      return {
+        isValid: false,
+        needsUpgrade: false,
+      };
+    }
+
+    const isValid = verifyLegacyPlaintextPassword(normalizedPassword, storedPassword);
+    return {
+      isValid,
+      needsUpgrade: isValid,
     };
   }
 
@@ -42,6 +86,6 @@ export async function verifyPassword(password: string, storedPassword: string) {
 
   return {
     isValid: timingSafeEqual(storedBuffer, derivedKey),
-    needsUpgrade: false,
+    needsUpgrade: true,
   };
 }

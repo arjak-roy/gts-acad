@@ -1,4 +1,5 @@
 export const TWO_FACTOR_EMAIL_TEMPLATE_KEY = "auth-2fa-code";
+export const PASSWORD_RESET_EMAIL_TEMPLATE_KEY = "auth-password-reset";
 export const CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "candidate-welcome-credentials";
 
 export type EmailTemplateSource = {
@@ -42,6 +43,43 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
           </div>
           <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #475569;">This code expires in {{expiresInMinutes}} minutes.</p>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">If you did not request this code, you can ignore this email.</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+    name: "Password Reset Instructions",
+    description: "Email used to issue secure password reset links and tokens.",
+    subject: "Reset your {{appName}} password",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "We received a request to reset your password.",
+      "",
+      "Reset link:",
+      "{{resetUrl}}",
+      "",
+      "If the link does not open, use this token:",
+      "{{resetToken}}",
+      "",
+      "This reset token expires in {{expiresInMinutes}} minutes.",
+      "If you did not request this reset, you can ignore this email.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Reset your password</h1>
+          <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, we received a request to reset your password.</p>
+          <a href="{{resetUrl}}" style="display: inline-block; margin-bottom: 20px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Reset password</a>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Reset token:</strong> {{resetToken}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Expires in:</strong> {{expiresInMinutes}} minutes</p>
+          </div>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">If you did not request this reset, you can ignore this email.</p>
         </div>
       </div>
     `,

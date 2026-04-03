@@ -99,6 +99,8 @@ function buildTestTemplateVariables(template: EmailTemplateDetail, recipientEmai
     code: "123456",
     expiresInMinutes: 10,
     purposeLabel: "verify your account",
+    resetUrl: "https://gts-academy.app/reset-password?token=SAMPLE_RESET_TOKEN",
+    resetToken: "SAMPLE_RESET_TOKEN",
     learnerCode: "L-TEST-001",
     programName: "Demo Medical German Program",
     temporaryPassword: "TempPass#123",

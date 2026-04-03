@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
+
+const DATABASE_UNAVAILABLE_ERROR_MESSAGE = "Database is temporarily unavailable. Please try again later.";
 
 /**
  * Wraps successful API payloads in a consistent JSON envelope.
@@ -26,12 +29,36 @@ export function apiError(error: unknown) {
     );
   }
 
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    return NextResponse.json({ error: DATABASE_UNAVAILABLE_ERROR_MESSAGE }, { status: 503 });
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P1001" || error.code === "P1002")) {
+    return NextResponse.json({ error: DATABASE_UNAVAILABLE_ERROR_MESSAGE }, { status: 503 });
+  }
+
   if (error instanceof Error) {
+    if (isPrismaConnectivityMessage(error.message)) {
+      return NextResponse.json({ error: DATABASE_UNAVAILABLE_ERROR_MESSAGE }, { status: 503 });
+    }
+
     const status = resolveErrorStatus(error.message);
     return NextResponse.json({ error: error.message }, { status });
   }
 
   return NextResponse.json({ error: "Unexpected server error." }, { status: 500 });
+}
+
+function isPrismaConnectivityMessage(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("can't reach database server") ||
+    normalizedMessage.includes("can not reach database server") ||
+    (normalizedMessage.includes("database server") && normalizedMessage.includes("timed out")) ||
+    normalizedMessage.includes("p1001") ||
+    normalizedMessage.includes("p1002")
+  );
 }
 
 /**
@@ -41,6 +68,10 @@ export function apiError(error: unknown) {
  */
 function resolveErrorStatus(message: string) {
   const normalizedMessage = message.toLowerCase();
+
+  if (isPrismaConnectivityMessage(normalizedMessage)) {
+    return 503;
+  }
 
   if (normalizedMessage.includes("unauthorized")) {
     return 401;

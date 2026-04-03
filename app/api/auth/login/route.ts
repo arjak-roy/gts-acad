@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { withCors, handleCorsPreflight } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { buildLoginRateLimitKey, clearLoginRateLimit, getLoginRateLimitStatus, registerFailedLoginAttempt } from "@/lib/auth/login-rate-limiter";
 import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
 import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
 import { loginWithPassword } from "@/services/auth-service";
@@ -55,10 +56,23 @@ export function OPTIONS(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let rateLimitKey: string | null = null;
+
   try {
     const body = await request.json();
     const { email, password } = loginSchema.parse(body);
+    const normalizedEmail = email.toLowerCase();
+
+    rateLimitKey = buildLoginRateLimitKey(request, normalizedEmail);
+    const rateLimitStatus = getLoginRateLimitStatus(rateLimitKey);
+    if (!rateLimitStatus.allowed) {
+      const response = apiError(new Error("Too many login attempts. Please try again later."));
+      response.headers.set("Retry-After", String(rateLimitStatus.retryAfterSeconds));
+      return withCors(request, response, ["POST", "OPTIONS"]);
+    }
+
     const result = await loginWithPassword(email, password);
+    clearLoginRateLimit(rateLimitKey);
 
     if (result.status === "authenticated") {
       const response = await buildAuthenticatedResponse(request, {
@@ -104,6 +118,15 @@ export async function POST(request: NextRequest) {
     response.cookies.set(buildAuthSessionCookie(request, token, pendingMaxAgeSeconds));
     return withCors(request, response, ["POST", "OPTIONS"]);
   } catch (error) {
+    if (rateLimitKey && error instanceof Error && error.message === "Invalid email or password.") {
+      const rateLimitResult = registerFailedLoginAttempt(rateLimitKey);
+      if (!rateLimitResult.allowed) {
+        const response = apiError(new Error("Too many login attempts. Please try again later."));
+        response.headers.set("Retry-After", String(rateLimitResult.retryAfterSeconds));
+        return withCors(request, response, ["POST", "OPTIONS"]);
+      }
+    }
+
     return withCors(request, apiError(error), ["POST", "OPTIONS"]);
   }
 }
