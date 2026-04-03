@@ -12,8 +12,9 @@ import {
   hashSensitiveToken,
   maskEmail,
 } from "@/lib/auth/two-factor";
-import { renderTwoFactorDemoTemplate } from "@/lib/mail-templates/two-factor-demo";
+import { TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { sendMail } from "@/lib/mail-service";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
 
 const LOGIN_CHALLENGE_PURPOSE = "LOGIN";
 const ENABLE_2FA_CHALLENGE_PURPOSE = "ENABLE_2FA";
@@ -210,7 +211,7 @@ async function getUserByEmail(email: string) {
 }
 
 async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, code: string, purposeLabel: string) {
-  const template = renderTwoFactorDemoTemplate({
+  const template = await renderEmailTemplateByKeyService(TWO_FACTOR_EMAIL_TEMPLATE_KEY, {
     appName: process.env.APP_NAME ?? "GTS Academy App",
     recipientName: user.name,
     code,
@@ -681,7 +682,7 @@ export async function sendDemoTwoFactorMail(recipient: string) {
     throw new Error("Demo recipient email is not configured.");
   }
 
-  const template = renderTwoFactorDemoTemplate({
+  const template = await renderEmailTemplateByKeyService(TWO_FACTOR_EMAIL_TEMPLATE_KEY, {
     appName: process.env.APP_NAME ?? "GTS Academy App",
     recipientName: "Demo Recipient",
     code: generateEmailOtpCode(),

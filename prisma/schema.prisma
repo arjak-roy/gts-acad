@@ -326,6 +326,24 @@ model TwoFactorChallenge {
   @@map("two_factor_challenges")
 }
 
+model EmailTemplate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("template_id")
+  key         String   @unique @map("template_key") @db.VarChar(120)
+  name        String   @db.VarChar(255)
+  description String?  @db.VarChar(500)
+  subject     String   @db.VarChar(255)
+  htmlContent String   @map("html_content")
+  textContent String?  @map("text_content")
+  variables   String[] @default([])
+  isSystem    Boolean  @default(false) @map("is_system")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([isActive, updatedAt], map: "idx_email_templates_active_updated")
+  @@map("email_templates")
+}
+
 model TrainerProfile {
   id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("trainer_id")
   userId         String         @unique @db.Uuid @map("user_id")

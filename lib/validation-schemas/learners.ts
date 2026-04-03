@@ -23,5 +23,10 @@ export const createLearnerSchema = z.object({
   campus: z.string().trim().max(120).optional().default(""),
 });
 
+export const createLearnerEnrollmentSchema = z.object({
+  batchCode: z.string().trim().min(2).max(50),
+});
+
 export type GetLearnersInput = z.infer<typeof getLearnersSchema>;
 export type CreateLearnerInput = z.infer<typeof createLearnerSchema>;
+export type CreateLearnerEnrollmentInput = z.infer<typeof createLearnerEnrollmentSchema>;

@@ -31,6 +31,33 @@ export const SyncStatus = {
 
 export type SyncStatus = (typeof SyncStatus)[keyof typeof SyncStatus];
 
+export const BatchStatus = {
+  DRAFT: "DRAFT",
+  PLANNED: "PLANNED",
+  IN_SESSION: "IN_SESSION",
+  COMPLETED: "COMPLETED",
+  ARCHIVED: "ARCHIVED",
+  CANCELLED: "CANCELLED",
+} as const;
+
+export type BatchStatus = (typeof BatchStatus)[keyof typeof BatchStatus];
+
+export const BatchMode = {
+  ONLINE: "ONLINE",
+  OFFLINE: "OFFLINE",
+} as const;
+
+export type BatchMode = (typeof BatchMode)[keyof typeof BatchMode];
+
+export const EnrollmentStatus = {
+  ACTIVE: "ACTIVE",
+  ON_HOLD: "ON_HOLD",
+  COMPLETED: "COMPLETED",
+  DROPPED: "DROPPED",
+} as const;
+
+export type EnrollmentStatus = (typeof EnrollmentStatus)[keyof typeof EnrollmentStatus];
+
 export type DashboardTrendPoint = {
   label: string;
   activeLearners: number;
@@ -110,11 +137,34 @@ export type LearnersResponse = {
   pageCount: number;
 };
 
+export type LearnerActiveEnrollment = {
+  id: string;
+  status: EnrollmentStatus;
+  joinedAt: string;
+  completedAt: string | null;
+  batchId: string;
+  batchCode: string;
+  batchName: string;
+  batchStatus: BatchStatus;
+  campus: string | null;
+  startDate: string;
+  endDate: string | null;
+  mode: BatchMode;
+  programId: string;
+  programCode: string;
+  programName: string;
+  programType: ProgramType;
+  courseCode: string;
+  courseName: string;
+  trainerNames: string[];
+};
+
 export type LearnerDetail = LearnerListItem & {
   phone?: string | null;
   country?: string | null;
   softSkillsScore?: number;
   latestSyncMessage?: string | null;
+  activeEnrollments: LearnerActiveEnrollment[];
 };
 
 export type ReadinessSyncResult = {

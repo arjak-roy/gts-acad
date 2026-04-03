@@ -12,6 +12,9 @@ import { EditBatchSheet } from "@/components/modules/batches/edit-batch-sheet";
 import { AddCourseSheet } from "@/components/modules/courses/add-course-sheet";
 import { CourseDetailSheet } from "@/components/modules/courses/course-detail-sheet";
 import { EditCourseSheet } from "@/components/modules/courses/edit-course-sheet";
+import { AddEmailTemplateSheet } from "@/components/modules/email-templates/add-email-template-sheet";
+import { EditEmailTemplateSheet } from "@/components/modules/email-templates/edit-email-template-sheet";
+import { EmailTemplateDetailSheet } from "@/components/modules/email-templates/email-template-detail-sheet";
 import { ProgramDetailSheet } from "@/components/modules/programs/program-detail-sheet";
 import { EditProgramSheet } from "@/components/modules/programs/edit-program-sheet";
 import { TrainerDetailSheet } from "@/components/modules/trainers/trainer-detail-sheet";
@@ -58,10 +61,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [viewingBatchId, setViewingBatchId] = useState<string | null>(null);
   const [viewingProgramId, setViewingProgramId] = useState<string | null>(null);
   const [viewingTrainerId, setViewingTrainerId] = useState<string | null>(null);
+  const [viewingEmailTemplateId, setViewingEmailTemplateId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [editingTrainerId, setEditingTrainerId] = useState<string | null>(null);
+  const [editingEmailTemplateId, setEditingEmailTemplateId] = useState<string | null>(null);
   const [studentsBatch, setStudentsBatch] = useState<{ id: string; code: string } | null>(null);
   const [batchStudents, setBatchStudents] = useState<BatchLearner[]>([]);
   const [studentsTotal, setStudentsTotal] = useState(0);
@@ -69,7 +74,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [studentsError, setStudentsError] = useState<string | null>(null);
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
-  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers";
+  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || sectionKey === "settings";
 
   useEffect(() => {
     const viewId = searchParams.get("viewId");
@@ -80,24 +85,41 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     setViewingBatchId(null);
     setViewingProgramId(null);
     setViewingTrainerId(null);
+    setViewingEmailTemplateId(null);
     setEditingCourseId(null);
     setEditingBatchId(null);
     setEditingProgramId(null);
     setEditingTrainerId(null);
+    setEditingEmailTemplateId(null);
 
     if (viewId) {
-      if (sectionKey === "courses") setViewingCourseId(viewId);
-      if (sectionKey === "batches") setViewingBatchId(viewId);
-      else if (sectionKey === "programs") setViewingProgramId(viewId);
-      else if (sectionKey === "trainers") setViewingTrainerId(viewId);
+      if (sectionKey === "courses") {
+        setViewingCourseId(viewId);
+      } else if (sectionKey === "batches") {
+        setViewingBatchId(viewId);
+      } else if (sectionKey === "programs") {
+        setViewingProgramId(viewId);
+      } else if (sectionKey === "trainers") {
+        setViewingTrainerId(viewId);
+      } else if (sectionKey === "settings") {
+        setViewingEmailTemplateId(viewId);
+      }
+
       return;
     }
 
     if (editId) {
-      if (sectionKey === "courses") setEditingCourseId(editId);
-      if (sectionKey === "batches") setEditingBatchId(editId);
-      else if (sectionKey === "programs") setEditingProgramId(editId);
-      else if (sectionKey === "trainers") setEditingTrainerId(editId);
+      if (sectionKey === "courses") {
+        setEditingCourseId(editId);
+      } else if (sectionKey === "batches") {
+        setEditingBatchId(editId);
+      } else if (sectionKey === "programs") {
+        setEditingProgramId(editId);
+      } else if (sectionKey === "trainers") {
+        setEditingTrainerId(editId);
+      } else if (sectionKey === "settings") {
+        setEditingEmailTemplateId(editId);
+      }
     }
   }, [searchParams, sectionKey]);
 
@@ -284,6 +306,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
             <CreateBatchSheet />
           ) : sectionKey === "trainers" ? (
             <AddTrainerSheet />
+          ) : sectionKey === "settings" ? (
+            <AddEmailTemplateSheet />
           ) : (
             <Button>{section.primaryAction}</Button>
           )}
@@ -432,10 +456,21 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         onOpenChange={(nextOpen) => !nextOpen && closePanel()}
         onEdit={(id) => openEditor(id)}
       />
+      <EmailTemplateDetailSheet
+        templateId={viewingEmailTemplateId}
+        open={Boolean(viewingEmailTemplateId)}
+        onOpenChange={(nextOpen) => !nextOpen && closePanel()}
+        onEdit={(id) => openEditor(id)}
+      />
       <EditCourseSheet courseId={editingCourseId} open={Boolean(editingCourseId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditBatchSheet batchId={editingBatchId} open={Boolean(editingBatchId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditProgramSheet programId={editingProgramId} open={Boolean(editingProgramId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditTrainerSheet trainerId={editingTrainerId} open={Boolean(editingTrainerId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
+      <EditEmailTemplateSheet
+        templateId={editingEmailTemplateId}
+        open={Boolean(editingEmailTemplateId)}
+        onOpenChange={(nextOpen) => !nextOpen && closeEditor()}
+      />
 
       <Sheet open={Boolean(studentsBatch)} onOpenChange={(nextOpen) => !nextOpen && setStudentsBatch(null)}>
         <SheetContent className="overflow-y-auto">

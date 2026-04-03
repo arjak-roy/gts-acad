@@ -128,7 +128,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
         id: "actions",
         header: () => <div className="text-right">Actions</div>,
         cell: ({ row }) => {
-          const nextQuery = createSearchParams({
+          const openQuery = createSearchParams({
             search: filters.search,
             batchCode: filters.batchCode,
             placementStatus: filters.placementStatus,
@@ -141,10 +141,28 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
             id: row.original.learnerCode,
           });
 
+          const editQuery = createSearchParams({
+            search: filters.search,
+            batchCode: filters.batchCode,
+            placementStatus: filters.placementStatus,
+            sortBy: filters.sortBy,
+            sortDirection: filters.sortDirection,
+            page: response.page,
+            pageSize: response.pageSize,
+            view: viewMode === "card" ? "card" : undefined,
+            layout: viewMode === "card" && layoutPreset !== "balanced" ? layoutPreset : undefined,
+            edit: row.original.learnerCode,
+          });
+
           return (
-            <div className="text-right">
+            <div className="flex items-center justify-end gap-1">
+              <Button asChild variant="ghost" className="text-slate-600 hover:text-slate-900">
+                <Link href={`/learners?${editQuery}`} scroll={false}>
+                  Edit
+                </Link>
+              </Button>
               <Button asChild variant="ghost" className="text-primary hover:text-primary">
-                <Link href={`/staff/learners?${nextQuery}`} scroll={false}>
+                <Link href={`/learners?${openQuery}`} scroll={false}>
                   Open
                 </Link>
               </Button>
@@ -275,7 +293,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
           ) : response.items.length > 0 ? (
             <FlexibleCardGrid preset={layoutPreset}>
               {response.items.map((learner, index) => {
-                const nextQuery = createSearchParams({
+                const openQuery = createSearchParams({
                   search: filters.search,
                   batchCode: filters.batchCode,
                   placementStatus: filters.placementStatus,
@@ -286,6 +304,19 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
                   view: "card",
                   layout: layoutPreset !== "balanced" ? layoutPreset : undefined,
                   id: learner.learnerCode,
+                });
+
+                const editQuery = createSearchParams({
+                  search: filters.search,
+                  batchCode: filters.batchCode,
+                  placementStatus: filters.placementStatus,
+                  sortBy: filters.sortBy,
+                  sortDirection: filters.sortDirection,
+                  page: response.page,
+                  pageSize: response.pageSize,
+                  view: "card",
+                  layout: layoutPreset !== "balanced" ? layoutPreset : undefined,
+                  edit: learner.learnerCode,
                 });
 
                 return (
@@ -315,9 +346,14 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
                           </p>
                         </div>
 
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-1">
+                          <Button asChild variant="ghost" className="text-slate-600 hover:text-slate-900">
+                            <Link href={`/learners?${editQuery}`} scroll={false}>
+                              Edit
+                            </Link>
+                          </Button>
                           <Button asChild variant="ghost" className="text-primary hover:text-primary">
-                            <Link href={`/staff/learners?${nextQuery}`} scroll={false}>
+                            <Link href={`/learners?${openQuery}`} scroll={false}>
                               Open
                             </Link>
                           </Button>
