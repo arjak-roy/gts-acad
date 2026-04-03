@@ -1,9 +1,14 @@
 import { NextRequest } from "next/server";
 
+import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { buildAuthSessionCookie, createAuthSessionToken, getAuthSession } from "@/lib/auth/session";
 import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
 import { resendLoginTwoFactor } from "@/services/auth-service";
+
+export function OPTIONS(request: NextRequest) {
+  return handleCorsPreflight(request, ["POST", "OPTIONS"]);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,8 +29,8 @@ export async function POST(request: NextRequest) {
     );
 
     response.cookies.set(buildAuthSessionCookie(request, token, pendingMaxAgeSeconds));
-    return response;
+    return withCors(request, response, ["POST", "OPTIONS"]);
   } catch (error) {
-    return apiError(error);
+    return withCors(request, apiError(error), ["POST", "OPTIONS"]);
   }
 }

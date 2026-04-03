@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
+import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS, getAuthSession } from "@/lib/auth/session";
 import { verifyLoginTwoFactor } from "@/services/auth-service";
@@ -8,6 +9,10 @@ import { verifyLoginTwoFactor } from "@/services/auth-service";
 const verifySchema = z.object({
   code: z.string().trim().min(6, "Verification code is required.").max(6, "Verification code must be 6 digits."),
 });
+
+export function OPTIONS(request: NextRequest) {
+  return handleCorsPreflight(request, ["POST", "OPTIONS"]);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,7 +24,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { code } = verifySchema.parse(body);
     const user = await verifyLoginTwoFactor(session.userId, session.challengeId, code);
-    const response = apiSuccess({ ok: true });
+    const response = apiSuccess({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
 
     const token = await createAuthSessionToken(
       {
@@ -33,8 +46,8 @@ export async function POST(request: NextRequest) {
     );
 
     response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
-    return response;
+    return withCors(request, response, ["POST", "OPTIONS"]);
   } catch (error) {
-    return apiError(error);
+    return withCors(request, apiError(error), ["POST", "OPTIONS"]);
   }
 }
