@@ -1,10 +1,11 @@
 import "server-only";
 
-import { ProgramType } from "@prisma/client";
+import { AuditActionType, AuditEntityType, ProgramType } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { deriveGeneratedCodePrefix, formatGeneratedCode } from "@/lib/utils";
 import { CreateCourseInput, UpdateCourseInput } from "@/lib/validation-schemas/courses";
+import { createAuditLogEntry } from "@/services/logs-actions-service";
 
 export type CourseProgramSummary = {
   id: string;
@@ -241,7 +242,7 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     throw new Error("One or more selected programs were not found.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const createdCourse = await prisma.$transaction(async (tx) => {
     const course = await tx.course.create({
       data: {
         code: normalizedCode,
@@ -269,6 +270,19 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
       programCount: selectedProgramIds.length,
     };
   });
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.COURSE,
+    entityId: createdCourse.id,
+    action: AuditActionType.CREATED,
+    message: `Course ${createdCourse.name} created.`,
+    metadata: {
+      code: normalizedCode,
+      programCount: selectedProgramIds.length,
+    },
+  });
+
+  return createdCourse;
 }
 
 export async function updateCourseService(input: UpdateCourseInput): Promise<CourseCreateResult> {
@@ -320,6 +334,16 @@ export async function updateCourseService(input: UpdateCourseInput): Promise<Cou
       name: true,
       description: true,
       isActive: true,
+    },
+  });
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.COURSE,
+    entityId: course.id,
+    action: AuditActionType.UPDATED,
+    message: `Course ${course.name} updated.`,
+    metadata: {
+      isActive: course.isActive,
     },
   });
 

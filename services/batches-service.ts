@@ -1,9 +1,10 @@
 import "server-only";
 
-import { BatchMode, BatchStatus } from "@prisma/client";
+import { AuditActionType, AuditEntityType, BatchMode, BatchStatus } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateBatchInput, UpdateBatchInput } from "@/lib/validation-schemas/batches";
+import { createAuditLogEntry } from "@/services/logs-actions-service";
 
 type TrainerSummary = {
   id: string;
@@ -530,6 +531,18 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
 
   const mapped = mapBatchRecord(batch);
 
+  await createAuditLogEntry({
+    entityType: AuditEntityType.BATCH,
+    entityId: mapped.id,
+    action: AuditActionType.CREATED,
+    message: `Batch ${mapped.code} created.`,
+    metadata: {
+      programName: mapped.programName,
+      trainerIds: mapped.trainerIds,
+      status: mapped.status,
+    },
+  });
+
   return {
     id: mapped.id,
     code: mapped.code,
@@ -645,6 +658,18 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
   });
 
   const mapped = mapBatchRecord(batch);
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.BATCH,
+    entityId: mapped.id,
+    action: AuditActionType.UPDATED,
+    message: `Batch ${mapped.code} updated.`,
+    metadata: {
+      programName: mapped.programName,
+      trainerIds: mapped.trainerIds,
+      status: mapped.status,
+    },
+  });
 
   return {
     id: mapped.id,

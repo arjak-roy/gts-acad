@@ -13,8 +13,8 @@ import {
   maskEmail,
 } from "@/lib/auth/two-factor";
 import { TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
-import { sendMail } from "@/lib/mail-service";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import { deliverLoggedEmail } from "@/services/logs-actions-service";
 
 const LOGIN_CHALLENGE_PURPOSE = "LOGIN";
 const ENABLE_2FA_CHALLENGE_PURPOSE = "ENABLE_2FA";
@@ -219,11 +219,17 @@ async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, cod
     purposeLabel,
   });
 
-  await sendMail({
+  await deliverLoggedEmail({
     to: user.email,
     subject: template.subject,
     text: template.text,
     html: template.html,
+    category: "TWO_FACTOR",
+    templateKey: TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+    audit: {
+      entityType: "AUTH",
+      entityId: user.email,
+    },
   });
 }
 
@@ -690,10 +696,16 @@ export async function sendDemoTwoFactorMail(recipient: string) {
     purposeLabel: "preview the email template",
   });
 
-  await sendMail({
+  await deliverLoggedEmail({
     to,
     subject: template.subject,
     text: template.text,
     html: template.html,
+    category: "TWO_FACTOR",
+    templateKey: TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+    audit: {
+      entityType: "SYSTEM",
+      entityId: "demo-two-factor-mail",
+    },
   });
 }

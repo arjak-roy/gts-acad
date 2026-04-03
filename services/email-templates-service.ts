@@ -12,6 +12,7 @@ import {
   TemplateVariables,
 } from "@/lib/mail-templates/email-template-defaults";
 import { CreateEmailTemplateInput, UpdateEmailTemplateInput } from "@/lib/validation-schemas/email-templates";
+import { deliverLoggedEmail } from "@/services/logs-actions-service";
 
 export type EmailTemplateSummary = {
   id: string;
@@ -29,6 +30,14 @@ export type EmailTemplateDetail = EmailTemplateSummary & {
   htmlContent: string;
   textContent: string;
   createdAt: string;
+};
+
+export type SendTestEmailTemplateResult = {
+  templateId: string;
+  templateKey: string;
+  recipientEmail: string;
+  emailLogId: string | null;
+  providerMessageId: string | null;
 };
 
 type EmailTemplateRecord = {
@@ -78,6 +87,36 @@ function normalizeTemplateKey(value: string) {
 function resolveTextContent(htmlContent: string, textContent: string) {
   const normalizedText = textContent.trim();
   return normalizedText || stripHtmlToText(htmlContent);
+}
+
+function buildTestTemplateVariables(template: EmailTemplateDetail, recipientEmail: string, actorName: string | null) {
+  const defaults: TemplateVariables = {
+    appName: "GTS Academy",
+    recipientName: actorName || "Template Tester",
+    recipientEmail,
+    supportEmail: "support@gts-academy.app",
+    loginUrl: process.env.NEXT_PUBLIC_APP_URL || "https://gts-acad.vercel.app",
+    code: "123456",
+    expiresInMinutes: 10,
+    purposeLabel: "verify your account",
+    learnerCode: "L-TEST-001",
+    programName: "Demo Medical German Program",
+    temporaryPassword: "TempPass#123",
+    currentYear: new Date().getFullYear(),
+    templateName: template.name,
+  };
+
+  const variables: TemplateVariables = { ...defaults };
+
+  for (const variable of template.variables) {
+    if (variables[variable] !== undefined) {
+      continue;
+    }
+
+    variables[variable] = `sample_${variable}`;
+  }
+
+  return variables;
 }
 
 function mapRecordToDetail(template: EmailTemplateRecord): EmailTemplateDetail {
@@ -448,4 +487,52 @@ export async function renderEmailTemplateByKeyService(templateKey: string, varia
   }
 
   return renderEmailTemplateSource(fallbackTemplate, variables);
+}
+
+export async function sendTestEmailTemplateService(input: {
+  templateId: string;
+  recipientEmail: string;
+  actorUserId: string;
+  actorName: string;
+}) : Promise<SendTestEmailTemplateResult> {
+  const template = await getEmailTemplateByIdService(input.templateId);
+  if (!template) {
+    throw new Error("Email template not found.");
+  }
+
+  const variables = buildTestTemplateVariables(template, input.recipientEmail, input.actorName);
+  const rendered = renderEmailTemplateSource(
+    {
+      subject: template.subject,
+      htmlContent: template.htmlContent,
+      textContent: template.textContent,
+    },
+    variables,
+  );
+
+  const delivery = await deliverLoggedEmail({
+    to: input.recipientEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+    category: "SYSTEM",
+    templateKey: template.key,
+    metadata: {
+      reason: "template_test",
+      templateId: template.id,
+      templateKey: template.key,
+    },
+    audit: {
+      actorUserId: input.actorUserId,
+      entityId: template.id,
+    },
+  });
+
+  return {
+    templateId: template.id,
+    templateKey: template.key,
+    recipientEmail: input.recipientEmail,
+    emailLogId: delivery.emailLogId,
+    providerMessageId: delivery.providerMessageId,
+  };
 }

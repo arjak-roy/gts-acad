@@ -1,8 +1,14 @@
 import "server-only";
 
+import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
+import { AuditActionType, AuditEntityType, UserRole } from "@prisma/client";
 
+import { hashPassword } from "@/lib/auth/password";
+import { CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import { createAuditLogEntry, deliverLoggedEmail } from "@/services/logs-actions-service";
 import { CreateLearnerEnrollmentInput, CreateLearnerInput, GetLearnersInput } from "@/lib/validation-schemas/learners";
 import { LearnerActiveEnrollment, LearnerDetail, LearnerListItem, LearnersResponse } from "@/types";
 
@@ -411,6 +417,43 @@ function isLearnerCodeConflict(error: unknown) {
   return targetText.includes("learnerCode") || targetText.includes("candidate_code");
 }
 
+async function sendCandidateEnrollmentCredentialsEmail(input: {
+  recipientEmail: string;
+  recipientName: string;
+  temporaryPassword: string;
+  learnerCode: string;
+  programName: string;
+}) {
+  const appName = process.env.APP_NAME ?? "GTS Academy App";
+  const loginUrl =
+    process.env.CANDIDATE_APP_ORIGIN ?? process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN ?? "https://gts-acad.vercel.app";
+  const supportEmail = process.env.ADMIN_MAIL ?? process.env.MAIL_FROM_ADDRESS ?? "support@gts-academy.test";
+
+  const template = await renderEmailTemplateByKeyService(CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY, {
+    appName,
+    recipientName: input.recipientName,
+    recipientEmail: input.recipientEmail,
+    temporaryPassword: input.temporaryPassword,
+    loginUrl,
+    supportEmail,
+    learnerCode: input.learnerCode,
+    programName: input.programName,
+  });
+
+  await deliverLoggedEmail({
+    to: input.recipientEmail,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+    category: "CANDIDATE_WELCOME",
+    templateKey: CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
+    audit: {
+      entityType: "CANDIDATE",
+      entityId: input.learnerCode,
+    },
+  });
+}
+
 /**
  * Fetches learner list data with filters, sorting, and pagination controls.
  * Runs Prisma queries in configured environments and mock logic otherwise.
@@ -485,6 +528,12 @@ export type LearnerSearchItem = {
   email: string;
   programName: string | null;
   batchCode: string | null;
+};
+
+export type CandidateProfile = LearnerDetail & {
+  userId: string;
+  role: string;
+  pathway: string;
 };
 
 export async function searchLearnersService(query: string, limit: number): Promise<LearnerSearchItem[]> {
@@ -595,6 +644,63 @@ export async function getLearnerByCodeService(learnerCode: string): Promise<Lear
   }
 }
 
+export async function getCandidateProfileByUserIdService(userId: string): Promise<CandidateProfile | null> {
+  if (!isDatabaseConfigured) {
+    const mockLearner = buildMockLearnerDetail("GTS-240901");
+
+    if (!mockLearner) {
+      return null;
+    }
+
+    return {
+      ...mockLearner,
+      userId,
+      role: UserRole.CANDIDATE,
+      pathway: "Germany Pathway",
+    };
+  }
+
+  try {
+    const learner = await prisma.learner.findFirst({
+      where: { userId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            role: true,
+          },
+        },
+        recruiterSyncLogs: { orderBy: { createdAt: "desc" }, take: 1 },
+        enrollments: {
+          where: { status: "ACTIVE" },
+          orderBy: { joinedAt: "desc" },
+          include: learnerEnrollmentArgs.include,
+        },
+      },
+    });
+
+    if (!learner || !learner.user?.id) {
+      return null;
+    }
+
+    const activeEnrollment = learner.enrollments[0] ?? null;
+    const pathway =
+      [learner.targetCountry, learner.targetLanguage].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(" / ") ||
+      activeEnrollment?.batch.program.name ||
+      "Candidate Pathway";
+
+    return {
+      ...mapLearnerToDetail(learner),
+      userId: learner.user.id,
+      role: learner.user.role,
+      pathway,
+    };
+  } catch (error) {
+    console.warn("Candidate profile query fallback activated", error);
+    return null;
+  }
+}
+
 /**
  * Creates a learner candidate and optionally enrolls them into a batch.
  * Generates a unique learner code server-side and enforces email uniqueness.
@@ -635,10 +741,17 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
     };
   }
 
-  const existingEmail = await prisma.learner.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+  const [existingLearnerEmail, existingUserEmail] = await Promise.all([
+    prisma.learner.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+    prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+  ]);
 
-  if (existingEmail) {
+  if (existingLearnerEmail) {
     throw new Error("Email already exists.");
+  }
+
+  if (existingUserEmail) {
+    throw new Error("A user account already exists with this email.");
   }
 
   const batch = normalizedBatchCode
@@ -654,11 +767,44 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const generatedLearnerCode = await generateLearnerCode();
+    const temporaryPassword = randomUUID();
+    const hashedTemporaryPassword = await hashPassword(temporaryPassword);
 
     try {
-      const learner = await prisma.$transaction(async (tx) => {
+      const createdResult = await prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            name: normalizedFullName,
+            phone: normalizedPhone,
+            password: hashedTemporaryPassword,
+            role: UserRole.CANDIDATE,
+            isActive: true,
+            metadata: {
+              createdFrom: "candidate-enrollment",
+              requiresPasswordReset: true,
+              learnerCode: generatedLearnerCode,
+              welcomeCredentialsEmailStatus: "pending",
+            },
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        });
+
+        await tx.userSecurity.create({
+          data: {
+            userId: createdUser.id,
+            twoFactorEnabled: false,
+            recoveryCodes: [],
+          },
+        });
+
         const created = await tx.learner.create({
           data: {
+            userId: createdUser.id,
             learnerCode: generatedLearnerCode,
             fullName: normalizedFullName,
             email: normalizedEmail,
@@ -678,10 +824,87 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
           });
         }
 
-        return tx.learner.findUniqueOrThrow({ where: { id: created.id }, ...learnerDetailArgs });
+        return {
+          learnerId: created.id,
+          learnerCode: generatedLearnerCode,
+          createdUser,
+        };
+      }, { maxWait: 10_000, timeout: 15_000 });
+
+      const learner = await prisma.learner.findUniqueOrThrow({
+        where: { id: createdResult.learnerId },
+        ...learnerDetailArgs,
       });
 
-      return mapLearnerToDetail(learner);
+      try {
+        await sendCandidateEnrollmentCredentialsEmail({
+          recipientEmail: createdResult.createdUser.email,
+          recipientName: createdResult.createdUser.name,
+          temporaryPassword,
+          learnerCode: createdResult.learnerCode,
+          programName: normalizedProgramName,
+        });
+
+        await prisma.user.update({
+          where: { id: createdResult.createdUser.id },
+          data: {
+            metadata: {
+              createdFrom: "candidate-enrollment",
+              requiresPasswordReset: true,
+              learnerCode: createdResult.learnerCode,
+              welcomeCredentialsEmailStatus: "sent",
+            },
+          },
+        });
+      } catch (mailError) {
+        console.error("Candidate welcome email dispatch failed", {
+          learnerCode: createdResult.learnerCode,
+          email: createdResult.createdUser.email,
+          error: mailError,
+        });
+
+        await prisma.user.update({
+          where: { id: createdResult.createdUser.id },
+          data: {
+            metadata: {
+              createdFrom: "candidate-enrollment",
+              requiresPasswordReset: true,
+              learnerCode: createdResult.learnerCode,
+              welcomeCredentialsEmailStatus: "failed",
+            },
+          },
+        });
+      }
+
+      const mappedLearner = mapLearnerToDetail(learner);
+
+      await createAuditLogEntry({
+        entityType: AuditEntityType.CANDIDATE,
+        entityId: mappedLearner.id,
+        action: AuditActionType.CREATED,
+        message: `Candidate ${mappedLearner.learnerCode} created from enrollment flow.`,
+        metadata: {
+          learnerCode: mappedLearner.learnerCode,
+          email: mappedLearner.email,
+          batchCode: normalizedBatchCode || null,
+        },
+      });
+
+      if (normalizedBatchCode) {
+        await createAuditLogEntry({
+          entityType: AuditEntityType.BATCH,
+          entityId: normalizedBatchCode,
+          action: AuditActionType.ENROLLED,
+          message: `Candidate ${mappedLearner.learnerCode} enrolled into batch ${normalizedBatchCode}.`,
+          metadata: {
+            learnerCode: mappedLearner.learnerCode,
+            learnerId: mappedLearner.id,
+            batchCode: normalizedBatchCode,
+          },
+        });
+      }
+
+      return mappedLearner;
     } catch (error) {
       if (isLearnerCodeConflict(error)) {
         continue;
@@ -776,9 +999,23 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
       });
 
       return tx.learner.findUniqueOrThrow({ where: { id: learnerRecord.id }, ...learnerDetailArgs });
+    }, { maxWait: 10_000, timeout: 15_000 });
+
+    const mappedLearner = mapLearnerToDetail(learner);
+
+    await createAuditLogEntry({
+      entityType: AuditEntityType.BATCH,
+      entityId: normalizedBatchCode,
+      action: AuditActionType.ENROLLED,
+      message: `Candidate ${mappedLearner.learnerCode} enrolled into batch ${normalizedBatchCode}.`,
+      metadata: {
+        learnerCode: mappedLearner.learnerCode,
+        learnerId: mappedLearner.id,
+        batchCode: normalizedBatchCode,
+      },
     });
 
-    return mapLearnerToDetail(learner);
+    return mappedLearner;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new Error("Learner is already enrolled in this batch.");

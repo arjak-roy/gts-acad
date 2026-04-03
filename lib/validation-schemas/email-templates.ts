@@ -18,5 +18,10 @@ export const updateEmailTemplateSchema = createEmailTemplateSchema.extend({
   templateId: z.string().trim().min(1),
 });
 
+export const sendTestEmailTemplateSchema = z.object({
+  recipientEmail: z.string().trim().email().optional(),
+});
+
 export type CreateEmailTemplateInput = z.infer<typeof createEmailTemplateSchema>;
 export type UpdateEmailTemplateInput = z.infer<typeof updateEmailTemplateSchema>;
+export type SendTestEmailTemplateInput = z.infer<typeof sendTestEmailTemplateSchema>;

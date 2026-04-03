@@ -136,6 +136,56 @@ enum SyncStatus {
   @@map("sync_status")
 }
 
+enum EmailLogStatus {
+  PENDING  @map("pending")
+  SENT     @map("sent")
+  FAILED   @map("failed")
+  RETRYING @map("retrying")
+
+  @@map("email_log_status")
+}
+
+enum EmailLogCategory {
+  CANDIDATE_WELCOME @map("candidate_welcome")
+  TWO_FACTOR        @map("two_factor")
+  SYSTEM            @map("system")
+
+  @@map("email_log_category")
+}
+
+enum AuditEntityType {
+  BATCH     @map("batch")
+  CANDIDATE @map("candidate")
+  COURSE    @map("course")
+  EMAIL     @map("email")
+  AUTH      @map("auth")
+  SYSTEM    @map("system")
+
+  @@map("audit_entity_type")
+}
+
+enum AuditActionType {
+  CREATED      @map("created")
+  UPDATED      @map("updated")
+  ENROLLED     @map("enrolled")
+  MAIL_SENT    @map("mail_sent")
+  MAIL_FAILED  @map("mail_failed")
+  MAIL_RETRIED @map("mail_retried")
+  LOGIN        @map("login")
+  TWO_FACTOR   @map("two_factor")
+  RETRY        @map("retry")
+
+  @@map("audit_action_type")
+}
+
+enum AuditLogLevel {
+  INFO  @map("info")
+  WARN  @map("warn")
+  ERROR @map("error")
+
+  @@map("audit_log_level")
+}
+
 model Country {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(100)
@@ -199,6 +249,8 @@ model User {
   markedAttendance  AttendanceRecord[] @relation("AttendanceMarkedBy")
   recruiterSyncLogs RecruiterSyncLog[] @relation("SyncTriggeredBy")
   interviews        Interview[]        @relation("InterviewedBy")
+  auditLogs         AuditLog[]         @relation("AuditActor")
+  triggeredEmailLogs EmailLog[]        @relation("EmailTriggeredBy")
 
   @@map("users")
 }
@@ -342,6 +394,56 @@ model EmailTemplate {
 
   @@index([isActive, updatedAt], map: "idx_email_templates_active_updated")
   @@map("email_templates")
+}
+
+model EmailLog {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("email_log_id")
+  category          EmailLogCategory
+  templateKey       String?          @map("template_key") @db.VarChar(120)
+  toEmail           String           @map("to_email") @db.VarChar(255)
+  subject           String           @db.VarChar(255)
+  textBody          String?          @map("text_body")
+  htmlBody          String?          @map("html_body")
+  status            EmailLogStatus   @default(PENDING)
+  attemptCount      Int              @default(0) @map("attempt_count")
+  lastAttemptAt     DateTime?        @map("last_attempt_at") @db.Timestamptz(6)
+  sentAt            DateTime?        @map("sent_at") @db.Timestamptz(6)
+  errorMessage      String?          @map("error_message") @db.VarChar(1000)
+  providerMessageId String?          @map("provider_message_id") @db.VarChar(255)
+  metadata          Json             @default("{}")
+  triggeredById     String?          @db.Uuid @map("triggered_by_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  triggeredBy       User?            @relation("EmailTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+  auditLogs         AuditLog[]
+
+  @@index([status, createdAt], map: "idx_email_logs_status_created")
+  @@index([category, createdAt], map: "idx_email_logs_category_created")
+  @@index([toEmail], map: "idx_email_logs_to_email")
+  @@index([triggeredById], map: "idx_email_logs_triggered_by")
+  @@map("email_logs")
+}
+
+model AuditLog {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("audit_log_id")
+  entityType AuditEntityType @map("entity_type")
+  entityId   String?         @map("entity_id") @db.VarChar(120)
+  action     AuditActionType
+  level      AuditLogLevel   @default(INFO)
+  status     String?         @db.VarChar(50)
+  message    String          @db.VarChar(1000)
+  metadata   Json            @default("{}")
+  actorUserId String?        @db.Uuid @map("actor_user_id")
+  emailLogId String?         @db.Uuid @map("email_log_id")
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  actorUser  User?           @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  emailLog   EmailLog?       @relation(fields: [emailLogId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, createdAt], map: "idx_audit_logs_entity_created")
+  @@index([level, createdAt], map: "idx_audit_logs_level_created")
+  @@index([actorUserId], map: "idx_audit_logs_actor")
+  @@index([emailLogId], map: "idx_audit_logs_email")
+  @@map("audit_logs")
 }
 
 model TrainerProfile {
