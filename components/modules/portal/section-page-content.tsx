@@ -23,6 +23,7 @@ import { AddTrainerSheet } from "@/components/modules/trainers/add-trainer-sheet
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateBatchSheet } from "@/components/modules/batches/create-batch-sheet";
 import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet";
+import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
@@ -75,6 +76,10 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
   const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || sectionKey === "settings";
+
+  if (sectionKey === "logs-actions") {
+    return <LogsActionsSection title={section.title} description={section.description} />;
+  }
 
   useEffect(() => {
     const viewId = searchParams.get("viewId");

@@ -39,6 +39,7 @@ const navGroups = [
     items: [
       { href: "/payments", label: "Fees & Payments", icon: Wallet },
       { href: "/support", label: "Support Tickets", icon: HelpCircle },
+      { href: "/logs-actions", label: "Logs & Actions", icon: ClipboardList },
       { href: "/settings", label: "System Config", icon: Settings },
     ],
   },
