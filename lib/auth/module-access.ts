@@ -15,6 +15,7 @@ export const ASSIGNABLE_STAFF_MODULES = [
   { key: "language-lab", href: "/language-lab", label: "Language Lab", permissionName: "reports:view", description: "Language lab sessions and scoring.", routePrefixes: ["/language-lab"] },
   { key: "payments", href: "/payments", label: "Payments", permissionName: "reports:view", description: "Fees and payment records.", routePrefixes: ["/payments"] },
   { key: "support", href: "/support", label: "Support", permissionName: "reports:view", description: "Support ticket queues.", routePrefixes: ["/support"] },
+  { key: "logs-actions", href: "/logs-actions", label: "Logs & Actions", permissionName: "reports:view", description: "Operational audit logs and retry actions.", routePrefixes: ["/logs-actions"] },
 ] as const;
 
 export const STAFF_ONLY_MODULES = [
@@ -46,6 +47,7 @@ const modulePermissionFallbacks: Record<StaffModuleKey, string[]> = {
   "language-lab": ["reports:view"],
   payments: ["reports:view"],
   support: ["reports:view"],
+  "logs-actions": ["reports:view"],
   roles: ["roles:manage"],
   settings: ["roles:manage", "users:manage"],
 };

@@ -19,6 +19,8 @@ type AuthenticatedUserPayload = {
   email: string;
   name: string;
   role: string;
+  roles: string[];
+  permissions: string[];
 };
 
 function isCandidateTwoFactorBypassEnabled(request: NextRequest) {
@@ -41,6 +43,8 @@ async function buildAuthenticatedResponse(request: NextRequest, user: Authentica
       email: user.email,
       name: user.name,
       role: user.role,
+      roles: user.roles,
+      permissions: user.permissions,
       state: "authenticated",
     },
     FULL_SESSION_MAX_AGE_SECONDS,
@@ -89,14 +93,6 @@ export async function POST(request: NextRequest) {
       await persistAuthenticatedSession(result.user, token, FULL_SESSION_MAX_AGE_SECONDS);
 
       response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
-      return response;
-      const response = await buildAuthenticatedResponse(request, {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
-        role: result.user.role,
-      });
-
       return withCors(request, response, ["POST", "OPTIONS"]);
     }
 
@@ -106,6 +102,8 @@ export async function POST(request: NextRequest) {
         email: result.user.email,
         name: result.user.name,
         role: result.user.role,
+        roles: result.user.roles,
+        permissions: result.user.permissions,
       });
 
       return withCors(request, response, ["POST", "OPTIONS"]);
