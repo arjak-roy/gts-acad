@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS, getAuthSession } from "@/lib/auth/session";
-import { verifyRecoveryCode } from "@/services/auth-service";
+import { persistAuthenticatedSession, verifyRecoveryCode } from "@/services/auth-service";
 
 const recoverySchema = z.object({
   recoveryCode: z.string().trim().min(3, "Recovery code is required."),
@@ -27,10 +27,14 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        roles: user.roles,
+        permissions: user.permissions,
         state: "authenticated",
       },
       FULL_SESSION_MAX_AGE_SECONDS,
     );
+
+    await persistAuthenticatedSession(user, token, FULL_SESSION_MAX_AGE_SECONDS);
 
     response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
     return response;

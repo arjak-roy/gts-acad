@@ -10,9 +10,24 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
+import { canAccessModule } from "@/lib/auth/module-access";
+import type { AuthSessionClaims } from "@/lib/auth/session";
 import { useDebounce } from "@/hooks/use-debounce";
 
-export function AppHeader() {
+type AppHeaderProps = {
+  session: Pick<AuthSessionClaims, "name" | "role" | "roles" | "permissions"> | null;
+};
+
+const quickLinks = [
+  { href: "/staff/learners", label: "Enroll Learner", module: "learners" },
+  { href: "/courses", label: "Create Course", module: "courses" },
+  { href: "/programs", label: "Create Program", module: "programs" },
+  { href: "/batches", label: "Create Batch", module: "batches" },
+  { href: "/assessments", label: "Schedule Assessment", module: "assessments" },
+  { href: "/certifications", label: "Issue Certificate", module: "certifications" },
+] as const;
+
+export function AppHeader({ session }: AppHeaderProps) {
   const shouldRedirectFromHeader = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -21,9 +36,19 @@ export function AppHeader() {
   const toggleMobileSidebar = useDashboardUI((state) => state.toggleMobileSidebar);
   const isDashboardPage = pathname === "/dashboard";
   const isSearchPage = pathname === "/search";
+  const canUseSearch = canAccessModule(session, "dashboard");
+  const availableQuickLinks = quickLinks.filter((link) => canAccessModule(session, link.module));
   const initialQuery = isDashboardPage ? searchParams.get("query") ?? "" : isSearchPage ? searchParams.get("q") ?? "" : "";
   const [search, setSearch] = useState(initialQuery);
   const debouncedSearch = useDebounce(search, 300);
+  const displayName = session?.name ?? "Staff User";
+  const initials = displayName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const roleLabel = session?.roles[0] ?? session?.role ?? "Staff";
 
   const handleLogout = async () => {
     try {
@@ -40,6 +65,10 @@ export function AppHeader() {
   }, [initialQuery, pathname]);
 
   useEffect(() => {
+    if (!canUseSearch) {
+      return;
+    }
+
     const normalizedSearch = debouncedSearch.trim();
 
     // Skip if we're on dashboard and the value hasn't changed
@@ -83,7 +112,7 @@ export function AppHeader() {
       return;
     }
 
-  }, [debouncedSearch, initialQuery, isDashboardPage, isSearchPage, router, searchParams]);
+  }, [canUseSearch, debouncedSearch, initialQuery, isDashboardPage, isSearchPage, router, searchParams]);
 
   return (
     <header className="sticky top-0 z-20 border-b border-[#dde1e6] bg-white/90 backdrop-blur">
@@ -102,11 +131,16 @@ export function AppHeader() {
           <Input
             value={search}
             onChange={(event) => {
+              if (!canUseSearch) {
+                return;
+              }
+
               shouldRedirectFromHeader.current = true;
               setSearch(event.target.value);
             }}
             className="rounded-full border-slate-200 bg-slate-50 pl-10 pr-10 md:pr-16"
-            placeholder="Search learners, batches, trainers, certificates..."
+            placeholder={canUseSearch ? "Search learners, batches, trainers, certificates..." : "Search is unavailable for your current access"}
+            disabled={!canUseSearch}
           />
           <span className="absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 md:inline-flex">
             Ctrl+K
@@ -120,45 +154,38 @@ export function AppHeader() {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" className="h-9 w-9 rounded-full shadow-sm md:h-10 md:w-10 md:shadow-md">
+              <Button size="icon" className="h-9 w-9 rounded-full shadow-sm md:h-10 md:w-10 md:shadow-md" disabled={availableQuickLinks.length === 0}>
                 <Plus className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem asChild>
-                <Link href="/learners">Enroll Learner</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/courses">Create Course</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/programs">Create Program</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/batches">Create Batch</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/assessments">Schedule Assessment</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/certifications">Issue Certificate</Link>
-              </DropdownMenuItem>
+              {availableQuickLinks.length === 0 ? (
+                <DropdownMenuItem disabled>No quick actions available</DropdownMenuItem>
+              ) : (
+                availableQuickLinks.map((link, index) => (
+                  <div key={link.href}>
+                    {index === 4 ? <DropdownMenuSeparator /> : null}
+                    <DropdownMenuItem asChild>
+                      <Link href={link.href}>{link.label}</Link>
+                    </DropdownMenuItem>
+                  </div>
+                ))
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="rounded-full transition-shadow hover:ring-2 hover:ring-[#0d3b84]/20 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]">
                 <Avatar className="h-9 w-9 border border-slate-100 bg-slate-100 md:h-10 md:w-10">
-                  <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=AdminArunima" alt="Arunima Singh" />
-                  <AvatarFallback>AS</AvatarFallback>
+                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`} alt={displayName} />
+                  <AvatarFallback>{initials || "SU"}</AvatarFallback>
                 </Avatar>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
               <div className="border-b border-slate-100 px-4 py-3">
-                <p className="font-bold text-slate-900">Arunima Singh</p>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-primary">Ops Lead • Academy</p>
+                <p className="font-bold text-slate-900">{displayName}</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-primary">{roleLabel}</p>
               </div>
               <DropdownMenuItem>
                 <User className="mr-2 h-4 w-4" />

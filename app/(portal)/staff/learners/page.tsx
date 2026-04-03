@@ -6,6 +6,7 @@ import { LearnerEditSheet } from "@/components/modules/learners/learner-edit-she
 import { LearnerSheet } from "@/components/modules/learners/learner-sheet";
 import { LearnersTable } from "@/components/modules/learners/learners-table";
 import { LearnersPageSkeleton } from "@/components/modules/page-skeletons";
+import { requireCurrentAuthSession, requireModuleAccess } from "@/lib/auth/access";
 
 type LearnersPageProps = {
   searchParams?: {
@@ -30,6 +31,9 @@ export default function LearnersPage({ searchParams }: LearnersPageProps) {
 }
 
 async function LearnersPageContent({ searchParams }: LearnersPageProps) {
+  const session = await requireCurrentAuthSession();
+  requireModuleAccess(session, "learners");
+
   const filters = {
     page: searchParams?.page ?? "1",
     pageSize: searchParams?.pageSize ?? "10",

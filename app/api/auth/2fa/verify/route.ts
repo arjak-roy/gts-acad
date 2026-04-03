@@ -4,7 +4,7 @@ import { z } from "zod";
 import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS, getAuthSession } from "@/lib/auth/session";
-import { verifyLoginTwoFactor } from "@/services/auth-service";
+import { persistAuthenticatedSession, verifyLoginTwoFactor } from "@/services/auth-service";
 
 const verifySchema = z.object({
   code: z.string().trim().min(6, "Verification code is required.").max(6, "Verification code must be 6 digits."),
@@ -40,10 +40,14 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        roles: user.roles,
+        permissions: user.permissions,
         state: "authenticated",
       },
       FULL_SESSION_MAX_AGE_SECONDS,
     );
+
+    await persistAuthenticatedSession(user, token, FULL_SESSION_MAX_AGE_SECONDS);
 
     response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
     return withCors(request, response, ["POST", "OPTIONS"]);

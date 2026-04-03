@@ -13,6 +13,34 @@ export function formatCompactNumber(value: number) {
   return new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
+export function formatRoleLabel(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const compact = normalized.replace(/[_\s-]+/g, "").toLowerCase();
+
+  if (compact === "superadmin") {
+    return "Super Admin";
+  }
+
+  if (compact === "admin") {
+    return "Admin";
+  }
+
+  if (compact === "trainer") {
+    return "Trainer";
+  }
+
+  return normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

@@ -231,6 +231,7 @@ model User {
   phone             String?            @db.VarChar(20)
   password          String             @db.VarChar(255)
   role              UserRole
+  roleId            String?            @map("staff_role_id")
   emailVerifiedAt   DateTime?          @map("email_verified_at") @db.Timestamptz(6)
   isActive          Boolean            @default(true) @map("is_active")
   lastLoginAt       DateTime?          @map("last_login_at") @db.Timestamptz(6)
@@ -239,6 +240,10 @@ model User {
   updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   security          UserSecurity?
   twoFactorChallenges TwoFactorChallenge[]
+  rbacAssignments   UserRoleAssignment[]
+  directPermissions UserPermission[]
+  authSessions      UserSession[]
+  staffRole         Role?              @relation("StaffUsersRole", fields: [roleId], references: [id], onDelete: SetNull)
   trainerProfile    TrainerProfile?
   learnerAccount    Learner?           @relation("LearnerUser")
   markedAttendance  AttendanceRecord[] @relation("AttendanceMarkedBy")
@@ -260,6 +265,99 @@ model UserSecurity {
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_security")
+}
+
+model Role {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String               @unique @db.VarChar(100)
+  description     String?
+  isSystem        Boolean              @default(false) @map("is_system")
+  permissions     RolePermission[]
+  users           User[]               @relation("StaffUsersRole")
+  userAssignments UserRoleAssignment[]
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("roles")
+}
+
+model Permission {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key               String           @unique @db.VarChar(150)
+  module            String           @db.VarChar(100)
+  action            String           @db.VarChar(100)
+  label             String           @db.VarChar(255)
+  legacyName        String           @map("name") @db.VarChar(150)
+  legacyResource    String           @map("resource") @db.VarChar(100)
+  legacyDescription String?          @map("description")
+  rolePerms         RolePermission[]
+  directAssignments UserPermission[]
+
+  @@index([module, action], map: "idx_permissions_module_action")
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId], map: "role_permissions_role_id_permission_id_key")
+  @@index([roleId], map: "idx_role_permissions_role_id")
+  @@index([permissionId], map: "idx_role_permissions_permission_id")
+  @@map("role_permissions")
+}
+
+model UserRoleAssignment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  roleId    String   @db.Uuid @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId], map: "user_roles_user_id_role_id_key")
+  @@index([userId], map: "idx_user_roles_user_id")
+  @@index([roleId], map: "idx_user_roles_role_id")
+  @@map("user_roles")
+}
+
+model UserPermission {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String     @db.Uuid @map("user_id")
+  permissionId String     @db.Uuid @map("permission_id")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId], map: "user_permissions_user_id_permission_id_key")
+  @@index([userId], map: "idx_user_permissions_user_id")
+  @@index([permissionId], map: "idx_user_permissions_permission_id")
+  @@map("user_permissions")
+}
+
+model UserSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @db.Uuid @map("user_id")
+  sessionToken String   @unique @map("session_token")
+  permissions  Json     @default("[]")
+  roles        Json     @default("[]")
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_sessions_user_id")
+  @@index([expiresAt], map: "idx_user_sessions_expires_at")
+  @@index([revokedAt], map: "idx_user_sessions_revoked_at")
+  @@map("user_sessions")
 }
 
 model TwoFactorChallenge {

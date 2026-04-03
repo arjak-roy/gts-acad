@@ -22,7 +22,7 @@ export function SearchNotFound({ query }: SearchNotFoundProps) {
         </p>
 
         <div className="mt-8 flex flex-col gap-2 sm:flex-row">
-          <Link href="/learners">
+          <Link href="/staff/learners">
             <Button variant="secondary" className="w-full sm:w-auto">
               Browse Learners
             </Button>

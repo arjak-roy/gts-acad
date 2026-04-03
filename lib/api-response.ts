@@ -42,7 +42,7 @@ export function apiError(error: unknown) {
 function resolveErrorStatus(message: string) {
   const normalizedMessage = message.toLowerCase();
 
-  if (normalizedMessage.includes("unauthorized")) {
+  if (normalizedMessage.includes("authentication required") || normalizedMessage.includes("unauthorized")) {
     return 401;
   }
 

@@ -1,4 +1,7 @@
+import { NextRequest } from "next/server";
+
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { assertCanAccessLearnerCode, requireRequestAuthSession } from "@/lib/auth/access";
 import { learnerIdSchema } from "@/lib/validation-schemas/learners";
 import { getLearnerByCodeService } from "@/services/learners-service";
 
@@ -13,9 +16,11 @@ type LearnerRouteContext = {
  * Validates route params before hitting the data service.
  * Emits a standardized not-found error when no learner is resolved.
  */
-export async function GET(_: Request, { params }: LearnerRouteContext) {
+export async function GET(request: NextRequest, { params }: LearnerRouteContext) {
   try {
+    const session = await requireRequestAuthSession(request);
     const { learnerCode } = learnerIdSchema.parse(params);
+    await assertCanAccessLearnerCode(session, learnerCode);
     const learner = await getLearnerByCodeService(learnerCode);
 
     if (!learner) {

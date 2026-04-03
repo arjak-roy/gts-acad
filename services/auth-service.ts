@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
+import { prisma, isDatabaseConfigured } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   generateEmailOtpCode,
@@ -24,6 +24,8 @@ type AuthUser = {
   email: string;
   name: string;
   role: string;
+  roles: string[];
+  permissions: string[];
   security: {
     id: string;
     twoFactorEnabled: boolean;
@@ -60,8 +62,125 @@ function requireDatabase() {
   }
 }
 
+function shouldBypassTwoFactorForLocal(email: string) {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  if ((process.env.AUTH_DISABLE_2FA_IN_DEV ?? "false").toLowerCase() !== "true") {
+    return false;
+  }
+
+  const allowList = (process.env.AUTH_DISABLE_2FA_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return allowList.length === 0 || allowList.includes(email.trim().toLowerCase());
+}
+
+function getRbacSelect() {
+  return {
+    staffRole: {
+      select: {
+        id: true,
+        name: true,
+        permissions: {
+          select: {
+            permission: {
+              select: {
+                key: true,
+              },
+            },
+          },
+        },
+      },
+    },
+    directPermissions: {
+      select: {
+        permission: {
+          select: {
+            key: true,
+          },
+        },
+      },
+    },
+  };
+}
+
+function deriveAccessFromAssignments(
+  staffRole:
+    | {
+        name: string;
+        permissions: Array<{
+          permission: {
+            key: string;
+          };
+        }>;
+      }
+    | null
+    | undefined,
+  directPermissions: Array<{
+    permission: {
+      key: string;
+    };
+  }>,
+) {
+  const normalizedRole = staffRole?.name?.trim().toLowerCase() ?? "";
+  const roleNames = normalizedRole ? [normalizedRole] : [];
+  const permissionNames = Array.from(
+    new Set([
+      ...(staffRole?.permissions ?? []).map((entry) => entry.permission.key),
+      ...directPermissions.map((entry) => entry.permission.key),
+    ]),
+  ).sort();
+
+  return {
+    role: normalizedRole,
+    roles: roleNames,
+    permissions: permissionNames,
+  };
+}
+
+function mapAuthUser(record: {
+  id: string;
+  email: string;
+  name: string;
+  role: { toString(): string } | string;
+  security?: {
+    id: string;
+    twoFactorEnabled: boolean;
+    recoveryCodes: string[];
+  } | null;
+  staffRole?: {
+    name: string;
+    permissions: Array<{
+      permission: {
+        key: string;
+      };
+    }>;
+  } | null;
+  directPermissions: Array<{
+    permission: {
+      key: string;
+    };
+  }>;
+}) {
+  const access = deriveAccessFromAssignments(record.staffRole, record.directPermissions);
+
+  return {
+    id: record.id,
+    email: record.email,
+    name: record.name,
+    role: access.role || String(record.role).toLowerCase(),
+    roles: access.roles,
+    permissions: access.permissions,
+    security: record.security ?? null,
+  } satisfies AuthUser;
+}
+
 async function getUserByEmail(email: string) {
-  return prisma.user.findFirst({
+  const user = await prisma.user.findFirst({
     where: {
       email: { equals: email, mode: "insensitive" },
       isActive: true,
@@ -79,8 +198,16 @@ async function getUserByEmail(email: string) {
           recoveryCodes: true,
         },
       },
+      ...getRbacSelect(),
     },
   });
+
+  return user
+    ? {
+        ...mapAuthUser(user),
+        password: user.password,
+      }
+    : null;
 }
 
 async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, code: string, purposeLabel: string) {
@@ -135,6 +262,8 @@ function mapChallengeRows(rows: Array<{
       email: row.userEmail,
       name: row.userName,
       role: row.userRole,
+      roles: [],
+      permissions: [],
       security: row.securityId
         ? {
             id: row.securityId,
@@ -281,10 +410,39 @@ async function finalizeLogin(userId: string) {
           recoveryCodes: true,
         },
       },
+      ...getRbacSelect(),
     },
   });
 
-  return user;
+  return mapAuthUser(user);
+}
+
+export async function persistAuthenticatedSession(user: Pick<AuthUser, "id" | "roles" | "permissions">, sessionToken: string, maxAgeSeconds: number) {
+  requireDatabase();
+
+  await prisma.userSession.create({
+    data: {
+      userId: user.id,
+      sessionToken,
+      roles: user.roles,
+      permissions: user.permissions,
+      expiresAt: new Date(Date.now() + maxAgeSeconds * 1000),
+    },
+  });
+}
+
+export async function revokeAuthenticatedSession(sessionToken: string) {
+  requireDatabase();
+
+  await prisma.userSession.updateMany({
+    where: {
+      sessionToken,
+      revokedAt: null,
+    },
+    data: {
+      revokedAt: new Date(),
+    },
+  });
 }
 
 export async function loginWithPassword(email: string, password: string): Promise<LoginResult> {
@@ -302,6 +460,10 @@ export async function loginWithPassword(email: string, password: string): Promis
     throw new Error("Invalid email or password.");
   }
 
+  if (user.role.toLowerCase() === "candidate") {
+    throw new Error("Use the learner portal to sign in with a learner code.");
+  }
+
   const passwordCheck = await verifyPassword(normalizedPassword, user.password);
   if (!passwordCheck.isValid) {
     throw new Error("Invalid email or password.");
@@ -314,7 +476,7 @@ export async function loginWithPassword(email: string, password: string): Promis
     });
   }
 
-  const requiresTwoFactor = user.security?.twoFactorEnabled ?? true;
+  const requiresTwoFactor = shouldBypassTwoFactorForLocal(user.email) ? false : (user.security?.twoFactorEnabled ?? true);
 
   if (!requiresTwoFactor) {
     return {
@@ -324,6 +486,8 @@ export async function loginWithPassword(email: string, password: string): Promis
         email: user.email,
         name: user.name,
         role: user.role,
+        roles: user.roles,
+        permissions: user.permissions,
         security: user.security,
       },
     };
@@ -339,6 +503,8 @@ export async function loginWithPassword(email: string, password: string): Promis
       email: user.email,
       name: user.name,
       role: user.role,
+      roles: user.roles,
+      permissions: user.permissions,
       security: user.security,
     },
     challengeId: challenge.id,

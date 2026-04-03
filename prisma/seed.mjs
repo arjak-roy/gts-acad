@@ -1,6 +1,6 @@
+import { randomBytes, scryptSync } from "node:crypto";
+
 import {
-  randomBytes,
-  scryptSync,
   AssessmentMode,
   AssessmentType,
   AttendanceStatus,
@@ -86,6 +86,53 @@ const TRAINERS = [
   { name: "Ms. Priya Nair", email: "priya.trainer@gts-academy.test", phone: "+91-9000000009", specialization: "Interview Readiness", rating: 4.6 },
 ];
 
+const RBAC_ROLES = [
+  {
+    name: "superadmin",
+    description: "Full unrestricted access across all academy modules and controls.",
+    isSystem: true,
+  },
+  {
+    name: "admin",
+    description: "Administrative access across operational modules excluding user and role governance.",
+    isSystem: true,
+  },
+  {
+    name: "trainer",
+    description: "Instructional access focused on dashboard, learners, and attendance workflows.",
+    isSystem: true,
+  },
+];
+
+const RBAC_PERMISSIONS = [
+  { key: "dashboard:view", module: "dashboard", action: "view", label: "View dashboard" },
+  { key: "learners:view", module: "learners", action: "view", label: "View learners" },
+  { key: "learners:edit", module: "learners", action: "edit", label: "Edit learners" },
+  { key: "attendance:view", module: "attendance", action: "view", label: "View attendance" },
+  { key: "attendance:mark", module: "attendance", action: "mark", label: "Mark attendance" },
+  { key: "programs:view", module: "programs", action: "view", label: "View programs" },
+  { key: "programs:manage", module: "programs", action: "manage", label: "Manage programs" },
+  { key: "batches:view", module: "batches", action: "view", label: "View batches" },
+  { key: "batches:manage", module: "batches", action: "manage", label: "Manage batches" },
+  { key: "trainers:view", module: "trainers", action: "view", label: "View trainers" },
+  { key: "trainers:manage", module: "trainers", action: "manage", label: "Manage trainers" },
+  { key: "reports:view", module: "reports", action: "view", label: "View reports" },
+  { key: "users:manage", module: "users", action: "manage", label: "Manage users" },
+  { key: "roles:manage", module: "roles", action: "manage", label: "Manage roles" },
+];
+
+const toLegacyPermissionFields = (permission) => ({
+  legacyName: permission.key,
+  legacyResource: permission.module,
+  legacyDescription: permission.label,
+});
+
+const RBAC_ROLE_PERMISSIONS = {
+  superadmin: RBAC_PERMISSIONS.map((permission) => permission.key),
+  admin: RBAC_PERMISSIONS.map((permission) => permission.key).filter((key) => key !== "roles:manage" && key !== "users:manage"),
+  trainer: ["dashboard:view", "learners:view", "attendance:view", "attendance:mark"],
+};
+
 const FIRST_NAMES = [
   "Aditya", "Meera", "Arjun", "Neha", "Rahul", "Priya", "Asha", "Kiran", "Vikram", "Anita",
   "Rohan", "Nisha", "Sandeep", "Divya", "Manoj", "Kavya", "Ravi", "Pooja", "Amit", "Sneha",
@@ -102,14 +149,86 @@ const LAST_NAMES = [
   "Chopra", "Bhatt", "Shetty", "Ghosh", "Kohli", "Rastogi", "Tiwari", "Lal", "Nambiar", "Raman",
 ];
 
-async function upsertUser({ email, name, phone, password, role }) {
+async function upsertUser({ email, name, phone, password, role, roleId = null }) {
   const hashedPassword = hashPassword(password);
 
   return prisma.user.upsert({
     where: { email },
-    update: { name, phone, password: hashedPassword, role, isActive: true },
-    create: { email, name, phone, password: hashedPassword, role, isActive: true, metadata: {} },
+    update: { name, phone, password: hashedPassword, role, roleId, isActive: true },
+    create: { email, name, phone, password: hashedPassword, role, roleId, isActive: true, metadata: {} },
   });
+}
+
+async function seedRbac() {
+  const rolesByName = new Map();
+
+  for (const role of RBAC_ROLES) {
+    const roleRecord = await prisma.role.upsert({
+      where: { name: role.name },
+      update: {
+        description: role.description,
+        isSystem: role.isSystem,
+      },
+      create: role,
+    });
+
+    rolesByName.set(roleRecord.name, roleRecord);
+  }
+
+  const permissionsByName = new Map();
+
+  for (const permission of RBAC_PERMISSIONS) {
+    const permissionRecord = await prisma.permission.upsert({
+      where: { key: permission.key },
+      update: {
+        module: permission.module,
+        action: permission.action,
+        label: permission.label,
+        ...toLegacyPermissionFields(permission),
+      },
+      create: {
+        ...permission,
+        ...toLegacyPermissionFields(permission),
+      },
+    });
+
+    permissionsByName.set(permissionRecord.key, permissionRecord);
+  }
+
+  for (const [roleName, permissionNames] of Object.entries(RBAC_ROLE_PERMISSIONS)) {
+    const role = rolesByName.get(roleName);
+    if (!role) {
+      continue;
+    }
+
+    for (const permissionName of permissionNames) {
+      const permission = permissionsByName.get(permissionName);
+      if (!permission) {
+        continue;
+      }
+
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: role.id,
+            permissionId: permission.id,
+          },
+        },
+        update: {},
+        create: {
+          roleId: role.id,
+          permissionId: permission.id,
+        },
+      });
+    }
+  }
+
+  return {
+    rolesByName,
+    roleCount: rolesByName.size,
+    permissionCount: permissionsByName.size,
+    assignmentCount: 0,
+  };
 }
 
 function placementForIndex(index) {
@@ -140,12 +259,35 @@ function placementForIndex(index) {
 }
 
 async function seed() {
+  const rbacSummary = await seedRbac();
+  const superAdminRole = rbacSummary.rolesByName.get("superadmin");
+  const adminRole = rbacSummary.rolesByName.get("admin");
+  const trainerRole = rbacSummary.rolesByName.get("trainer");
+
+  const superAdminUser = await upsertUser({
+    email: "superadmin@gts-superadmin.com",
+    name: "GTS SuperAdmin",
+    phone: "+91-9000000000",
+    password: "dev-password",
+    role: UserRole.ADMIN,
+    roleId: superAdminRole?.id,
+  });
+
   const adminUser = await upsertUser({
-    email: "admin@gts-academy.test",
+    email: "admin@gts-admin.com",
     name: "Academy Admin",
     phone: "+91-9000000001",
     password: "dev-password",
     role: UserRole.ADMIN,
+    roleId: adminRole?.id,
+  });
+
+  const candidateUser = await upsertUser({
+    email: "candidate@gts-academy.test",
+    name: "Candidate Demo",
+    phone: "+91-9000000010",
+    password: "dev-password",
+    role: UserRole.CANDIDATE,
   });
 
   await prisma.currency.upsert({ where: { code: "INR" }, update: { symbol: "Rs" }, create: { code: "INR", symbol: "Rs" } });
@@ -260,6 +402,7 @@ async function seed() {
       phone: profile.phone,
       password: "dev-password",
       role: UserRole.TRAINER,
+      roleId: trainerRole?.id,
     });
 
     const assignedPrograms = [programRecords[i % programRecords.length].name, programRecords[(i + 3) % programRecords.length].name];
@@ -589,6 +732,17 @@ async function seed() {
     });
   }
 
+  if (learnerRecords[0]) {
+    await prisma.learner.update({
+      where: { id: learnerRecords[0].id },
+      data: {
+        userId: candidateUser.id,
+        email: candidateUser.email,
+        fullName: candidateUser.name,
+      },
+    });
+  }
+
   const assessmentRecords = [];
   for (let i = 0; i < batchRecords.length; i += 1) {
     const batch = batchRecords[i];
@@ -665,6 +819,14 @@ async function seed() {
     });
   }
 
+  await prisma.user.updateMany({
+    where: { role: UserRole.TRAINER },
+    data: { roleId: trainerRole?.id ?? null },
+  });
+
+  await prisma.user.update({ where: { id: superAdminUser.id }, data: { roleId: superAdminRole?.id ?? null } });
+  await prisma.user.update({ where: { id: adminUser.id }, data: { roleId: adminRole?.id ?? null } });
+
   const readyCount = await prisma.learner.count({ where: { placementStatus: PlacementStatus.PLACEMENT_READY } });
 
   console.log("Seed complete", {
@@ -673,6 +835,9 @@ async function seed() {
     learners: learnerRecords.length,
     placementReadyLearners: readyCount,
     batches: batchRecords.length,
+    rbacRoles: rbacSummary.roleCount,
+    rbacPermissions: rbacSummary.permissionCount,
+    rbacAssignments: rbacSummary.assignmentCount,
   });
 }
 
