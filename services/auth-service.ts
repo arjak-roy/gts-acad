@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { getUserPrimaryRoleCode } from "@/services/rbac-service";
 import {
   generateEmailOtpCode,
   generateRecoveryCodes,
@@ -142,7 +143,6 @@ async function getUserByEmail(email: string) {
       id: true,
       email: true,
       name: true,
-      role: true,
       password: true,
       security: {
         select: {
@@ -165,7 +165,6 @@ async function getPasswordResetUserByEmail(email: string) {
       id: true,
       email: true,
       name: true,
-      role: true,
     },
   });
 }
@@ -353,7 +352,6 @@ function mapChallengeRows(rows: Array<{
   userId: string;
   userEmail: string;
   userName: string;
-  userRole: string;
   securityId: string | null;
   twoFactorEnabled: boolean | null;
   recoveryCodes: string[] | null;
@@ -370,7 +368,7 @@ function mapChallengeRows(rows: Array<{
       id: row.userId,
       email: row.userEmail,
       name: row.userName,
-      role: row.userRole,
+      role: "",
       security: row.securityId
         ? {
             id: row.securityId,
@@ -443,7 +441,6 @@ async function validateChallenge(userId: string, challengeId: string, purpose: s
     userId: string;
     userEmail: string;
     userName: string;
-    userRole: string;
     securityId: string | null;
     twoFactorEnabled: boolean | null;
     recoveryCodes: string[] | null;
@@ -460,7 +457,6 @@ async function validateChallenge(userId: string, challengeId: string, purpose: s
         u."user_id" AS "userId",
         u."email" AS "userEmail",
         u."full_name" AS "userName",
-        u."role"::text AS "userRole",
         s."id" AS "securityId",
         s."two_factor_enabled" AS "twoFactorEnabled",
         s."recovery_codes" AS "recoveryCodes"
@@ -509,7 +505,6 @@ async function finalizeLogin(userId: string) {
       id: true,
       email: true,
       name: true,
-      role: true,
       security: {
         select: {
           id: true,
@@ -520,7 +515,9 @@ async function finalizeLogin(userId: string) {
     },
   });
 
-  return user;
+  const role = await getUserPrimaryRoleCode(userId);
+
+  return { ...user, role };
 }
 
 export async function loginWithPassword(email: string, password: string): Promise<LoginResult> {
@@ -552,6 +549,8 @@ export async function loginWithPassword(email: string, password: string): Promis
 
   const requiresTwoFactor = user.security?.twoFactorEnabled ?? true;
 
+  const userRole = await getUserPrimaryRoleCode(user.id);
+
   if (!requiresTwoFactor) {
     return {
       status: "authenticated",
@@ -559,7 +558,7 @@ export async function loginWithPassword(email: string, password: string): Promis
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: userRole,
         security: user.security,
       },
     };
@@ -574,7 +573,7 @@ export async function loginWithPassword(email: string, password: string): Promis
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: userRole,
       security: user.security,
     },
     challengeId: challenge.id,

@@ -2,10 +2,9 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
-import { UserRole } from "@prisma/client";
-
 import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { addRoleToUser } from "@/services/rbac-service";
 import { CreateTrainerInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
 
 export type TrainerOption = {
@@ -240,7 +239,6 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         name: normalizedFullName,
         phone: normalizedPhone,
         password: hashedTemporaryPassword,
-        role: UserRole.TRAINER,
         isActive,
         metadata: {
           createdFrom: "academy-admin",
@@ -278,6 +276,11 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
       profile,
     };
   });
+
+  const trainerRole = await prisma.role.findUnique({ where: { code: "TRAINER" } });
+  if (trainerRole) {
+    await addRoleToUser(trainer.user.id, trainerRole.id);
+  }
 
   return {
     id: trainer.profile.id,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Video } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -231,6 +231,440 @@ function buildEventPayload(form: EventFormState) {
   return payload;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function makeDayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function getEventTypeStyle(type: EventType) {
+  const styles = {
+    CLASS:   { bg: "bg-blue-50",    text: "text-blue-700",   border: "border-blue-200",   dot: "bg-blue-500"    },
+    TEST:    { bg: "bg-amber-50",   text: "text-amber-700",  border: "border-amber-200",  dot: "bg-amber-500"   },
+    QUIZ:    { bg: "bg-violet-50",  text: "text-violet-700", border: "border-violet-200", dot: "bg-violet-500"  },
+    CONTEST: { bg: "bg-emerald-50", text: "text-emerald-700",border: "border-emerald-200",dot: "bg-emerald-500" },
+  } satisfies Record<EventType, { bg: string; text: string; border: string; dot: string }>;
+  return styles[type] ?? styles.CLASS;
+}
+
+function getStatusBadgeVariant(status: EventStatus) {
+  switch (status) {
+    case "IN_PROGRESS": return "warning" as const;
+    case "COMPLETED":   return "success" as const;
+    case "CANCELLED":   return "danger"  as const;
+    case "RESCHEDULED": return "accent"  as const;
+    default:            return "info"    as const;
+  }
+}
+
+// ── Calendar Legend ───────────────────────────────────────────────────────────
+
+function CalendarLegend() {
+  const entries = [
+    { type: "CLASS"   as EventType, label: "Class"   },
+    { type: "TEST"    as EventType, label: "Test"    },
+    { type: "QUIZ"    as EventType, label: "Quiz"    },
+    { type: "CONTEST" as EventType, label: "Contest" },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      {entries.map(({ type, label }) => {
+        const style = getEventTypeStyle(type);
+        return (
+          <div key={type} className="flex items-center gap-1.5">
+            <span className={cn("h-2 w-2 rounded-full", style.dot)} />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Month Calendar ────────────────────────────────────────────────────────────
+
+const DOW_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function MonthCalendarView({
+  events,
+  baseDate,
+  onEventClick,
+  onDayClick,
+}: {
+  events: ScheduleEvent[];
+  baseDate: Date;
+  onEventClick: (event: ScheduleEvent) => void;
+  onDayClick: (date: Date) => void;
+}) {
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const today = new Date();
+  const todayKey = makeDayKey(today);
+
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells: Array<{ date: Date; isCurrentMonth: boolean }> = [];
+  for (let i = 0; i < firstDow; i++) {
+    cells.push({ date: new Date(year, month, i - firstDow + 1), isCurrentMonth: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ date: new Date(year, month, d), isCurrentMonth: true });
+  }
+  while (cells.length < 42) {
+    cells.push({ date: new Date(year, month + 1, cells.length - firstDow - daysInMonth + 1), isCurrentMonth: false });
+  }
+
+  const eventsByDay = new Map<string, ScheduleEvent[]>();
+  for (const event of events) {
+    const key = makeDayKey(new Date(event.startsAt));
+    if (!eventsByDay.has(key)) eventsByDay.set(key, []);
+    eventsByDay.get(key)!.push(event);
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200">
+      {/* Day-of-week header */}
+      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+        {DOW_HEADERS.map((dow) => (
+          <div key={dow} className="py-2.5 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            {dow}
+          </div>
+        ))}
+      </div>
+
+      {/* Grid cells */}
+      <div className="grid grid-cols-7">
+        {cells.map(({ date, isCurrentMonth }, index) => {
+          const key = makeDayKey(date);
+          const dayEvents = [...(eventsByDay.get(key) ?? [])].sort(
+            (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+          );
+          const isToday = key === todayKey;
+          const overflow = Math.max(0, dayEvents.length - 3);
+
+          return (
+            <div
+              key={index}
+              className={cn(
+                "group relative min-h-[100px] cursor-pointer p-2 transition-colors hover:bg-blue-50/30",
+                index % 7 !== 6 && "border-r border-slate-100",
+                index < 35 && "border-b border-slate-100",
+                !isCurrentMonth && "bg-slate-50/40",
+              )}
+              onClick={() => onDayClick(date)}
+            >
+              <div className="mb-1.5">
+                <span
+                  className={cn(
+                    "inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-colors",
+                    isToday
+                      ? "bg-[#0d3b84] text-white"
+                      : isCurrentMonth
+                        ? "text-slate-700 group-hover:text-[#0d3b84]"
+                        : "text-slate-300",
+                  )}
+                >
+                  {date.getDate()}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {dayEvents.slice(0, 3).map((event) => {
+                  const style = getEventTypeStyle(event.type);
+                  return (
+                    <button
+                      type="button"
+                      key={event.id}
+                      onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                      className={cn(
+                        "block w-full truncate rounded px-1 py-[2px] text-left text-[10px] font-semibold leading-[14px] transition-opacity hover:opacity-75",
+                        style.bg,
+                        style.text,
+                        event.status === "CANCELLED" && "line-through opacity-40",
+                      )}
+                    >
+                      <span className="mr-0.5 opacity-60">{formatTime(event.startsAt)}</span>
+                      {event.title}
+                    </button>
+                  );
+                })}
+                {overflow > 0 && (
+                  <p className="pl-1 text-[10px] font-semibold text-slate-400">+{overflow} more</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Week Calendar ─────────────────────────────────────────────────────────────
+
+function WeekCalendarView({
+  events,
+  baseDate,
+  onEventClick,
+  onDayClick,
+}: {
+  events: ScheduleEvent[];
+  baseDate: Date;
+  onEventClick: (event: ScheduleEvent) => void;
+  onDayClick: (date: Date) => void;
+}) {
+  const today = new Date();
+  const dow = baseDate.getDay();
+  const monday = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate() - dow + (dow === 0 ? -6 : 1),
+  );
+  const days = Array.from({ length: 7 }, (_, i) =>
+    new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i),
+  );
+
+  const eventsByDay = new Map<string, ScheduleEvent[]>();
+  for (const event of events) {
+    const key = makeDayKey(new Date(event.startsAt));
+    if (!eventsByDay.has(key)) eventsByDay.set(key, []);
+    eventsByDay.get(key)!.push(event);
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200">
+      {/* Day headers */}
+      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+        {days.map((day, i) => {
+          const isToday = isSameDay(day, today);
+          return (
+            <div key={i} className={cn("p-2.5 text-center", isToday && "bg-blue-50")}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                {day.toLocaleDateString("en-IN", { weekday: "short" })}
+              </p>
+              <span
+                className={cn(
+                  "mx-auto mt-1 flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
+                  isToday ? "bg-[#0d3b84] text-white" : "text-slate-700",
+                )}
+              >
+                {day.getDate()}
+              </span>
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                {day.toLocaleDateString("en-IN", { month: "short" })}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Day columns */}
+      <div className="grid min-h-[360px] grid-cols-7 divide-x divide-slate-100">
+        {days.map((day, i) => {
+          const key = makeDayKey(day);
+          const dayEvents = [...(eventsByDay.get(key) ?? [])].sort(
+            (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+          );
+          const isToday = isSameDay(day, today);
+          return (
+            <div
+              key={i}
+              className={cn(
+                "cursor-pointer p-1.5 transition-colors hover:bg-blue-50/20",
+                isToday && "bg-blue-50/20",
+              )}
+              onClick={() => onDayClick(day)}
+            >
+              {dayEvents.length === 0 ? (
+                <div className="mt-8 text-center text-[11px] text-slate-300">No events</div>
+              ) : (
+                <div className="space-y-1">
+                  {dayEvents.map((event) => {
+                    const style = getEventTypeStyle(event.type);
+                    return (
+                      <button
+                        type="button"
+                        key={event.id}
+                        onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                        className={cn(
+                          "w-full rounded-lg border p-1.5 text-left transition-all hover:shadow-sm",
+                          style.bg,
+                          style.border,
+                          event.status === "CANCELLED" && "opacity-40",
+                        )}
+                      >
+                        <p className={cn("truncate text-[11px] font-bold leading-snug", style.text)}>
+                          {event.title}
+                        </p>
+                        <p className={cn("mt-0.5 text-[10px] font-medium opacity-60", style.text)}>
+                          {formatTime(event.startsAt)}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Day Calendar ──────────────────────────────────────────────────────────────
+
+const DAY_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 – 23:00
+
+function DayCalendarView({
+  events,
+  baseDate,
+  onEventClick,
+  onCreateAtTime,
+}: {
+  events: ScheduleEvent[];
+  baseDate: Date;
+  onEventClick: (event: ScheduleEvent) => void;
+  onCreateAtTime: (date: Date, hour: number) => void;
+}) {
+  const today = new Date();
+  const isToday = isSameDay(baseDate, today);
+  const currentHour = today.getHours();
+
+  const dayEvents = events
+    .filter((e) => isSameDay(new Date(e.startsAt), baseDate))
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+  const eventsByHour = new Map<number, ScheduleEvent[]>();
+  for (const event of dayEvents) {
+    const hour = new Date(event.startsAt).getHours();
+    if (!eventsByHour.has(hour)) eventsByHour.set(hour, []);
+    eventsByHour.get(hour)!.push(event);
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200">
+      {/* Day header */}
+      <div className={cn("border-b border-slate-200 px-4 py-3", isToday ? "bg-blue-50" : "bg-slate-50")}>
+        <div className="flex items-center gap-3">
+          {isToday && (
+            <span className="rounded-full bg-[#0d3b84] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+              Today
+            </span>
+          )}
+          <p className={cn("font-bold text-sm", isToday ? "text-[#0d3b84]" : "text-slate-800")}>
+            {baseDate.toLocaleDateString("en-IN", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+          </p>
+          <span className="ml-auto text-[11px] font-medium text-slate-400">
+            {dayEvents.length} {dayEvents.length === 1 ? "event" : "events"}
+          </span>
+        </div>
+      </div>
+
+      {/* Hourly rows */}
+      <div className="divide-y divide-slate-100">
+        {DAY_HOURS.map((hour) => {
+          const hourEvents = eventsByHour.get(hour) ?? [];
+          const timeLabel = `${String(hour).padStart(2, "0")}:00`;
+          const isCurrentHour = isToday && currentHour === hour;
+
+          return (
+            <div
+              key={hour}
+              className={cn(
+                "flex min-h-[52px] gap-0",
+                hourEvents.length === 0 && "cursor-pointer hover:bg-blue-50/20",
+                isCurrentHour && "bg-amber-50/40",
+              )}
+              onClick={hourEvents.length === 0 ? () => onCreateAtTime(baseDate, hour) : undefined}
+            >
+              {/* Time label */}
+              <div
+                className={cn(
+                  "flex w-16 shrink-0 items-start justify-end pr-3 pt-3 text-[11px] font-semibold",
+                  isCurrentHour ? "text-amber-600" : "text-slate-400",
+                )}
+              >
+                {timeLabel}
+              </div>
+
+              {/* Vertical divider */}
+              <div className={cn("w-px shrink-0", isCurrentHour ? "bg-amber-300" : "bg-slate-100")} />
+
+              {/* Events */}
+              <div className="flex-1 space-y-1.5 px-3 py-2">
+                {hourEvents.map((event) => {
+                  const style = getEventTypeStyle(event.type);
+                  return (
+                    <button
+                      type="button"
+                      key={event.id}
+                      onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                      className={cn(
+                        "w-full rounded-xl border px-4 py-2.5 text-left transition-all hover:shadow-md",
+                        style.bg,
+                        style.border,
+                        event.status === "CANCELLED" && "opacity-40",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("truncate font-bold text-sm", style.text)}>{event.title}</p>
+                          <div className={cn("mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-medium opacity-70", style.text)}>
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatTime(event.startsAt)}
+                              {event.endsAt ? ` – ${formatTime(event.endsAt)}` : ""}
+                            </span>
+                            {event.batchCode && <span>· {event.batchCode}</span>}
+                            {event.location && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {event.location}
+                              </span>
+                            )}
+                            {event.meetingUrl && (
+                              <span className="flex items-center gap-1">
+                                <Video className="h-3 w-3" />
+                                Online
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", style.bg, style.text)}>
+                            {event.type}
+                          </span>
+                          <span className="text-[10px] font-medium text-slate-400">
+                            {event.status.replace("_", " ")}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ScheduleSection({ title, description }: { title: string; description: string }) {
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [baseDate, setBaseDate] = useState(new Date());
@@ -250,22 +684,6 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   }));
 
   const range = useMemo(() => getRangeForView(baseDate, viewMode), [baseDate, viewMode]);
-
-  const groupedEvents = useMemo(() => {
-    const groups = new Map<string, ScheduleEvent[]>();
-
-    for (const event of events) {
-      const dateLabel = new Date(event.startsAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-      const bucket = groups.get(dateLabel) ?? [];
-      bucket.push(event);
-      groups.set(dateLabel, bucket);
-    }
-
-    return Array.from(groups.entries()).map(([label, items]) => ({
-      label,
-      items: [...items].sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime()),
-    }));
-  }, [events]);
 
   const loadBatches = async () => {
     try {
@@ -322,21 +740,19 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     void loadEvents();
   }, [range.from.getTime(), range.to.getTime(), batchFilter]);
 
-  const resetForm = (batchId?: string) => {
-    const nextStart = new Date(Date.now() + 60 * 60 * 1000);
-    const nextEnd = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  const openCreate = (prefillDate?: Date, prefillHour?: number) => {
+    const nextStart = prefillDate
+      ? new Date(prefillDate.getFullYear(), prefillDate.getMonth(), prefillDate.getDate(), prefillHour ?? 9, 0, 0)
+      : new Date(Date.now() + 60 * 60 * 1000);
+    const nextEnd = new Date(nextStart.getTime() + 60 * 60 * 1000);
 
     setForm({
       ...DEFAULT_FORM,
-      batchId: batchId ?? batchFilter,
+      batchId: batchFilter,
       startsAt: toLocalDateTimeInput(nextStart),
       endsAt: toLocalDateTimeInput(nextEnd),
     });
     setFormError(null);
-  };
-
-  const openCreate = () => {
-    resetForm();
     setEditingEvent(null);
     setIsCreateOpen(true);
   };
@@ -461,7 +877,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
           <Badge variant="accent">{range.label}</Badge>
 
-          <Button type="button" onClick={openCreate}>
+          <Button type="button" onClick={() => openCreate()}>
             <Plus className="mr-1 h-4 w-4" />
             Create Event
           </Button>
@@ -477,27 +893,56 @@ export function ScheduleSection({ title, description }: { title: string; descrip
           <CardDescription>Manage classes, tests, quizzes, and contests with recurring support.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Batch Filter</label>
-            <select
-              value={batchFilter}
-              onChange={(event) => setBatchFilter(event.target.value)}
-              className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
-            >
-              <option value="">All Batches</option>
-              {batches.map((batch) => (
-                <option key={batch.id} value={batch.id}>
-                  {batch.code} - {batch.name}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Batch</label>
+              <select
+                value={batchFilter}
+                onChange={(event) => setBatchFilter(event.target.value)}
+                className="h-9 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+              >
+                <option value="">All Batches</option>
+                {batches.map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.code} – {batch.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {viewMode !== "list" && <CalendarLegend />}
           </div>
 
           {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
 
           {loading ? (
-            <p className="text-sm text-slate-500">Loading schedule...</p>
-          ) : viewMode === "list" ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#0d3b84]" />
+                Loading schedule...
+              </div>
+            </div>
+          ) : viewMode === "month" ? (
+            <MonthCalendarView
+              events={events}
+              baseDate={baseDate}
+              onEventClick={openEdit}
+              onDayClick={(date) => openCreate(date)}
+            />
+          ) : viewMode === "week" ? (
+            <WeekCalendarView
+              events={events}
+              baseDate={baseDate}
+              onEventClick={openEdit}
+              onDayClick={(date) => openCreate(date)}
+            />
+          ) : viewMode === "day" ? (
+            <DayCalendarView
+              events={events}
+              baseDate={baseDate}
+              onEventClick={openEdit}
+              onCreateAtTime={(date, hour) => openCreate(date, hour)}
+            />
+          ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-100">
               <Table>
                 <TableHeader className="bg-slate-50/80">
@@ -513,29 +958,54 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                 </TableHeader>
                 <TableBody>
                   {events.length > 0 ? (
-                    events.map((event) => (
-                      <TableRow key={event.id}>
-                        <TableCell>{event.batchCode}</TableCell>
-                        <TableCell className="font-semibold">{event.title}</TableCell>
-                        <TableCell>{event.type}</TableCell>
-                        <TableCell>{event.classMode ?? "-"}</TableCell>
-                        <TableCell>{formatDateTime(event.startsAt)}</TableCell>
-                        <TableCell>{event.status}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(event)}>
-                              Edit
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => void cancelEvent(event)}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    events.map((event) => {
+                      const style = getEventTypeStyle(event.type);
+                      return (
+                        <TableRow key={event.id} className={event.status === "CANCELLED" ? "opacity-50" : ""}>
+                          <TableCell className="font-mono text-xs text-slate-500">{event.batchCode}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-semibold text-slate-900">{event.title}</p>
+                              {event.isRecurring && <p className="text-[10px] text-slate-400">Recurring</p>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-bold",
+                                style.bg,
+                                style.text,
+                              )}
+                            >
+                              <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
+                              {event.type}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-500">{event.classMode ?? "—"}</TableCell>
+                          <TableCell className="text-xs text-slate-600">{formatDateTime(event.startsAt)}</TableCell>
+                          <TableCell>
+                            <Badge variant={getStatusBadgeVariant(event.status)}>
+                              {event.status.replace("_", " ")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(event)}>
+                                Edit
+                              </Button>
+                              {event.status !== "CANCELLED" && (
+                                <Button type="button" variant="ghost" size="sm" onClick={() => void cancelEvent(event)}>
+                                  Cancel
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-sm text-slate-500">
+                      <TableCell colSpan={7} className="py-12 text-center text-sm text-slate-400">
                         No schedule events in this range.
                       </TableCell>
                     </TableRow>
@@ -543,34 +1013,6 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                 </TableBody>
               </Table>
             </div>
-          ) : groupedEvents.length > 0 ? (
-            <div className="space-y-4">
-              {groupedEvents.map((group) => (
-                <div key={group.label} className="rounded-2xl border border-slate-100 bg-white p-4">
-                  <p className="mb-3 text-sm font-black uppercase tracking-[0.12em] text-slate-500">{group.label}</p>
-                  <div className="space-y-2">
-                    {group.items.map((event) => (
-                      <button
-                        type="button"
-                        key={event.id}
-                        onClick={() => openEdit(event)}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left transition hover:border-slate-300 hover:bg-white"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-semibold text-slate-900">{event.title}</p>
-                          <Badge variant="info">{event.type}</Badge>
-                        </div>
-                        <p className="text-sm text-slate-600">
-                          {event.batchCode} | {formatDateTime(event.startsAt)} | {event.classMode ?? "-"}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">No schedule events in this range.</p>
           )}
         </CardContent>
       </Card>

@@ -2,13 +2,14 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
-import { AuditActionType, AuditEntityType, UserRole } from "@prisma/client";
+import { AuditActionType, AuditEntityType } from "@prisma/client";
 
 import { hashPassword } from "@/lib/auth/password";
 import { CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
 import { createAuditLogEntry, deliverLoggedEmail } from "@/services/logs-actions-service";
+import { addRoleToUser } from "@/services/rbac-service";
 import { CreateLearnerEnrollmentInput, CreateLearnerInput, GetLearnersInput } from "@/lib/validation-schemas/learners";
 import { LearnerActiveEnrollment, LearnerDetail, LearnerListItem, LearnersResponse } from "@/types";
 
@@ -655,7 +656,7 @@ export async function getCandidateProfileByUserIdService(userId: string): Promis
     return {
       ...mockLearner,
       userId,
-      role: UserRole.CANDIDATE,
+      role: "CANDIDATE",
       pathway: "Germany Pathway",
     };
   }
@@ -667,7 +668,6 @@ export async function getCandidateProfileByUserIdService(userId: string): Promis
         user: {
           select: {
             id: true,
-            role: true,
           },
         },
         recruiterSyncLogs: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -692,7 +692,7 @@ export async function getCandidateProfileByUserIdService(userId: string): Promis
     return {
       ...mapLearnerToDetail(learner),
       userId: learner.user.id,
-      role: learner.user.role,
+      role: "CANDIDATE",
       pathway,
     };
   } catch (error) {
@@ -778,7 +778,6 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
             name: normalizedFullName,
             phone: normalizedPhone,
             password: hashedTemporaryPassword,
-            role: UserRole.CANDIDATE,
             isActive: true,
             metadata: {
               createdFrom: "candidate-enrollment",
@@ -830,6 +829,11 @@ export async function createLearnerService(input: CreateLearnerInput): Promise<L
           createdUser,
         };
       }, { maxWait: 10_000, timeout: 15_000 });
+
+      const candidateRole = await prisma.role.findUnique({ where: { code: "CANDIDATE" } });
+      if (candidateRole) {
+        await addRoleToUser(createdResult.createdUser.id, candidateRole.id);
+      }
 
       const learner = await prisma.learner.findUniqueOrThrow({
         where: { id: createdResult.learnerId },

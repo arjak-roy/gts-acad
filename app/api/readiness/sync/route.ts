@@ -1,16 +1,14 @@
+import type { NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { requirePermission } from "@/lib/auth/route-guards";
 import { syncReadinessStatusSchema } from "@/lib/validation-schemas/readiness";
 import { syncReadinessStatusService } from "@/services/readiness-service";
 
-/**
- * Triggers readiness sync for a learner to an external destination.
- * Validates request payload and delegates orchestration to the service layer.
- * Revalidates pages that display recruiter sync status and readiness state.
- */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    await requirePermission(request, "readiness.manage");
     const body = await request.json();
     const input = syncReadinessStatusSchema.parse(body);
     const result = await syncReadinessStatusService(input);

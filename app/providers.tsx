@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
 import { LoadingProvider } from "@/lib/loading-context";
+import { RbacProvider } from "@/lib/rbac-context";
 
 type ProvidersProps = {
   children: ReactNode;
@@ -26,7 +27,9 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <LoadingProvider>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <RbacProvider>{children}</RbacProvider>
+      </QueryClientProvider>
     </LoadingProvider>
   );
 }

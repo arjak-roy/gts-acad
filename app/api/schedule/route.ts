@@ -1,19 +1,13 @@
 import type { NextRequest } from "next/server";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
+import { requirePermission } from "@/lib/auth/route-guards";
 import { createScheduleEventSchema, listScheduleEventsQuerySchema } from "@/lib/validation-schemas/schedule";
 import { createScheduleEventService, listScheduleEventsService } from "@/services/schedule-service";
 
-function assertScheduleWriteRole(role: string) {
-  const normalizedRole = role.toUpperCase();
-  if (normalizedRole !== "ADMIN" && normalizedRole !== "TRAINER") {
-    throw new Error("Forbidden: admin or trainer role is required.");
-  }
-}
-
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    await requirePermission(request, "schedule.view");
     const { searchParams } = new URL(request.url);
     const query = listScheduleEventsQuerySchema.parse({
       batchId: searchParams.get("batchId") ?? undefined,
@@ -35,9 +29,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuthenticatedSession(request);
-    assertScheduleWriteRole(session.role);
-
+    const session = await requirePermission(request, "schedule.create");
     const body = await request.json();
     const input = createScheduleEventSchema.parse(body);
     const result = await createScheduleEventService(input, session.userId);

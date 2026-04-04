@@ -4,13 +4,16 @@ import { startTransition, useDeferredValue, useEffect, useRef, useState } from "
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bell, Menu, Plus, Search, User } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useRbac } from "@/lib/rbac-context";
 
 export function AppHeader() {
   const shouldRedirectFromHeader = useRef(false);
@@ -19,6 +22,9 @@ export function AppHeader() {
   const searchParams = useSearchParams();
   const toggleSidebar = useDashboardUI((state) => state.toggleSidebar);
   const toggleMobileSidebar = useDashboardUI((state) => state.toggleMobileSidebar);
+  const queryClient = useQueryClient();
+  const { user, roles } = useRbac();
+  const primaryRole = roles[0];
   const isDashboardPage = pathname === "/dashboard";
   const isSearchPage = pathname === "/search";
   const initialQuery = isDashboardPage ? searchParams.get("query") ?? "" : isSearchPage ? searchParams.get("q") ?? "" : "";
@@ -29,6 +35,7 @@ export function AppHeader() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
+      queryClient.removeQueries({ queryKey: ["auth", "permissions"] });
       router.replace("/login");
       router.refresh();
     }
@@ -125,40 +132,57 @@ export function AppHeader() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem asChild>
-                <Link href="/learners">Enroll Learner</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/courses">Create Course</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/programs">Create Program</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/batches">Create Batch</Link>
-              </DropdownMenuItem>
+              <CanAccess permission="users.create">
+                <DropdownMenuItem asChild>
+                  <Link href="/learners">Enroll Learner</Link>
+                </DropdownMenuItem>
+              </CanAccess>
+              <CanAccess permission="courses.create">
+                <DropdownMenuItem asChild>
+                  <Link href="/courses">Create Course</Link>
+                </DropdownMenuItem>
+              </CanAccess>
+              <CanAccess permission="programs.create">
+                <DropdownMenuItem asChild>
+                  <Link href="/programs">Create Program</Link>
+                </DropdownMenuItem>
+              </CanAccess>
+              <CanAccess permission="batches.create">
+                <DropdownMenuItem asChild>
+                  <Link href="/batches">Create Batch</Link>
+                </DropdownMenuItem>
+              </CanAccess>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/assessments">Schedule Assessment</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/certifications">Issue Certificate</Link>
-              </DropdownMenuItem>
+              <CanAccess permission="assessments.create">
+                <DropdownMenuItem asChild>
+                  <Link href="/assessments">Schedule Assessment</Link>
+                </DropdownMenuItem>
+              </CanAccess>
+              <CanAccess permission="certifications.create">
+                <DropdownMenuItem asChild>
+                  <Link href="/certifications">Issue Certificate</Link>
+                </DropdownMenuItem>
+              </CanAccess>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="rounded-full transition-shadow hover:ring-2 hover:ring-[#0d3b84]/20 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]">
                 <Avatar className="h-9 w-9 border border-slate-100 bg-slate-100 md:h-10 md:w-10">
-                  <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=AdminArunima" alt="Arunima Singh" />
-                  <AvatarFallback>AS</AvatarFallback>
+                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user?.email ?? "user")}`} alt={user?.name ?? "User"} />
+                  <AvatarFallback>
+                    {(user?.name ?? "U").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
               <div className="border-b border-slate-100 px-4 py-3">
-                <p className="font-bold text-slate-900">Arunima Singh</p>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-primary">Ops Lead • Academy</p>
+                <p className="font-bold text-slate-900">{user?.name ?? "—"}</p>
+                <p className="mt-0.5 truncate text-xs text-slate-400">{user?.email ?? ""}</p>
+                {primaryRole && (
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-primary">{primaryRole.name}</p>
+                )}
               </div>
               <DropdownMenuItem>
                 <User className="mr-2 h-4 w-4" />

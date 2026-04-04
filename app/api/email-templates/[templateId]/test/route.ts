@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
+import { requirePermission } from "@/lib/auth/route-guards";
 import { emailTemplateIdSchema, sendTestEmailTemplateSchema } from "@/lib/validation-schemas/email-templates";
 import { sendTestEmailTemplateService } from "@/services/email-templates-service";
 
@@ -14,7 +14,7 @@ type RouteContext = {
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const { templateId } = emailTemplateIdSchema.parse(params);
-    const session = await requireAuthenticatedSession(request);
+    const session = await requirePermission(request, "email_templates.edit");
     const body = await request.json().catch(() => ({}));
     const input = sendTestEmailTemplateSchema.parse(body);
 

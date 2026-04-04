@@ -1,10 +1,13 @@
-export const UserRole = {
-  ADMIN: "ADMIN",
+export const SystemRoleCode = {
+  SUPER_ADMIN: "SUPER_ADMIN",
+  ACADEMY_ADMIN: "ACADEMY_ADMIN",
   TRAINER: "TRAINER",
-  LEARNER: "LEARNER",
+  CONTENT_MANAGER: "CONTENT_MANAGER",
+  SUPPORT_USER: "SUPPORT_USER",
+  CANDIDATE: "CANDIDATE",
 } as const;
 
-export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+export type SystemRoleCode = (typeof SystemRoleCode)[keyof typeof SystemRoleCode];
 
 export const ProgramType = {
   LANGUAGE: "LANGUAGE",

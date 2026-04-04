@@ -82,7 +82,7 @@ export const listScheduleEventsQuerySchema = z
     status: scheduleEventStatusSchema.optional(),
     search: z.string().trim().max(255).optional(),
     page: z.coerce.number().int().min(1).optional().default(1),
-    pageSize: z.coerce.number().int().min(1).max(200).optional().default(100),
+    pageSize: z.coerce.number().int().min(1).max(500).optional().default(100),
   })
   .refine((value) => {
     if (!value.from || !value.to) {

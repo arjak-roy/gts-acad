@@ -12,7 +12,6 @@ import {
   PrismaClient,
   ProgramType,
   SyncStatus,
-  UserRole,
 } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
 
@@ -101,13 +100,149 @@ const LAST_NAMES = [
   "Chopra", "Bhatt", "Shetty", "Ghosh", "Kohli", "Rastogi", "Tiwari", "Lal", "Nambiar", "Raman",
 ];
 
-async function upsertUser({ email, name, phone, password, role }) {
+const SYSTEM_ROLES = [
+  { code: "SUPER_ADMIN", name: "Super Admin", description: "Full access to all modules and actions" },
+  { code: "ACADEMY_ADMIN", name: "Academy Admin", description: "Manage learners, courses, programs, batches, trainers, assessments" },
+  { code: "TRAINER", name: "Trainer", description: "Schedule, attendance, assessments within assigned context" },
+  { code: "CONTENT_MANAGER", name: "Content Manager", description: "Courses, programs, LMS, email templates" },
+  { code: "SUPPORT_USER", name: "Support User", description: "Support tickets, learner view-only" },
+  { code: "CANDIDATE", name: "Candidate", description: "Candidate app access (no admin portal permissions)" },
+];
+
+const PERMISSION_DEFINITIONS = [
+  { module: "dashboard", action: "view", key: "dashboard.view", description: "View dashboard" },
+  { module: "users", action: "view", key: "users.view", description: "View learners/users" },
+  { module: "users", action: "create", key: "users.create", description: "Create learners/users" },
+  { module: "users", action: "edit", key: "users.edit", description: "Edit learners/users" },
+  { module: "users", action: "delete", key: "users.delete", description: "Delete learners/users" },
+  { module: "courses", action: "view", key: "courses.view", description: "View courses" },
+  { module: "courses", action: "create", key: "courses.create", description: "Create courses" },
+  { module: "courses", action: "edit", key: "courses.edit", description: "Edit courses" },
+  { module: "courses", action: "delete", key: "courses.delete", description: "Delete courses" },
+  { module: "programs", action: "view", key: "programs.view", description: "View programs" },
+  { module: "programs", action: "create", key: "programs.create", description: "Create programs" },
+  { module: "programs", action: "edit", key: "programs.edit", description: "Edit programs" },
+  { module: "programs", action: "delete", key: "programs.delete", description: "Delete programs" },
+  { module: "batches", action: "view", key: "batches.view", description: "View batches" },
+  { module: "batches", action: "create", key: "batches.create", description: "Create batches" },
+  { module: "batches", action: "edit", key: "batches.edit", description: "Edit batches" },
+  { module: "batches", action: "delete", key: "batches.delete", description: "Delete batches" },
+  { module: "trainers", action: "view", key: "trainers.view", description: "View trainers" },
+  { module: "trainers", action: "create", key: "trainers.create", description: "Create trainers" },
+  { module: "trainers", action: "edit", key: "trainers.edit", description: "Edit trainers" },
+  { module: "trainers", action: "delete", key: "trainers.delete", description: "Delete trainers" },
+  { module: "trainers", action: "manage", key: "trainers.manage", description: "Manage trainer assignments" },
+  { module: "schedule", action: "view", key: "schedule.view", description: "View schedule" },
+  { module: "schedule", action: "create", key: "schedule.create", description: "Create schedule events" },
+  { module: "schedule", action: "edit", key: "schedule.edit", description: "Edit schedule events" },
+  { module: "schedule", action: "delete", key: "schedule.delete", description: "Delete schedule events" },
+  { module: "attendance", action: "view", key: "attendance.view", description: "View attendance" },
+  { module: "attendance", action: "manage", key: "attendance.manage", description: "Mark/manage attendance" },
+  { module: "assessments", action: "view", key: "assessments.view", description: "View assessments" },
+  { module: "assessments", action: "create", key: "assessments.create", description: "Create assessments" },
+  { module: "assessments", action: "edit", key: "assessments.edit", description: "Edit assessments" },
+  { module: "assessments", action: "delete", key: "assessments.delete", description: "Delete assessments" },
+  { module: "assessments", action: "publish", key: "assessments.publish", description: "Publish assessments" },
+  { module: "certifications", action: "view", key: "certifications.view", description: "View certifications" },
+  { module: "certifications", action: "create", key: "certifications.create", description: "Create certifications" },
+  { module: "certifications", action: "edit", key: "certifications.edit", description: "Edit certifications" },
+  { module: "certifications", action: "delete", key: "certifications.delete", description: "Delete certifications" },
+  { module: "readiness", action: "view", key: "readiness.view", description: "View readiness" },
+  { module: "readiness", action: "manage", key: "readiness.manage", description: "Manage readiness/sync" },
+  { module: "lms", action: "view", key: "lms.view", description: "View LMS content" },
+  { module: "lms", action: "create", key: "lms.create", description: "Create LMS content" },
+  { module: "lms", action: "edit", key: "lms.edit", description: "Edit LMS content" },
+  { module: "lms", action: "manage", key: "lms.manage", description: "Manage LMS settings" },
+  { module: "quizzes", action: "view", key: "quizzes.view", description: "View quizzes" },
+  { module: "quizzes", action: "create", key: "quizzes.create", description: "Create quizzes" },
+  { module: "quizzes", action: "edit", key: "quizzes.edit", description: "Edit quizzes" },
+  { module: "quizzes", action: "delete", key: "quizzes.delete", description: "Delete quizzes" },
+  { module: "quizzes", action: "publish", key: "quizzes.publish", description: "Publish quizzes" },
+  { module: "payments", action: "view", key: "payments.view", description: "View payments" },
+  { module: "payments", action: "manage", key: "payments.manage", description: "Manage payments" },
+  { module: "support", action: "view", key: "support.view", description: "View support tickets" },
+  { module: "support", action: "manage", key: "support.manage", description: "Manage support tickets" },
+  { module: "logs", action: "view", key: "logs.view", description: "View logs and actions" },
+  { module: "settings", action: "view", key: "settings.view", description: "View settings" },
+  { module: "settings", action: "edit", key: "settings.edit", description: "Edit settings" },
+  { module: "email_templates", action: "view", key: "email_templates.view", description: "View email templates" },
+  { module: "email_templates", action: "create", key: "email_templates.create", description: "Create email templates" },
+  { module: "email_templates", action: "edit", key: "email_templates.edit", description: "Edit email templates" },
+  { module: "email_templates", action: "delete", key: "email_templates.delete", description: "Delete email templates" },
+  { module: "roles", action: "view", key: "roles.view", description: "View roles and permissions" },
+  { module: "roles", action: "create", key: "roles.create", description: "Create roles" },
+  { module: "roles", action: "edit", key: "roles.edit", description: "Edit roles and permission assignments" },
+  { module: "roles", action: "delete", key: "roles.delete", description: "Delete roles" },
+];
+
+// SUPER_ADMIN gets implicit bypass in code — no explicit permissions needed.
+// CANDIDATE gets no admin portal permissions.
+const ROLE_PERMISSION_MAP = {
+  ACADEMY_ADMIN: [
+    "dashboard.view",
+    "users.view", "users.create", "users.edit", "users.delete",
+    "courses.view", "courses.create", "courses.edit", "courses.delete",
+    "programs.view", "programs.create", "programs.edit", "programs.delete",
+    "batches.view", "batches.create", "batches.edit", "batches.delete",
+    "trainers.view", "trainers.create", "trainers.edit", "trainers.delete", "trainers.manage",
+    "schedule.view", "schedule.create", "schedule.edit", "schedule.delete",
+    "attendance.view", "attendance.manage",
+    "assessments.view", "assessments.create", "assessments.edit", "assessments.delete", "assessments.publish",
+    "certifications.view", "certifications.create", "certifications.edit", "certifications.delete",
+    "readiness.view", "readiness.manage",
+    "lms.view", "lms.create", "lms.edit", "lms.manage",
+    "quizzes.view", "quizzes.create", "quizzes.edit", "quizzes.delete", "quizzes.publish",
+    "payments.view", "payments.manage",
+    "support.view", "support.manage",
+    "logs.view",
+    "settings.edit",
+    "email_templates.view", "email_templates.edit",
+  ],
+  TRAINER: [
+    "dashboard.view",
+    "courses.view",
+    "programs.view",
+    "batches.view",
+    "trainers.view",
+    "schedule.view", "schedule.create", "schedule.edit", "schedule.delete",
+    "attendance.view", "attendance.manage",
+    "assessments.view", "assessments.create", "assessments.edit",
+    "certifications.view",
+    "readiness.view",
+    "lms.view",
+    "quizzes.view", "quizzes.create", "quizzes.edit",
+  ],
+  CONTENT_MANAGER: [
+    "dashboard.view",
+    "courses.view", "courses.create", "courses.edit", "courses.delete",
+    "programs.view", "programs.create", "programs.edit", "programs.delete",
+    "assessments.view",
+    "lms.view", "lms.create", "lms.edit", "lms.manage",
+    "quizzes.view", "quizzes.create", "quizzes.edit", "quizzes.delete", "quizzes.publish",
+    "email_templates.view", "email_templates.create", "email_templates.edit", "email_templates.delete",
+  ],
+  SUPPORT_USER: [
+    "dashboard.view",
+    "users.view",
+    "support.view", "support.manage",
+  ],
+};
+
+async function upsertUser({ email, name, phone, password }) {
   const hashedPassword = hashPassword(password);
 
   return prisma.user.upsert({
     where: { email },
-    update: { name, phone, password: hashedPassword, role, isActive: true },
-    create: { email, name, phone, password: hashedPassword, role, isActive: true, metadata: {} },
+    update: { name, phone, password: hashedPassword, isActive: true },
+    create: { email, name, phone, password: hashedPassword, isActive: true, metadata: {} },
+  });
+}
+
+async function assignUserRole(userId, roleId) {
+  await prisma.userRoleAssignment.upsert({
+    where: { userId_roleId: { userId, roleId } },
+    update: {},
+    create: { userId, roleId },
   });
 }
 
@@ -139,13 +274,75 @@ function placementForIndex(index) {
 }
 
 async function seed() {
+  // --- Seed RBAC: Roles ---
+  const roleRecords = {};
+  for (const roleDef of SYSTEM_ROLES) {
+    const role = await prisma.role.upsert({
+      where: { code: roleDef.code },
+      update: { name: roleDef.name, description: roleDef.description, isSystemRole: true, isActive: true },
+      create: { name: roleDef.name, code: roleDef.code, description: roleDef.description, isSystemRole: true, isActive: true },
+    });
+    roleRecords[roleDef.code] = role;
+  }
+
+  // --- Seed RBAC: Permissions ---
+  const permissionRecords = {};
+  for (const permDef of PERMISSION_DEFINITIONS) {
+    const perm = await prisma.permission.upsert({
+      where: { key: permDef.key },
+      update: { module: permDef.module, action: permDef.action, description: permDef.description },
+      create: { module: permDef.module, action: permDef.action, key: permDef.key, description: permDef.description },
+    });
+    permissionRecords[permDef.key] = perm;
+  }
+
+  // --- Seed RBAC: Role-Permission matrix ---
+  for (const [roleCode, permKeys] of Object.entries(ROLE_PERMISSION_MAP)) {
+    const role = roleRecords[roleCode];
+    for (const permKey of permKeys) {
+      const perm = permissionRecords[permKey];
+      if (!perm) continue;
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: role.id, permissionId: perm.id } },
+        update: {},
+        create: { roleId: role.id, permissionId: perm.id },
+      });
+    }
+  }
+
+  // --- Seed admin user ---
   const adminUser = await upsertUser({
     email: "arjakroy2411@gmail.com",
     name: "Academy Admin",
     phone: "+91-9000000001",
     password: "dev-password",
-    role: UserRole.ADMIN,
   });
+  await assignUserRole(adminUser.id, roleRecords.SUPER_ADMIN.id);
+
+  // --- Seed additional test users for each role ---
+  const academyAdminUser = await upsertUser({
+    email: "academyadmin@gts-academy.test",
+    name: "Academy Admin User",
+    phone: "+91-9000000050",
+    password: "dev-password",
+  });
+  await assignUserRole(academyAdminUser.id, roleRecords.ACADEMY_ADMIN.id);
+
+  const contentMgrUser = await upsertUser({
+    email: "contentmgr@gts-academy.test",
+    name: "Content Manager",
+    phone: "+91-9000000051",
+    password: "dev-password",
+  });
+  await assignUserRole(contentMgrUser.id, roleRecords.CONTENT_MANAGER.id);
+
+  const supportUser = await upsertUser({
+    email: "supportuser@gts-academy.test",
+    name: "Support User",
+    phone: "+91-9000000052",
+    password: "dev-password",
+  });
+  await assignUserRole(supportUser.id, roleRecords.SUPPORT_USER.id);
 
   await prisma.currency.upsert({ where: { code: "INR" }, update: { symbol: "Rs" }, create: { code: "INR", symbol: "Rs" } });
 
@@ -258,8 +455,8 @@ async function seed() {
       name: profile.name,
       phone: profile.phone,
       password: "dev-password",
-      role: UserRole.TRAINER,
     });
+    await assignUserRole(user.id, roleRecords.TRAINER.id);
 
     const assignedPrograms = [programRecords[i % programRecords.length].name, programRecords[(i + 3) % programRecords.length].name];
 
@@ -667,6 +864,8 @@ async function seed() {
   const readyCount = await prisma.learner.count({ where: { placementStatus: PlacementStatus.PLACEMENT_READY } });
 
   console.log("Seed complete", {
+    roles: Object.keys(roleRecords).length,
+    permissions: Object.keys(permissionRecords).length,
     programs: programRecords.length,
     trainers: trainerRecords.length,
     learners: learnerRecords.length,
