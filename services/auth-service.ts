@@ -29,6 +29,7 @@ type AuthUser = {
   email: string;
   name: string;
   role: string;
+  requiresPasswordReset: boolean;
   security: {
     id: string;
     twoFactorEnabled: boolean;
@@ -74,6 +75,27 @@ type PasswordResetRequestMetadata = {
   requestIp?: string | null;
   userAgent?: string | null;
 };
+
+function getMetadataRecord(value: Prisma.JsonValue | null | undefined) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {} as Record<string, unknown>;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function requiresPasswordResetFromMetadata(value: Prisma.JsonValue | null | undefined) {
+  const metadata = getMetadataRecord(value);
+  return metadata.requiresPasswordReset === true;
+}
+
+function buildCompletedPasswordResetMetadata(value: Prisma.JsonValue | null | undefined, completedAt: string) {
+  return {
+    ...getMetadataRecord(value),
+    requiresPasswordReset: false,
+    passwordResetCompletedAt: completedAt,
+  };
+}
 
 function requireDatabase() {
   if (!isDatabaseConfigured) {
@@ -144,6 +166,7 @@ async function getUserByEmail(email: string) {
       email: true,
       name: true,
       password: true,
+      metadata: true,
       security: {
         select: {
           id: true,
@@ -352,6 +375,7 @@ function mapChallengeRows(rows: Array<{
   userId: string;
   userEmail: string;
   userName: string;
+  userMetadata: Prisma.JsonValue | null;
   securityId: string | null;
   twoFactorEnabled: boolean | null;
   recoveryCodes: string[] | null;
@@ -369,6 +393,7 @@ function mapChallengeRows(rows: Array<{
       email: row.userEmail,
       name: row.userName,
       role: "",
+      requiresPasswordReset: requiresPasswordResetFromMetadata(row.userMetadata),
       security: row.securityId
         ? {
             id: row.securityId,
@@ -441,6 +466,7 @@ async function validateChallenge(userId: string, challengeId: string, purpose: s
     userId: string;
     userEmail: string;
     userName: string;
+    userMetadata: Prisma.JsonValue | null;
     securityId: string | null;
     twoFactorEnabled: boolean | null;
     recoveryCodes: string[] | null;
@@ -457,6 +483,7 @@ async function validateChallenge(userId: string, challengeId: string, purpose: s
         u."user_id" AS "userId",
         u."email" AS "userEmail",
         u."full_name" AS "userName",
+        u."metadata" AS "userMetadata",
         s."id" AS "securityId",
         s."two_factor_enabled" AS "twoFactorEnabled",
         s."recovery_codes" AS "recoveryCodes"
@@ -505,6 +532,7 @@ async function finalizeLogin(userId: string) {
       id: true,
       email: true,
       name: true,
+      metadata: true,
       security: {
         select: {
           id: true,
@@ -517,7 +545,11 @@ async function finalizeLogin(userId: string) {
 
   const role = await getUserPrimaryRoleCode(userId);
 
-  return { ...user, role };
+  return {
+    ...user,
+    role,
+    requiresPasswordReset: requiresPasswordResetFromMetadata(user.metadata),
+  };
 }
 
 export async function loginWithPassword(email: string, password: string): Promise<LoginResult> {
@@ -550,6 +582,7 @@ export async function loginWithPassword(email: string, password: string): Promis
   const requiresTwoFactor = user.security?.twoFactorEnabled ?? true;
 
   const userRole = await getUserPrimaryRoleCode(user.id);
+  const requiresPasswordReset = requiresPasswordResetFromMetadata(user.metadata);
 
   if (!requiresTwoFactor) {
     return {
@@ -559,6 +592,7 @@ export async function loginWithPassword(email: string, password: string): Promis
         email: user.email,
         name: user.name,
         role: userRole,
+        requiresPasswordReset,
         security: user.security,
       },
     };
@@ -574,6 +608,7 @@ export async function loginWithPassword(email: string, password: string): Promis
       email: user.email,
       name: user.name,
       role: userRole,
+      requiresPasswordReset,
       security: user.security,
     },
     challengeId: challenge.id,
@@ -688,13 +723,24 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
   }
 
   const tokenRecord = await getPasswordResetTokenRecord(normalizedToken);
+  const passwordResetUser = await prisma.user.findUnique({
+    where: { id: tokenRecord.userId },
+    select: { metadata: true },
+  });
+
+  if (!passwordResetUser) {
+    throw new Error("User not found.");
+  }
+
   const nextPasswordHash = await hashPassword(normalizedPassword);
+  const completedAt = new Date().toISOString();
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: tokenRecord.userId },
       data: {
         password: nextPasswordHash,
+        metadata: buildCompletedPasswordResetMetadata(passwordResetUser.metadata, completedAt),
       },
     });
 
@@ -743,6 +789,80 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
   } catch (error) {
     console.warn("Password reset audit logging failed.", error);
   }
+}
+
+export async function changeAuthenticatedPassword(userId: string, currentPassword: string, nextPassword: string) {
+  requireDatabase();
+
+  const normalizedCurrentPassword = currentPassword.trim();
+  const normalizedNextPassword = nextPassword.trim();
+
+  if (!normalizedCurrentPassword) {
+    throw new Error("Current password is required.");
+  }
+
+  if (normalizedNextPassword.length < PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH} characters long.`);
+  }
+
+  if (normalizedCurrentPassword === normalizedNextPassword) {
+    throw new Error("New password must be different from the current password.");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+      metadata: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found.");
+  }
+
+  const passwordCheck = await verifyPassword(normalizedCurrentPassword, user.password);
+  if (!passwordCheck.isValid) {
+    throw new Error("Current password is invalid.");
+  }
+
+  const nextPasswordHash = await hashPassword(normalizedNextPassword);
+  const completedAt = new Date().toISOString();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        password: nextPasswordHash,
+        metadata: buildCompletedPasswordResetMetadata(user.metadata, completedAt),
+      },
+    });
+
+    await tx.userSecurity.upsert({
+      where: { userId },
+      update: {
+        passwordChangedAt: new Date(),
+      },
+      create: {
+        userId,
+        recoveryCodes: [],
+        passwordChangedAt: new Date(),
+      },
+    });
+  });
+
+  await createAuditLogEntry({
+    entityType: "AUTH",
+    entityId: userId,
+    action: "UPDATED",
+    status: "PASSWORD_CHANGED",
+    message: `Authenticated password change completed for ${maskEmail(user.email)}.`,
+    metadata: {
+      reason: "authenticated-password-change",
+    },
+  });
 }
 
 export async function startTwoFactorSetup(userId: string) {

@@ -1,6 +1,7 @@
 export const TWO_FACTOR_EMAIL_TEMPLATE_KEY = "auth-2fa-code";
 export const PASSWORD_RESET_EMAIL_TEMPLATE_KEY = "auth-password-reset";
 export const CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "candidate-welcome-credentials";
+export const INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "internal-user-welcome-credentials";
 
 export type EmailTemplateSource = {
   key: string;
@@ -120,6 +121,45 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
           </div>
           <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #334155;">Sign in here: <a href="{{loginUrl}}" style="color: #0d3b84;">{{loginUrl}}</a></p>
           <p style="margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: #475569;">For security, please reset your password immediately after your first login.</p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
+    name: "Internal User Welcome Credentials",
+    description: "Email sent when an internal user account is created from the admin portal.",
+    subject: "Your {{appName}} admin account is ready",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "Your internal account has been created.",
+      "",
+      "Login email: {{recipientEmail}}",
+      "Temporary password: {{temporaryPassword}}",
+      "Assigned roles: {{roleSummary}}",
+      "",
+      "Login here: {{loginUrl}}",
+      "",
+      "For security, sign in and change your password immediately.",
+      "If you need help, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Your admin workspace is ready</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your internal access has been provisioned.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Login email:</strong> {{recipientEmail}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Temporary password:</strong> {{temporaryPassword}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Assigned roles:</strong> {{roleSummary}}</p>
+          </div>
+          <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #334155;">Sign in here: <a href="{{loginUrl}}" style="color: #0d3b84;">{{loginUrl}}</a></p>
+          <p style="margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: #475569;">For security, change your password immediately after signing in.</p>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
         </div>
       </div>

@@ -52,6 +52,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Back Office",
     items: [
+      { href: "/users", label: "Users", icon: UserCog, requiredPermission: routePermissionMap["/users"] },
       { href: "/payments", label: "Fees & Payments", icon: Wallet, requiredPermission: routePermissionMap["/payments"] },
       { href: "/support", label: "Support Tickets", icon: HelpCircle, requiredPermission: routePermissionMap["/support"] },
       { href: "/logs-actions", label: "Logs & Actions", icon: ClipboardList, requiredPermission: routePermissionMap["/logs-actions"] },

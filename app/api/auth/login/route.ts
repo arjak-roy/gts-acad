@@ -20,6 +20,7 @@ type AuthenticatedUserPayload = {
   email: string;
   name: string;
   role: string;
+  requiresPasswordReset: boolean;
 };
 
 function isCandidateTwoFactorBypassEnabled(request: NextRequest) {
@@ -33,6 +34,7 @@ function isCandidateTwoFactorBypassEnabled(request: NextRequest) {
 async function buildAuthenticatedResponse(request: NextRequest, user: AuthenticatedUserPayload) {
   const response = apiSuccess({
     requiresTwoFactor: false,
+    requiresPasswordReset: user.requiresPasswordReset,
     user,
   });
 
@@ -42,6 +44,7 @@ async function buildAuthenticatedResponse(request: NextRequest, user: Authentica
       email: user.email,
       name: user.name,
       role: user.role,
+      requiresPasswordReset: user.requiresPasswordReset,
       state: "authenticated",
     },
     FULL_SESSION_MAX_AGE_SECONDS,
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
         email: result.user.email,
         name: result.user.name,
         role: result.user.role,
+        requiresPasswordReset: result.user.requiresPasswordReset,
       });
 
       return withCors(request, response, ["POST", "OPTIONS"]);
@@ -91,6 +95,7 @@ export async function POST(request: NextRequest) {
         email: result.user.email,
         name: result.user.name,
         role: result.user.role,
+        requiresPasswordReset: result.user.requiresPasswordReset,
       });
 
       return withCors(request, response, ["POST", "OPTIONS"]);
@@ -99,6 +104,7 @@ export async function POST(request: NextRequest) {
     const pendingMaxAgeSeconds = getTwoFactorCodeTtlMinutes() * 60;
     const response = apiSuccess({
       requiresTwoFactor: true,
+      requiresPasswordReset: result.user.requiresPasswordReset,
       maskedEmail: result.maskedEmail,
     });
 
@@ -108,6 +114,7 @@ export async function POST(request: NextRequest) {
         email: result.user.email,
         name: result.user.name,
         role: result.user.role,
+        requiresPasswordReset: result.user.requiresPasswordReset,
         state: "pending",
         challengeId: result.challengeId,
         purpose: "LOGIN",

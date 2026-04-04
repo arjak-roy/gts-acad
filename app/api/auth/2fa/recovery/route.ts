@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { recoveryCode } = recoverySchema.parse(body);
     const user = await verifyRecoveryCode(session.userId, session.challengeId, recoveryCode);
-    const response = apiSuccess({ ok: true });
+    const response = apiSuccess({ ok: true, requiresPasswordReset: user.requiresPasswordReset });
 
     const token = await createAuthSessionToken(
       {
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        requiresPasswordReset: user.requiresPasswordReset,
         state: "authenticated",
       },
       FULL_SESSION_MAX_AGE_SECONDS,
