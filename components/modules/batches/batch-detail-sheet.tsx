@@ -5,6 +5,7 @@ import { BookOpen, Calendar, MapPin, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 
@@ -199,9 +200,11 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
               <Button variant="secondary" onClick={() => handleOpenChange(false)}>
                 Close
               </Button>
-              <Button onClick={() => onEdit(batch.id)}>
-                Edit Batch
-              </Button>
+              <CanAccess permission="batches.edit">
+                <Button onClick={() => onEdit(batch.id)}>
+                  Edit Batch
+                </Button>
+              </CanAccess>
             </SheetFooter>
           </>
         ) : null}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 
@@ -257,9 +258,11 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
                     value={testRecipient}
                     onChange={(event) => setTestRecipient(event.target.value)}
                   />
-                  <Button type="button" onClick={handleSendTestEmail} disabled={isSendingTest}>
-                    {isSendingTest ? "Sending..." : "Send Test"}
-                  </Button>
+                  <CanAccess permission="email_templates.edit">
+                    <Button type="button" onClick={handleSendTestEmail} disabled={isSendingTest}>
+                      {isSendingTest ? "Sending..." : "Send Test"}
+                    </Button>
+                  </CanAccess>
                 </div>
                 {testMessage ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{testMessage}</p> : null}
                 {testError ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{testError}</p> : null}
@@ -270,7 +273,9 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
               <Button variant="secondary" onClick={() => handleOpenChange(false)}>
                 Close
               </Button>
-              <Button onClick={() => onEdit(template.id)}>Edit Template</Button>
+              <CanAccess permission="email_templates.edit">
+                <Button onClick={() => onEdit(template.id)}>Edit Template</Button>
+              </CanAccess>
             </SheetFooter>
           </>
         ) : null}

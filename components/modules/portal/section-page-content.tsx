@@ -28,6 +28,7 @@ import { ScheduleSection } from "@/components/modules/schedule/schedule-section"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
+import { CanAccess } from "@/components/ui/can-access";
 import { cn } from "@/lib/utils";
 import { PortalSectionContent, PortalSectionTableColumn, PortalSectionTableRow } from "@/types";
 
@@ -77,6 +78,22 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
   const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || sectionKey === "settings";
+
+  const editPermForSection =
+    sectionKey === "courses" ? "courses.edit" :
+    sectionKey === "batches" ? "batches.edit" :
+    sectionKey === "programs" ? "programs.edit" :
+    sectionKey === "trainers" ? "trainers.edit" :
+    sectionKey === "settings" ? "email_templates.edit" :
+    undefined;
+
+  const createPermForSection =
+    sectionKey === "courses" ? "courses.create" :
+    sectionKey === "batches" ? "batches.create" :
+    sectionKey === "programs" ? "programs.create" :
+    sectionKey === "trainers" ? "trainers.create" :
+    sectionKey === "settings" ? "email_templates.create" :
+    undefined;
 
   if (sectionKey === "logs-actions") {
     return <LogsActionsSection title={section.title} description={section.description} />;
@@ -243,22 +260,24 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
               <Button type="button" variant="ghost" size="sm" onClick={() => openViewer(row.original.id)}>
                 View
               </Button>
+            <CanAccess permission={editPermForSection}>
               <Button type="button" variant="ghost" size="sm" onClick={() => openEditor(row.original.id)}>
                 Edit
               </Button>
-              {sectionKey === "batches" ? (
-                <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
-                  Students
-                </Button>
-              ) : null}
-            </div>
-          ),
-        });
-      }
+            </CanAccess>
+            {sectionKey === "batches" ? (
+              <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
+                Students
+              </Button>
+            ) : null}
+          </div>
+        ),
+      });
+    }
 
-      return baseColumns;
-    },
-    [hasDetailActions, section.tableColumns],
+    return baseColumns;
+  },
+  [hasDetailActions, section.tableColumns, editPermForSection, sectionKey],
   );
 
   const table = useReactTable({
@@ -308,19 +327,21 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
           ) : null}
           <Badge variant="accent">{section.accent}</Badge>
           <Button variant="secondary">{section.secondaryAction}</Button>
-          {sectionKey === "courses" ? (
-            <AddCourseSheet />
-          ) : sectionKey === "programs" ? (
-            <AddProgramSheet />
-          ) : sectionKey === "batches" ? (
-            <CreateBatchSheet />
-          ) : sectionKey === "trainers" ? (
-            <AddTrainerSheet />
-          ) : sectionKey === "settings" ? (
-            <AddEmailTemplateSheet />
-          ) : (
-            <Button>{section.primaryAction}</Button>
-          )}
+          <CanAccess permission={createPermForSection}>
+            {sectionKey === "courses" ? (
+              <AddCourseSheet />
+            ) : sectionKey === "programs" ? (
+              <AddProgramSheet />
+            ) : sectionKey === "batches" ? (
+              <CreateBatchSheet />
+            ) : sectionKey === "trainers" ? (
+              <AddTrainerSheet />
+            ) : sectionKey === "settings" ? (
+              <AddEmailTemplateSheet />
+            ) : (
+              <Button>{section.primaryAction}</Button>
+            )}
+          </CanAccess>
         </div>
       </div>
 
@@ -401,9 +422,11 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
                             <Button type="button" variant="ghost" size="sm" onClick={() => openViewer(row.original.id)}>
                               View
                             </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => openEditor(row.original.id)}>
-                              Edit
-                            </Button>
+                            <CanAccess permission={editPermForSection}>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => openEditor(row.original.id)}>
+                                Edit
+                              </Button>
+                            </CanAccess>
                             {sectionKey === "batches" ? (
                               <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
                                 Students

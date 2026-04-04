@@ -7,9 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useRbac } from "@/lib/rbac-context";
 
 type ViewMode = "month" | "week" | "day" | "list";
 type EventType = "CLASS" | "TEST" | "QUIZ" | "CONTEST";
@@ -301,8 +303,8 @@ function MonthCalendarView({
 }: {
   events: ScheduleEvent[];
   baseDate: Date;
-  onEventClick: (event: ScheduleEvent) => void;
-  onDayClick: (date: Date) => void;
+  onEventClick?: (event: ScheduleEvent) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -355,12 +357,13 @@ function MonthCalendarView({
             <div
               key={index}
               className={cn(
-                "group relative min-h-[100px] cursor-pointer p-2 transition-colors hover:bg-blue-50/30",
+                "group relative min-h-[100px] p-2 transition-colors",
+                onDayClick && "cursor-pointer hover:bg-blue-50/30",
                 index % 7 !== 6 && "border-r border-slate-100",
                 index < 35 && "border-b border-slate-100",
                 !isCurrentMonth && "bg-slate-50/40",
               )}
-              onClick={() => onDayClick(date)}
+              onClick={onDayClick ? () => onDayClick(date) : undefined}
             >
               <div className="mb-1.5">
                 <span
@@ -383,9 +386,10 @@ function MonthCalendarView({
                     <button
                       type="button"
                       key={event.id}
-                      onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                      onClick={onEventClick ? (e) => { e.stopPropagation(); onEventClick(event); } : (e) => e.stopPropagation()}
                       className={cn(
-                        "block w-full truncate rounded px-1 py-[2px] text-left text-[10px] font-semibold leading-[14px] transition-opacity hover:opacity-75",
+                        "block w-full truncate rounded px-1 py-[2px] text-left text-[10px] font-semibold leading-[14px] transition-opacity",
+                        onEventClick ? "hover:opacity-75" : "cursor-default",
                         style.bg,
                         style.text,
                         event.status === "CANCELLED" && "line-through opacity-40",
@@ -418,8 +422,8 @@ function WeekCalendarView({
 }: {
   events: ScheduleEvent[];
   baseDate: Date;
-  onEventClick: (event: ScheduleEvent) => void;
-  onDayClick: (date: Date) => void;
+  onEventClick?: (event: ScheduleEvent) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const today = new Date();
   const dow = baseDate.getDay();
@@ -478,10 +482,11 @@ function WeekCalendarView({
             <div
               key={i}
               className={cn(
-                "cursor-pointer p-1.5 transition-colors hover:bg-blue-50/20",
+                "p-1.5 transition-colors",
+                onDayClick && "cursor-pointer hover:bg-blue-50/20",
                 isToday && "bg-blue-50/20",
               )}
-              onClick={() => onDayClick(day)}
+              onClick={onDayClick ? () => onDayClick(day) : undefined}
             >
               {dayEvents.length === 0 ? (
                 <div className="mt-8 text-center text-[11px] text-slate-300">No events</div>
@@ -493,9 +498,10 @@ function WeekCalendarView({
                       <button
                         type="button"
                         key={event.id}
-                        onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                        onClick={onEventClick ? (e) => { e.stopPropagation(); onEventClick(event); } : (e) => e.stopPropagation()}
                         className={cn(
-                          "w-full rounded-lg border p-1.5 text-left transition-all hover:shadow-sm",
+                          "w-full rounded-lg border p-1.5 text-left transition-all",
+                          onEventClick && "hover:shadow-sm",
                           style.bg,
                           style.border,
                           event.status === "CANCELLED" && "opacity-40",
@@ -532,8 +538,8 @@ function DayCalendarView({
 }: {
   events: ScheduleEvent[];
   baseDate: Date;
-  onEventClick: (event: ScheduleEvent) => void;
-  onCreateAtTime: (date: Date, hour: number) => void;
+  onEventClick?: (event: ScheduleEvent) => void;
+  onCreateAtTime?: (date: Date, hour: number) => void;
 }) {
   const today = new Date();
   const isToday = isSameDay(baseDate, today);
@@ -586,10 +592,10 @@ function DayCalendarView({
               key={hour}
               className={cn(
                 "flex min-h-[52px] gap-0",
-                hourEvents.length === 0 && "cursor-pointer hover:bg-blue-50/20",
+                hourEvents.length === 0 && onCreateAtTime && "cursor-pointer hover:bg-blue-50/20",
                 isCurrentHour && "bg-amber-50/40",
               )}
-              onClick={hourEvents.length === 0 ? () => onCreateAtTime(baseDate, hour) : undefined}
+              onClick={hourEvents.length === 0 && onCreateAtTime ? () => onCreateAtTime(baseDate, hour) : undefined}
             >
               {/* Time label */}
               <div
@@ -612,9 +618,10 @@ function DayCalendarView({
                     <button
                       type="button"
                       key={event.id}
-                      onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                      onClick={onEventClick ? (e) => { e.stopPropagation(); onEventClick(event); } : (e) => e.stopPropagation()}
                       className={cn(
-                        "w-full rounded-xl border px-4 py-2.5 text-left transition-all hover:shadow-md",
+                        "w-full rounded-xl border px-4 py-2.5 text-left transition-all",
+                        onEventClick && "hover:shadow-md",
                         style.bg,
                         style.border,
                         event.status === "CANCELLED" && "opacity-40",
@@ -666,6 +673,10 @@ function DayCalendarView({
 }
 
 export function ScheduleSection({ title, description }: { title: string; description: string }) {
+  const { can } = useRbac();
+  const canCreate = can("schedule.create");
+  const canEdit   = can("schedule.edit");
+  const canDelete = can("schedule.delete");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [baseDate, setBaseDate] = useState(new Date());
   const [batchFilter, setBatchFilter] = useState<string>("");
@@ -877,10 +888,12 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
           <Badge variant="accent">{range.label}</Badge>
 
-          <Button type="button" onClick={() => openCreate()}>
-            <Plus className="mr-1 h-4 w-4" />
-            Create Event
-          </Button>
+          <CanAccess permission="schedule.create">
+            <Button type="button" onClick={() => openCreate()}>
+              <Plus className="mr-1 h-4 w-4" />
+              Create Event
+            </Button>
+          </CanAccess>
         </div>
       </div>
 
@@ -925,22 +938,22 @@ export function ScheduleSection({ title, description }: { title: string; descrip
             <MonthCalendarView
               events={events}
               baseDate={baseDate}
-              onEventClick={openEdit}
-              onDayClick={(date) => openCreate(date)}
+              onEventClick={canEdit ? openEdit : undefined}
+              onDayClick={canCreate ? (date) => openCreate(date) : undefined}
             />
           ) : viewMode === "week" ? (
             <WeekCalendarView
               events={events}
               baseDate={baseDate}
-              onEventClick={openEdit}
-              onDayClick={(date) => openCreate(date)}
+              onEventClick={canEdit ? openEdit : undefined}
+              onDayClick={canCreate ? (date) => openCreate(date) : undefined}
             />
           ) : viewMode === "day" ? (
             <DayCalendarView
               events={events}
               baseDate={baseDate}
-              onEventClick={openEdit}
-              onCreateAtTime={(date, hour) => openCreate(date, hour)}
+              onEventClick={canEdit ? openEdit : undefined}
+              onCreateAtTime={canCreate ? (date, hour) => openCreate(date, hour) : undefined}
             />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -990,13 +1003,17 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
-                              <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(event)}>
-                                Edit
-                              </Button>
-                              {event.status !== "CANCELLED" && (
-                                <Button type="button" variant="ghost" size="sm" onClick={() => void cancelEvent(event)}>
-                                  Cancel
+                              <CanAccess permission="schedule.edit">
+                                <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(event)}>
+                                  Edit
                                 </Button>
+                              </CanAccess>
+                              {event.status !== "CANCELLED" && (
+                                <CanAccess permission="schedule.delete">
+                                  <Button type="button" variant="ghost" size="sm" onClick={() => void cancelEvent(event)}>
+                                    Cancel
+                                  </Button>
+                                </CanAccess>
                               )}
                             </div>
                           </TableCell>

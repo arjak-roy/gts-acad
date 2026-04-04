@@ -6,6 +6,7 @@ import { ExternalLink, GraduationCap, MapPin, Phone, ShieldCheck, UserRound } fr
 
 import { LearnerAssignmentsCard } from "@/components/modules/learners/learner-assignments-card";
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { useSyncReadiness } from "@/hooks/use-sync-readiness";
@@ -181,13 +182,17 @@ export function LearnerSheet({ learner }: LearnerSheetProps) {
               <Button variant="secondary" onClick={() => handleOpenChange(false)}>
                 Close
               </Button>
-              <Button variant="secondary" onClick={handleEdit}>
-                Edit Learner
-              </Button>
-              <Button onClick={handleSync} disabled={syncMutation.isPending}>
-                <ExternalLink className="h-4 w-4" />
-                {syncMutation.isPending ? "Syncing..." : "Push to Recruiter Workspace"}
-              </Button>
+              <CanAccess permission="users.edit">
+                <Button variant="secondary" onClick={handleEdit}>
+                  Edit Learner
+                </Button>
+              </CanAccess>
+              <CanAccess permission="readiness.manage">
+                <Button onClick={handleSync} disabled={syncMutation.isPending}>
+                  <ExternalLink className="h-4 w-4" />
+                  {syncMutation.isPending ? "Syncing..." : "Push to Recruiter Workspace"}
+                </Button>
+              </CanAccess>
             </SheetFooter>
           </>
         ) : null}

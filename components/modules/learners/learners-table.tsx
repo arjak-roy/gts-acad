@@ -13,6 +13,7 @@ import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPr
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EnrollCandidateSheet } from "@/components/modules/learners/enroll-candidate-sheet";
+import { CanAccess } from "@/components/ui/can-access";
 import { createSearchParams } from "@/lib/utils";
 import { LearnerListItem, LearnersResponse, PlacementStatus } from "@/types";
 
@@ -156,11 +157,13 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
 
           return (
             <div className="flex items-center justify-end gap-1">
-              <Button asChild variant="ghost" className="text-slate-600 hover:text-slate-900">
-                <Link href={`/learners?${editQuery}`} scroll={false}>
-                  Edit
-                </Link>
-              </Button>
+              <CanAccess permission="users.edit">
+                <Button asChild variant="ghost" className="text-slate-600 hover:text-slate-900">
+                  <Link href={`/learners?${editQuery}`} scroll={false}>
+                    Edit
+                  </Link>
+                </Button>
+              </CanAccess>
               <Button asChild variant="ghost" className="text-primary hover:text-primary">
                 <Link href={`/learners?${openQuery}`} scroll={false}>
                   Open
@@ -224,7 +227,9 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
             </select>
           ) : null}
           <Button variant="secondary">Filter Repository</Button>
-          <EnrollCandidateSheet />
+          <CanAccess permission="users.create">
+            <EnrollCandidateSheet />
+          </CanAccess>
         </div>
       </div>
 

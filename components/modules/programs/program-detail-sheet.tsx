@@ -5,6 +5,7 @@ import { BookOpen, Calendar, Tag } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 
@@ -322,9 +323,11 @@ export function ProgramDetailSheet({ programId, open, onOpenChange, onEdit }: Pr
               <Button variant="secondary" onClick={() => handleOpenChange(false)}>
                 Close
               </Button>
-              <Button onClick={() => onEdit(program.id)}>
-                Edit Program
-              </Button>
+              <CanAccess permission="programs.edit">
+                <Button onClick={() => onEdit(program.id)}>
+                  Edit Program
+                </Button>
+              </CanAccess>
             </SheetFooter>
           </>
         ) : null}

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -235,9 +236,11 @@ export function EditCourseSheet({ courseId, open, onOpenChange }: EditCourseShee
               <>
                 {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
                 <SheetFooter className="p-0 pt-2 sm:justify-end sm:border-0">
-                  <Button variant="ghost" type="button" className="text-rose-600" onClick={handleArchive} disabled={isSubmitting}>
-                    Archive
-                  </Button>
+                  <CanAccess permission="courses.delete">
+                    <Button variant="ghost" type="button" className="text-rose-600" onClick={handleArchive} disabled={isSubmitting}>
+                      Archive
+                    </Button>
+                  </CanAccess>
                   <Button variant="secondary" type="button" onClick={() => handleOpenChange(false)}>
                     Cancel
                   </Button>
