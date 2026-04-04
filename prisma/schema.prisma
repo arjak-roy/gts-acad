@@ -111,6 +111,15 @@ enum AssessmentMode {
   @@map("assessment_mode")
 }
 
+enum ScheduleEventType {
+  CLASS   @map("class")
+  TEST    @map("test")
+  QUIZ    @map("quiz")
+  CONTEST @map("contest")
+
+  @@map("schedule_event_type")
+}
+
 enum CertificateStatus {
   ISSUED  @map("issued")
   REVOKED @map("revoked")
@@ -245,6 +254,7 @@ model User {
   markedAttendance  AttendanceRecord[] @relation("AttendanceMarkedBy")
   recruiterSyncLogs RecruiterSyncLog[] @relation("SyncTriggeredBy")
   interviews        Interview[]        @relation("InterviewedBy")
+  createdScheduleEvents BatchScheduleEvent[] @relation("ScheduleEventCreatedBy")
   auditLogs         AuditLog[]         @relation("AuditActor")
   triggeredEmailLogs EmailLog[]        @relation("EmailTriggeredBy")
 
@@ -462,6 +472,7 @@ model Batch {
   program            Program            @relation(fields: [programId], references: [id], onDelete: Restrict)
   centre             TrainingCentre?    @relation(fields: [centreId], references: [id], onDelete: SetNull)
   enrollments        BatchEnrollment[]
+  scheduleEvents     BatchScheduleEvent[]
   assessments        Assessment[]
   performanceMetrics PerformanceMetric[]
   roleplays          Roleplay[]
@@ -589,10 +600,40 @@ model Assessment {
   createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   program     Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
   batch       Batch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  scheduleEvent BatchScheduleEvent? @relation("ScheduleEventAssessment")
   scores      AssessmentScore[]
 
   @@index([batchId], map: "idx_assessments_batch")
   @@map("assessments")
+}
+
+model BatchScheduleEvent {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("event_id")
+  batchId            String           @db.Uuid @map("batch_id")
+  linkedAssessmentId String?          @unique @db.Uuid @map("linked_assessment_id")
+  seriesId           String?          @db.Uuid @map("series_id")
+  occurrenceIndex    Int              @default(0) @map("occurrence_index")
+  title              String           @map("event_title") @db.VarChar(255)
+  description        String?          @map("event_description")
+  type               ScheduleEventType @map("event_type")
+  classMode          BatchMode?       @map("class_mode")
+  status             EvaluationStatus @default(SCHEDULED)
+  startsAt           DateTime         @map("starts_at") @db.Timestamptz(6)
+  endsAt             DateTime?        @map("ends_at") @db.Timestamptz(6)
+  location           String?          @db.VarChar(255)
+  meetingUrl         String?          @map("meeting_url")
+  recurrenceRule     Json             @default("{}") @map("recurrence_rule")
+  createdById        String?          @db.Uuid @map("created_by_user_id")
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  batch              Batch            @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  linkedAssessment   Assessment?      @relation("ScheduleEventAssessment", fields: [linkedAssessmentId], references: [id], onDelete: SetNull)
+  createdBy          User?            @relation("ScheduleEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([batchId, startsAt], map: "idx_batch_schedule_events_batch_starts_at")
+  @@index([seriesId, occurrenceIndex], map: "idx_batch_schedule_events_series_occurrence")
+  @@index([type, status], map: "idx_batch_schedule_events_type_status")
+  @@map("batch_schedule_events")
 }
 
 model AssessmentScore {

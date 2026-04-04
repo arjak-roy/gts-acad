@@ -63,6 +63,27 @@ const sectionConfig = {
     primaryAction: "Manage Batch",
     secondaryAction: "View Details",
   },
+  schedule: {
+    title: "Batch Schedule",
+    description: "Calendar-driven planning for classes, tests, quizzes, and contests across all batches.",
+    accent: "Calendar operations",
+    summary: "Plan and track recurring and one-time academic events.",
+    metrics: [],
+    highlights: [],
+    tableTitle: "Schedule Events",
+    tableDescription: "Upcoming and completed calendar events across batches.",
+    tableColumns: [
+      { key: "batch", header: "Batch" },
+      { key: "title", header: "Title" },
+      { key: "type", header: "Type" },
+      { key: "mode", header: "Mode" },
+      { key: "startsAt", header: "Start" },
+      { key: "status", header: "Status" },
+    ],
+    tableRows: [],
+    primaryAction: "Create Event",
+    secondaryAction: "Filter",
+  },
   trainers: {
     title: "Trainer Registry",
     description: "Managing faculty specialization, utilization, and quality signals.",
@@ -456,6 +477,59 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
               : batch.trainer?.user.name ?? "Unassigned",
           status: batch.status,
           learners: `${batch._count.enrollments}/${batch.capacity}`,
+        })),
+      };
+    }
+
+    if (section === "schedule") {
+      const now = new Date();
+      const thirtyDaysLater = new Date(now);
+      thirtyDaysLater.setDate(now.getDate() + 30);
+
+      const events = await prisma.batchScheduleEvent.findMany({
+        where: {
+          startsAt: {
+            gte: now,
+          },
+        },
+        orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
+        take: 200,
+        include: {
+          batch: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      const upcomingWindowEvents = events.filter((event) => event.startsAt <= thirtyDaysLater);
+      const recurringEvents = events.filter((event) => Boolean(event.seriesId)).length;
+
+      return {
+        ...base,
+        accent: `${upcomingWindowEvents.length} in next 30 days`,
+        metrics: [
+          { label: "Visible Events", value: String(events.length), helper: "Upcoming events loaded for operations view" },
+          { label: "Next 30 Days", value: String(upcomingWindowEvents.length), helper: "Near-term planning workload" },
+          { label: "Recurring", value: String(recurringEvents), helper: "Events generated from recurring schedules" },
+        ],
+        highlights: [
+          {
+            label: "Event Mix",
+            value: `Classes ${events.filter((event) => event.type === "CLASS").length} | Tests ${events.filter((event) => event.type === "TEST").length}`,
+            tone: "info",
+          },
+        ],
+        tableRows: events.map((event) => ({
+          id: event.id,
+          batch: `${event.batch.code} - ${event.batch.name}`,
+          title: event.title,
+          type: event.type,
+          mode: event.classMode ?? "-",
+          startsAt: new Date(event.startsAt).toLocaleString("en-IN"),
+          status: event.status,
         })),
       };
     }

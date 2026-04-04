@@ -27,6 +27,7 @@ const navGroups = [
   {
     label: "Academics",
     items: [
+      { href: "/schedule", label: "Schedule", icon: CalendarCheck },
       { href: "/attendance", label: "Attendance", icon: CalendarCheck },
       { href: "/assessments", label: "Assessments", icon: ClipboardList },
       { href: "/certifications", label: "Certifications", icon: Award },

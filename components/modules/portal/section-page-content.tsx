@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CreateBatchSheet } from "@/components/modules/batches/create-batch-sheet";
 import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet";
 import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
+import { ScheduleSection } from "@/components/modules/schedule/schedule-section";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
@@ -79,6 +80,10 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
   if (sectionKey === "logs-actions") {
     return <LogsActionsSection title={section.title} description={section.description} />;
+  }
+
+  if (sectionKey === "schedule") {
+    return <ScheduleSection title={section.title} description={section.description} />;
   }
 
   useEffect(() => {

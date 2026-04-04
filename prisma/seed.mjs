@@ -1,6 +1,4 @@
 import {
-  randomBytes,
-  scryptSync,
   AssessmentMode,
   AssessmentType,
   AttendanceStatus,
@@ -16,6 +14,7 @@ import {
   SyncStatus,
   UserRole,
 } from "@prisma/client";
+import { randomBytes, scryptSync } from "node:crypto";
 
 import { loadLocalEnv } from "../scripts/load-local-env.mjs";
 
@@ -141,7 +140,7 @@ function placementForIndex(index) {
 
 async function seed() {
   const adminUser = await upsertUser({
-    email: "admin@gts-academy.test",
+    email: "arjakroy2411@gmail.com",
     name: "Academy Admin",
     phone: "+91-9000000001",
     password: "dev-password",
