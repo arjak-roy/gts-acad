@@ -14,7 +14,11 @@ import {
   hashSensitiveToken,
   maskEmail,
 } from "@/lib/auth/two-factor";
-import { PASSWORD_RESET_EMAIL_TEMPLATE_KEY, TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
+import {
+  INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
+  PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+  TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+} from "@/lib/mail-templates/email-template-defaults";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
 import { createAuditLogEntry, deliverLoggedEmail } from "@/services/logs-actions-service";
 
@@ -97,6 +101,11 @@ function buildCompletedPasswordResetMetadata(value: Prisma.JsonValue | null | un
   };
 }
 
+function isInternalAccount(value: Prisma.JsonValue | null | undefined) {
+  const metadata = getMetadataRecord(value);
+  return typeof metadata.accountType === "string" && metadata.accountType.toUpperCase() === "INTERNAL";
+}
+
 function requireDatabase() {
   if (!isDatabaseConfigured) {
     throw new Error("Authentication requires database configuration.");
@@ -129,26 +138,58 @@ function getPasswordResetResendCooldownSeconds() {
   );
 }
 
-function getPasswordResetUrlBase() {
-  const candidateOrigin = process.env.AUTH_PASSWORD_RESET_URL_BASE?.trim();
-  if (candidateOrigin) {
-    return candidateOrigin.replace(/\/$/, "");
+function normalizeOrigin(origin: string | undefined) {
+  const normalized = origin?.trim();
+  if (!normalized) {
+    return null;
   }
 
-  const fallbackOrigin =
-    process.env.CANDIDATE_APP_ORIGIN?.trim() ?? process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN?.trim() ?? process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized.replace(/\/$/, "");
+  }
 
-  return fallbackOrigin ? fallbackOrigin.replace(/\/$/, "") : null;
+  return `https://${normalized}`.replace(/\/$/, "");
 }
 
-function buildPasswordResetUrl(resetToken: string) {
-  const urlBase = getPasswordResetUrlBase();
+function getInternalAppBaseUrl() {
+  return (
+    normalizeOrigin(process.env.INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(process.env.AUTH_PASSWORD_RESET_URL_BASE) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL)
+  );
+}
+
+function getPasswordResetUrlBase(isInternalUser: boolean) {
+  if (isInternalUser) {
+    return getInternalAppBaseUrl();
+  }
+
+  return (
+    normalizeOrigin(process.env.AUTH_PASSWORD_RESET_URL_BASE) ??
+    normalizeOrigin(process.env.CANDIDATE_APP_ORIGIN) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL)
+  );
+}
+
+function buildPasswordResetUrl(resetToken: string, isInternalUser: boolean) {
+  const urlBase = getPasswordResetUrlBase(isInternalUser);
 
   if (!urlBase) {
     return null;
   }
 
   return `${urlBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
+}
+
+function buildInternalLoginUrl() {
+  const baseUrl = getInternalAppBaseUrl();
+  if (!baseUrl) {
+    return null;
+  }
+
+  return `${baseUrl}/login`;
 }
 
 function generatePasswordResetToken() {
@@ -188,6 +229,7 @@ async function getPasswordResetUserByEmail(email: string) {
       id: true,
       email: true,
       name: true,
+      metadata: true,
     },
   });
 }
@@ -215,13 +257,19 @@ async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, cod
   });
 }
 
-async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "email" | "name">, resetToken: string) {
-  const resetUrl = buildPasswordResetUrl(resetToken) ?? "Open the GTS Academy app to continue password reset.";
+async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "email" | "name">, resetToken: string, isInternalUser: boolean) {
+  const resetUrl = buildPasswordResetUrl(resetToken, isInternalUser);
+
+  if (isInternalUser && !resetUrl) {
+    throw new Error("Internal reset URL is not configured. Set INTERNAL_APP_ORIGIN.");
+  }
+
+  const effectiveResetUrl = resetUrl ?? "Open the GTS Academy app to continue password reset.";
 
   const template = await renderEmailTemplateByKeyService(PASSWORD_RESET_EMAIL_TEMPLATE_KEY, {
     appName: process.env.APP_NAME ?? "GTS Academy App",
     recipientName: user.name,
-    resetUrl,
+    resetUrl: effectiveResetUrl,
     resetToken,
     expiresInMinutes: getPasswordResetTokenTtlMinutes(),
   });
@@ -235,6 +283,34 @@ async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "email" | "
     templateKey: PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
     metadata: {
       purpose: "password-reset",
+    },
+    audit: {
+      entityType: "AUTH",
+      entityId: user.id,
+    },
+  });
+}
+
+async function deliverInternalPasswordChangedEmail(user: Pick<AuthUser, "id" | "email" | "name">, changedAt: string) {
+  const loginUrl = buildInternalLoginUrl();
+
+  const template = await renderEmailTemplateByKeyService(INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY, {
+    appName: process.env.APP_NAME ?? "GTS Academy App",
+    recipientName: user.name,
+    loginUrl: loginUrl ?? "",
+    supportEmail: process.env.ADMIN_MAIL ?? process.env.MAIL_FROM_ADDRESS ?? "support@gts-academy.test",
+    changedAt,
+  });
+
+  await deliverLoggedEmail({
+    to: user.email,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+    category: "SYSTEM",
+    templateKey: INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
+    metadata: {
+      purpose: "internal-password-changed",
     },
     audit: {
       entityType: "AUTH",
@@ -705,7 +781,7 @@ export async function requestPasswordReset(email: string, metadata: PasswordRese
     return;
   }
 
-  await deliverPasswordResetEmail(user, resetToken);
+  await deliverPasswordResetEmail(user, resetToken, isInternalAccount(user.metadata));
 }
 
 export async function resetPasswordWithToken(resetToken: string, nextPassword: string) {
@@ -725,7 +801,11 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
   const tokenRecord = await getPasswordResetTokenRecord(normalizedToken);
   const passwordResetUser = await prisma.user.findUnique({
     where: { id: tokenRecord.userId },
-    select: { metadata: true },
+    select: {
+      metadata: true,
+      email: true,
+      name: true,
+    },
   });
 
   if (!passwordResetUser) {
@@ -734,6 +814,7 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
 
   const nextPasswordHash = await hashPassword(normalizedPassword);
   const completedAt = new Date().toISOString();
+  const isInternalUser = isInternalAccount(passwordResetUser.metadata);
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
@@ -774,6 +855,21 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
       `,
     );
   });
+
+  if (isInternalUser) {
+    try {
+      await deliverInternalPasswordChangedEmail(
+        {
+          id: tokenRecord.userId,
+          email: passwordResetUser.email,
+          name: passwordResetUser.name,
+        },
+        completedAt,
+      );
+    } catch (error) {
+      console.warn("Internal password-changed notification failed.", error);
+    }
+  }
 
   try {
     await createAuditLogEntry({

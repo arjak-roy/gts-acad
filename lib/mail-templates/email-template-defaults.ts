@@ -1,5 +1,6 @@
 export const TWO_FACTOR_EMAIL_TEMPLATE_KEY = "auth-2fa-code";
 export const PASSWORD_RESET_EMAIL_TEMPLATE_KEY = "auth-password-reset";
+export const INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY = "internal-user-password-changed";
 export const CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "candidate-welcome-credentials";
 export const INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "internal-user-welcome-credentials";
 
@@ -81,6 +82,35 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
             <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Expires in:</strong> {{expiresInMinutes}} minutes</p>
           </div>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">If you did not request this reset, you can ignore this email.</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
+    name: "Internal Password Changed Confirmation",
+    description: "Email sent to internal users after password reset is completed.",
+    subject: "Your {{appName}} password was changed",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "This is a confirmation that your password was successfully changed on {{changedAt}}.",
+      "",
+      "If this was you, no further action is needed.",
+      "If this was not you, contact {{supportEmail}} immediately.",
+      "",
+      "Sign in: {{loginUrl}}",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Password changed</h1>
+          <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your password was successfully changed on <strong>{{changedAt}}</strong>.</p>
+          <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #475569;">If this was you, no further action is needed. If this was not you, contact {{supportEmail}} immediately.</p>
+          <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #334155;">Sign in here: <a href="{{loginUrl}}" style="color: #0d3b84;">{{loginUrl}}</a></p>
         </div>
       </div>
     `,
