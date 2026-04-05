@@ -3,12 +3,13 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, ChevronLeft, ChevronRight, LayoutGrid, Rows3, Search } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, LayoutGrid, MoreHorizontal, Rows3, Search } from "lucide-react";
 import { ColumnDef, SortingState, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -156,19 +157,29 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
           });
 
           return (
-            <div className="flex items-center justify-end gap-1">
-              <CanAccess permission="users.edit">
-                <Button asChild variant="ghost" className="text-slate-600 hover:text-slate-900">
-                  <Link href={`/learners?${editQuery}`} scroll={false}>
-                    Edit
-                  </Link>
-                </Button>
-              </CanAccess>
-              <Button asChild variant="ghost" className="text-primary hover:text-primary">
-                <Link href={`/learners?${openQuery}`} scroll={false}>
-                  Open
-                </Link>
-              </Button>
+            <div className="flex items-center justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Open actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <CanAccess permission="users.edit">
+                    <DropdownMenuItem asChild>
+                      <Link href={`/learners?${editQuery}`} scroll={false}>
+                        Edit
+                      </Link>
+                    </DropdownMenuItem>
+                  </CanAccess>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/learners?${openQuery}`} scroll={false}>
+                      Open
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           );
         },

@@ -34,6 +34,19 @@ export const SyncStatus = {
 
 export type SyncStatus = (typeof SyncStatus)[keyof typeof SyncStatus];
 
+export const ExamType = {
+  IELTS: "IELTS",
+  OET: "OET",
+  NCLEX: "NCLEX",
+  GOETHE_A1: "GOETHE_A1",
+  GOETHE_A2: "GOETHE_A2",
+  GOETHE_B1: "GOETHE_B1",
+  GOETHE_B2: "GOETHE_B2",
+  PROMETRIC: "PROMETRIC",
+} as const;
+
+export type ExamType = (typeof ExamType)[keyof typeof ExamType];
+
 export const BatchStatus = {
   DRAFT: "DRAFT",
   PLANNED: "PLANNED",
@@ -165,6 +178,11 @@ export type LearnerActiveEnrollment = {
 export type LearnerDetail = LearnerListItem & {
   phone?: string | null;
   country?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  targetCountry?: string | null;
+  targetLanguage?: string | null;
+  targetExam?: ExamType | null;
   softSkillsScore?: number;
   latestSyncMessage?: string | null;
   activeEnrollments: LearnerActiveEnrollment[];

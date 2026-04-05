@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, LayoutGrid, Rows3 } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, Download, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
 import { ColumnDef, SortingState, flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ import { TrainerDetailSheet } from "@/components/modules/trainers/trainer-detail
 import { EditTrainerSheet } from "@/components/modules/trainers/edit-trainer-sheet";
 import { AddTrainerSheet } from "@/components/modules/trainers/add-trainer-sheet";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CreateBatchSheet } from "@/components/modules/batches/create-batch-sheet";
 import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet";
 import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
@@ -245,32 +246,35 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
           id: "actions",
           header: () => <div className="text-right">Actions</div>,
           cell: ({ row }) => (
-            <div className="flex justify-end gap-1">
-              <Button type="button" variant="ghost" size="sm" onClick={() => openViewer(row.original.id)}>
-                View
-              </Button>
-            <CanAccess permission={editPermForSection}>
-              <Button type="button" variant="ghost" size="sm" onClick={() => openEditor(row.original.id)}>
-                Edit
-              </Button>
-            </CanAccess>
-            {sectionKey === "batches" ? (
-              <CanAccess permission="batches.edit">
-                <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
-                  Students
-                </Button>
-              </CanAccess>
-            ) : null}
-            {sectionKey === "batches" ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => void exportBatchCsv(row.original)} disabled={exportingBatchId === row.original.id}>
-                <Download className="mr-1 h-3.5 w-3.5" />
-                {exportingBatchId === row.original.id ? "Exporting" : "Export"}
-              </Button>
-            ) : null}
-          </div>
-        ),
-      });
-    }
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">Open actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => openViewer(row.original.id)}>View</DropdownMenuItem>
+                  <CanAccess permission={editPermForSection}>
+                    <DropdownMenuItem onSelect={() => openEditor(row.original.id)}>Edit</DropdownMenuItem>
+                  </CanAccess>
+                  {sectionKey === "batches" ? (
+                    <CanAccess permission="batches.edit">
+                      <DropdownMenuItem onSelect={() => void openStudentsPopup(row.original)}>Students</DropdownMenuItem>
+                    </CanAccess>
+                  ) : null}
+                  {sectionKey === "batches" ? (
+                    <DropdownMenuItem onSelect={() => void exportBatchCsv(row.original)} disabled={exportingBatchId === row.original.id}>
+                      {exportingBatchId === row.original.id ? "Exporting" : "Export"}
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ),
+        });
+      }
 
     return baseColumns;
   },

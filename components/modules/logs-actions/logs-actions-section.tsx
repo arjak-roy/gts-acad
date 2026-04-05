@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -352,15 +354,19 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
                         <TableCell>{formatDateTime(item.lastAttemptAt)}</TableCell>
                         <TableCell className={cn("max-w-xs truncate", item.errorMessage ? "text-rose-700" : "text-slate-500")}>{item.errorMessage ?? "-"}</TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            disabled={!isRetryable || actionLoading}
-                            onClick={() => void retrySingleEmail(item.id)}
-                          >
-                            Retry
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Open actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem disabled={!isRetryable || actionLoading} onSelect={() => void retrySingleEmail(item.id)}>
+                                Retry
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     );

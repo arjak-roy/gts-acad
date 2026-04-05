@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardSearchResult, DashboardStats } from "@/types";
 import { formatCompactNumber } from "@/lib/utils";
 
-import { OperationsSnapshot } from "@/components/modules/dashboard/operations-snapshot";
 import { DashboardSearchResults } from "@/components/modules/dashboard/dashboard-search-results";
 import { ReadinessFunnel } from "@/components/modules/dashboard/readiness-funnel";
 import { StatsGrid } from "@/components/modules/dashboard/stats-grid";
@@ -25,11 +24,6 @@ function buildInsightSearchResult(stats: DashboardStats, query: string): Dashboa
       id: `funnel-${stage.label}`,
       title: stage.label,
       description: `${stage.value.toLocaleString("en-IN")} | Readiness funnel stage`,
-    })),
-    ...stats.operationsSnapshot.map((item) => ({
-      id: item.id,
-      title: item.title,
-      description: item.message,
     })),
     ...stats.trends.map((point) => ({
       id: `trend-${point.label}`,
@@ -90,46 +84,42 @@ export function DashboardOverview({
 
       {mergedSearchResults ? <DashboardSearchResults search={mergedSearchResults} /> : null}
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="space-y-6 xl:col-span-2">
-          <ReadinessFunnel stats={stats} />
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Operational Trendline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-6">
-                {stats.trends.map((point) => (
-                  <div key={point.label} className="space-y-3 rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">{point.label}</p>
-                    <div className="space-y-2">
-                      <div>
-                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
-                          <span>Learners</span>
-                          <span>{formatCompactNumber(point.activeLearners)}</span>
-                        </div>
-                        <div className="mt-2 h-2 rounded-full bg-slate-200">
-                          <div className="h-2 rounded-full bg-primary" style={{ width: `${(point.activeLearners / peakLearners) * 100}%` }} />
-                        </div>
+      <div className="space-y-6">
+        <ReadinessFunnel stats={stats} />
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Operational Trendline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-6">
+              {stats.trends.map((point) => (
+                <div key={point.label} className="space-y-3 rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">{point.label}</p>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                        <span>Learners</span>
+                        <span>{formatCompactNumber(point.activeLearners)}</span>
                       </div>
-                      <div>
-                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
-                          <span>Ready</span>
-                          <span>{point.placementReady}</span>
-                        </div>
-                        <div className="mt-2 h-2 rounded-full bg-orange-100">
-                          <div className="h-2 rounded-full bg-accent" style={{ width: `${(point.placementReady / peakPlacement) * 100}%` }} />
-                        </div>
+                      <div className="mt-2 h-2 rounded-full bg-slate-200">
+                        <div className="h-2 rounded-full bg-primary" style={{ width: `${(point.activeLearners / peakLearners) * 100}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                        <span>Ready</span>
+                        <span>{point.placementReady}</span>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-orange-100">
+                        <div className="h-2 rounded-full bg-accent" style={{ width: `${(point.placementReady / peakPlacement) * 100}%` }} />
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <OperationsSnapshot stats={stats} />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

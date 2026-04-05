@@ -23,10 +23,11 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z
   .object({
     name: z.string().trim().min(2).max(255).optional(),
+    email: z.string().trim().email("Valid email is required.").max(255).optional(),
     phone: z.string().trim().max(20).optional(),
     isActive: z.boolean().optional(),
   })
-  .refine((value) => value.name !== undefined || value.phone !== undefined || value.isActive !== undefined, {
+  .refine((value) => value.name !== undefined || value.email !== undefined || value.phone !== undefined || value.isActive !== undefined, {
     message: "At least one field is required.",
   });
 

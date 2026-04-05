@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -1002,19 +1003,25 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <CanAccess permission="schedule.edit">
-                                <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(event)}>
-                                  Edit
-                                </Button>
-                              </CanAccess>
-                              {event.status !== "CANCELLED" && (
-                                <CanAccess permission="schedule.delete">
-                                  <Button type="button" variant="ghost" size="sm" onClick={() => void cancelEvent(event)}>
-                                    Cancel
+                            <div className="flex justify-end">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Open actions</span>
                                   </Button>
-                                </CanAccess>
-                              )}
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <CanAccess permission="schedule.edit">
+                                    <DropdownMenuItem onSelect={() => openEdit(event)}>Edit</DropdownMenuItem>
+                                  </CanAccess>
+                                  {event.status !== "CANCELLED" ? (
+                                    <CanAccess permission="schedule.delete">
+                                      <DropdownMenuItem onSelect={() => void cancelEvent(event)}>Cancel</DropdownMenuItem>
+                                    </CanAccess>
+                                  ) : null}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </TableCell>
                         </TableRow>

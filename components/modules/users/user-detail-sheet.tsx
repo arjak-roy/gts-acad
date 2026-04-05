@@ -62,7 +62,7 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
   const [user, setUser] = useState<InternalUserDetail | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
-  const [form, setForm] = useState({ name: "", phone: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -104,6 +104,7 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
           setSelectedRoleIds(detail?.roles.map((role) => role.id) ?? []);
           setForm({
             name: detail?.name ?? "",
+            email: detail?.email ?? "",
             phone: detail?.phone ?? "",
           });
         }
@@ -153,6 +154,7 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
           },
           body: JSON.stringify({
             name: form.name,
+            email: form.email,
             phone: form.phone,
           }),
         }),
@@ -183,6 +185,7 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
         setUser(nextUser);
         setForm({
           name: nextUser.name,
+          email: nextUser.email,
           phone: nextUser.phone ?? "",
         });
         setSelectedRoleIds(nextUser.roles.map((role) => role.id));
@@ -300,6 +303,10 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
                     <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
                   </div>
                   <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Email</label>
+                    <Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+                  </div>
+                  <div>
                     <label className="mb-1 block text-xs font-medium text-slate-500">Phone</label>
                     <Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
                   </div>
@@ -362,7 +369,7 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
               <Button variant="secondary" onClick={() => setIsEditing(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={isSaving || !form.name.trim() || selectedRoleIds.length === 0}>
+              <Button onClick={handleSave} disabled={isSaving || !form.name.trim() || !form.email.trim() || selectedRoleIds.length === 0}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Save Changes
               </Button>

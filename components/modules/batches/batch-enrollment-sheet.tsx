@@ -388,25 +388,10 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
           <SheetDescription>{batch ? `Manage enrollments for batch ${batch.code}` : "Manage enrollments"}</SheetDescription>
         </SheetHeader>
 
-        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-6 pb-4 pt-3">
-          <EnrollmentSearchFilterBar
-            search={search}
-            courseId={courseId}
-            programId={programId}
-            courses={courses}
-            programs={programs}
-            matchCount={candidateTotal}
-            onSearchChange={setSearch}
-            onCourseChange={handleCourseChange}
-            onProgramChange={setProgramId}
-            onSubmit={handleFindCandidates}
-          />
-        </div>
-
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
           <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Enrolled Candidates</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Enrolled Students</p>
               <Button type="button" variant="secondary" size="sm" onClick={exportCsv} disabled={isExporting || !batch}>
                 <Download className="mr-1 h-4 w-4" />
                 {isExporting ? "Exporting..." : "Export CSV"}
@@ -434,6 +419,19 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
               </>
             ) : null}
           </section>
+
+          <EnrollmentSearchFilterBar
+            search={search}
+            courseId={courseId}
+            programId={programId}
+            courses={courses}
+            programs={programs}
+            matchCount={candidateTotal}
+            onSearchChange={setSearch}
+            onCourseChange={handleCourseChange}
+            onProgramChange={setProgramId}
+            onSubmit={handleFindCandidates}
+          />
 
           <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">

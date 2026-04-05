@@ -27,6 +27,35 @@ export const createLearnerEnrollmentSchema = z.object({
   batchCode: z.string().trim().min(2).max(50),
 });
 
+export const updateLearnerSchema = z
+  .object({
+    fullName: z.string().trim().min(2).max(255).optional(),
+    email: z.string().trim().email().max(255).optional(),
+    phone: z.string().trim().max(20).optional(),
+    country: z.string().trim().max(100).optional(),
+    dob: z.string().trim().optional(),
+    gender: z.string().trim().max(20).optional(),
+    targetCountry: z.string().trim().max(100).optional(),
+    targetLanguage: z.string().trim().max(100).optional(),
+    targetExam: z.enum(["IELTS", "OET", "NCLEX", "GOETHE_A1", "GOETHE_A2", "GOETHE_B1", "GOETHE_B2", "PROMETRIC"]).nullable().optional(),
+  })
+  .refine(
+    (value) =>
+      value.fullName !== undefined ||
+      value.email !== undefined ||
+      value.phone !== undefined ||
+      value.country !== undefined ||
+      value.dob !== undefined ||
+      value.gender !== undefined ||
+      value.targetCountry !== undefined ||
+      value.targetLanguage !== undefined ||
+      value.targetExam !== undefined,
+    {
+      message: "At least one field is required.",
+    },
+  );
+
 export type GetLearnersInput = z.infer<typeof getLearnersSchema>;
 export type CreateLearnerInput = z.infer<typeof createLearnerSchema>;
 export type CreateLearnerEnrollmentInput = z.infer<typeof createLearnerEnrollmentSchema>;
+export type UpdateLearnerInput = z.infer<typeof updateLearnerSchema>;

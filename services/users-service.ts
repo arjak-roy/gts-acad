@@ -503,10 +503,24 @@ export async function updateInternalUserService(
     throw new Error("User not found.");
   }
 
+  const normalizedEmail = input.email?.trim().toLowerCase();
+
+  if (normalizedEmail && normalizedEmail !== user.email.toLowerCase()) {
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
+    });
+
+    if (existingUser && existingUser.id !== userId) {
+      throw new Error("A user account already exists with this email.");
+    }
+  }
+
   await prisma.user.update({
     where: { id: userId },
     data: {
       name: input.name?.trim(),
+      email: normalizedEmail,
       phone: input.phone !== undefined ? input.phone.trim() || null : undefined,
       isActive: input.isActive,
     },
@@ -523,6 +537,7 @@ export async function updateInternalUserService(
     message: `Internal user ${user.email} updated from user management.`,
     metadata: {
       name: input.name?.trim(),
+      email: normalizedEmail,
       phone: input.phone?.trim() || null,
       isActive: input.isActive,
     },

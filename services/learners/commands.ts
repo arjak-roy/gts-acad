@@ -5,7 +5,7 @@ import { AuditActionType, AuditEntityType, Prisma } from "@prisma/client";
 
 import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import { CreateLearnerEnrollmentInput, CreateLearnerInput } from "@/lib/validation-schemas/learners";
+import { CreateLearnerEnrollmentInput, CreateLearnerInput, UpdateLearnerInput } from "@/lib/validation-schemas/learners";
 import {
   batchDetailArgs,
   buildMockActiveEnrollment,
@@ -348,4 +348,131 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
 
     throw error;
   }
+}
+
+export async function updateLearnerService(learnerCode: string, input: UpdateLearnerInput, actorUserId?: string) {
+  const normalizedLearnerCode = learnerCode.trim();
+  const normalizedFullName = input.fullName?.trim();
+  const normalizedEmail = input.email?.trim().toLowerCase();
+  const normalizedPhone = input.phone !== undefined ? input.phone.trim() || null : undefined;
+  const normalizedCountry = input.country !== undefined ? input.country.trim() || null : undefined;
+  const normalizedDob = input.dob !== undefined ? (input.dob.trim().length > 0 ? new Date(input.dob) : null) : undefined;
+  const normalizedGender = input.gender !== undefined ? input.gender.trim() || null : undefined;
+  const normalizedTargetCountry = input.targetCountry !== undefined ? input.targetCountry.trim() || null : undefined;
+  const normalizedTargetLanguage = input.targetLanguage !== undefined ? input.targetLanguage.trim() || null : undefined;
+  const normalizedTargetExam = input.targetExam === undefined ? undefined : input.targetExam;
+
+  if (normalizedDob !== undefined && normalizedDob !== null && Number.isNaN(normalizedDob.getTime())) {
+    throw new Error("Invalid date of birth.");
+  }
+
+  if (!isDatabaseConfigured) {
+    const learner = buildMockLearnerDetail(normalizedLearnerCode);
+
+    if (!learner) {
+      throw new Error("Learner not found.");
+    }
+
+    return {
+      ...learner,
+      fullName: normalizedFullName ?? learner.fullName,
+      email: normalizedEmail ?? learner.email,
+      phone: normalizedPhone !== undefined ? normalizedPhone : learner.phone,
+      country: normalizedCountry !== undefined ? normalizedCountry : learner.country,
+      dob: normalizedDob !== undefined ? (normalizedDob ? normalizedDob.toISOString() : null) : learner.dob,
+      gender: normalizedGender !== undefined ? normalizedGender : learner.gender,
+      targetCountry: normalizedTargetCountry !== undefined ? normalizedTargetCountry : learner.targetCountry,
+      targetLanguage: normalizedTargetLanguage !== undefined ? normalizedTargetLanguage : learner.targetLanguage,
+      targetExam: normalizedTargetExam !== undefined ? normalizedTargetExam : learner.targetExam,
+    };
+  }
+
+  const learner = await prisma.$transaction(
+    async (tx) => {
+      const current = await tx.learner.findUnique({
+        where: { learnerCode: normalizedLearnerCode },
+        select: {
+          id: true,
+          learnerCode: true,
+          userId: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          country: true,
+        },
+      });
+
+      if (!current) {
+        throw new Error("Learner not found.");
+      }
+
+      if (normalizedEmail && normalizedEmail !== current.email.toLowerCase()) {
+        const [existingLearner, existingUser] = await Promise.all([
+          tx.learner.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+          tx.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+        ]);
+
+        if (existingLearner && existingLearner.id !== current.id) {
+          throw new Error("Email already exists.");
+        }
+
+        if (existingUser && existingUser.id !== current.userId) {
+          throw new Error("A user account already exists with this email.");
+        }
+      }
+
+      await tx.learner.update({
+        where: { id: current.id },
+        data: {
+          fullName: normalizedFullName,
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          country: normalizedCountry,
+          dob: normalizedDob,
+          gender: normalizedGender,
+          targetCountry: normalizedTargetCountry,
+          targetLanguage: normalizedTargetLanguage,
+          targetExam: normalizedTargetExam,
+        },
+      });
+
+      if (current.userId) {
+        await tx.user.update({
+          where: { id: current.userId },
+          data: {
+            name: normalizedFullName,
+            email: normalizedEmail,
+            phone: normalizedPhone,
+          },
+        });
+      }
+
+      return tx.learner.findUniqueOrThrow({ where: { id: current.id }, ...learnerDetailArgs });
+    },
+    { maxWait: 10_000, timeout: 15_000 },
+  );
+
+  const mappedLearner = mapLearnerToDetail(learner);
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.CANDIDATE,
+    entityId: mappedLearner.id,
+    action: AuditActionType.UPDATED,
+    message: `Candidate ${mappedLearner.learnerCode} profile updated.`,
+    metadata: {
+      learnerCode: mappedLearner.learnerCode,
+      fullName: normalizedFullName,
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      country: normalizedCountry,
+      dob: normalizedDob ? normalizedDob.toISOString() : normalizedDob,
+      gender: normalizedGender,
+      targetCountry: normalizedTargetCountry,
+      targetLanguage: normalizedTargetLanguage,
+      targetExam: normalizedTargetExam,
+    },
+    actorUserId: actorUserId ?? null,
+  });
+
+  return mappedLearner;
 }
