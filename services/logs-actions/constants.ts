@@ -1,0 +1,49 @@
+export const DEFAULT_PAGE = 1;
+export const DEFAULT_PAGE_SIZE = 10;
+export const MAX_PAGE_SIZE = 100;
+
+export const EMAIL_LOG_STATUS = {
+  PENDING: "PENDING",
+  SENT: "SENT",
+  FAILED: "FAILED",
+  RETRYING: "RETRYING",
+} as const;
+
+export const EMAIL_LOG_CATEGORY = {
+  CANDIDATE_WELCOME: "CANDIDATE_WELCOME",
+  TWO_FACTOR: "TWO_FACTOR",
+  SYSTEM: "SYSTEM",
+} as const;
+
+export const AUDIT_ENTITY_TYPE = {
+  BATCH: "BATCH",
+  CANDIDATE: "CANDIDATE",
+  COURSE: "COURSE",
+  EMAIL: "EMAIL",
+  AUTH: "AUTH",
+  SYSTEM: "SYSTEM",
+} as const;
+
+export const AUDIT_ACTION_TYPE = {
+  CREATED: "CREATED",
+  UPDATED: "UPDATED",
+  ENROLLED: "ENROLLED",
+  MAIL_SENT: "MAIL_SENT",
+  MAIL_FAILED: "MAIL_FAILED",
+  MAIL_RETRIED: "MAIL_RETRIED",
+  LOGIN: "LOGIN",
+  TWO_FACTOR: "TWO_FACTOR",
+  RETRY: "RETRY",
+} as const;
+
+export const AUDIT_LOG_LEVEL = {
+  INFO: "INFO",
+  WARN: "WARN",
+  ERROR: "ERROR",
+} as const;
+
+export type EmailLogStatus = (typeof EMAIL_LOG_STATUS)[keyof typeof EMAIL_LOG_STATUS];
+export type EmailLogCategory = (typeof EMAIL_LOG_CATEGORY)[keyof typeof EMAIL_LOG_CATEGORY];
+export type AuditEntityType = (typeof AUDIT_ENTITY_TYPE)[keyof typeof AUDIT_ENTITY_TYPE];
+export type AuditActionType = (typeof AUDIT_ACTION_TYPE)[keyof typeof AUDIT_ACTION_TYPE];
+export type AuditLogLevel = (typeof AUDIT_LOG_LEVEL)[keyof typeof AUDIT_LOG_LEVEL];
