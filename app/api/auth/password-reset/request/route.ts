@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     await requestPasswordReset(email, {
       requestIp: getClientIpAddress(request),
       userAgent: request.headers.get("user-agent"),
+      appOrigin: request.nextUrl.origin,
     });
 
     return withCors(

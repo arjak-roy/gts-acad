@@ -78,6 +78,7 @@ type PasswordResetTokenRecord = {
 type PasswordResetRequestMetadata = {
   requestIp?: string | null;
   userAgent?: string | null;
+  appOrigin?: string | null;
 };
 
 function getMetadataRecord(value: Prisma.JsonValue | null | undefined) {
@@ -160,12 +161,15 @@ function getInternalAppBaseUrl() {
   );
 }
 
-function getPasswordResetUrlBase(isInternalUser: boolean) {
+function getPasswordResetUrlBase(isInternalUser: boolean, appOrigin?: string | null) {
+  const normalizedAppOrigin = normalizeOrigin(appOrigin ?? undefined);
+
   if (isInternalUser) {
-    return getInternalAppBaseUrl();
+    return normalizedAppOrigin ?? getInternalAppBaseUrl();
   }
 
   return (
+    normalizedAppOrigin ??
     normalizeOrigin(process.env.AUTH_PASSWORD_RESET_URL_BASE) ??
     normalizeOrigin(process.env.CANDIDATE_APP_ORIGIN) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN) ??
@@ -173,14 +177,22 @@ function getPasswordResetUrlBase(isInternalUser: boolean) {
   );
 }
 
-function buildPasswordResetUrl(resetToken: string, isInternalUser: boolean) {
-  const urlBase = getPasswordResetUrlBase(isInternalUser);
+function buildPasswordResetUrl(resetToken: string, isInternalUser: boolean, appOrigin?: string | null) {
+  const urlBase = getPasswordResetUrlBase(isInternalUser, appOrigin);
 
   if (!urlBase) {
     return null;
   }
 
-  return `${urlBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
+  try {
+    const url = new URL(urlBase);
+    url.pathname = "/reset-password";
+    url.search = "";
+    url.searchParams.set("token", resetToken);
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function buildInternalLoginUrl() {
@@ -257,19 +269,22 @@ async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, cod
   });
 }
 
-async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "email" | "name">, resetToken: string, isInternalUser: boolean) {
-  const resetUrl = buildPasswordResetUrl(resetToken, isInternalUser);
+async function deliverPasswordResetEmail(
+  user: Pick<AuthUser, "id" | "email" | "name">,
+  resetToken: string,
+  isInternalUser: boolean,
+  appOrigin?: string | null,
+) {
+  const resetUrl = buildPasswordResetUrl(resetToken, isInternalUser, appOrigin);
 
-  if (isInternalUser && !resetUrl) {
-    throw new Error("Internal reset URL is not configured. Set INTERNAL_APP_ORIGIN.");
+  if (!resetUrl) {
+    throw new Error("Password reset URL is not configured.");
   }
-
-  const effectiveResetUrl = resetUrl ?? "Open the GTS Academy app to continue password reset.";
 
   const template = await renderEmailTemplateByKeyService(PASSWORD_RESET_EMAIL_TEMPLATE_KEY, {
     appName: process.env.APP_NAME ?? "GTS Academy App",
     recipientName: user.name,
-    resetUrl: effectiveResetUrl,
+    resetUrl,
     resetToken,
     expiresInMinutes: getPasswordResetTokenTtlMinutes(),
   });
@@ -781,7 +796,7 @@ export async function requestPasswordReset(email: string, metadata: PasswordRese
     return;
   }
 
-  await deliverPasswordResetEmail(user, resetToken, isInternalAccount(user.metadata));
+  await deliverPasswordResetEmail(user, resetToken, isInternalAccount(user.metadata), metadata.appOrigin);
 }
 
 export async function resetPasswordWithToken(resetToken: string, nextPassword: string) {
