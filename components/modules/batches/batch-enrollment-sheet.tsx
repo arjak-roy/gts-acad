@@ -1,11 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Download, Search, UserPlus, Users } from "lucide-react";
+import { Download, UserPlus, Users } from "lucide-react";
 
+import {
+  EnrollmentFilterCourseOption,
+  EnrollmentFilterProgramOption,
+  EnrollmentSearchFilterBar,
+} from "@/components/modules/batches/enrollment-search-filter-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 type BatchEnrollmentSheetProps = {
@@ -29,13 +33,13 @@ type LearnersResponse = {
   pageCount: number;
 };
 
-type CourseOption = {
+type CourseOption = EnrollmentFilterCourseOption & {
   id: string;
   name: string;
   isActive: boolean;
 };
 
-type ProgramOption = {
+type ProgramOption = EnrollmentFilterProgramOption & {
   id: string;
   courseId: string;
   name: string;
@@ -241,6 +245,12 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
     await loadCandidates(search, courseId, programId);
   };
 
+  const handleCourseChange = (nextCourseId: string) => {
+    setCourseId(nextCourseId);
+    setProgramId("");
+    void loadPrograms(nextCourseId);
+  };
+
   const toggleSelection = (learnerCode: string, shouldSelect: boolean) => {
     setSelectedLearnerCodes((prev) => {
       if (shouldSelect) {
@@ -378,6 +388,21 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
           <SheetDescription>{batch ? `Manage enrollments for batch ${batch.code}` : "Manage enrollments"}</SheetDescription>
         </SheetHeader>
 
+        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-6 pb-4 pt-3">
+          <EnrollmentSearchFilterBar
+            search={search}
+            courseId={courseId}
+            programId={programId}
+            courses={courses}
+            programs={programs}
+            matchCount={candidateTotal}
+            onSearchChange={setSearch}
+            onCourseChange={handleCourseChange}
+            onProgramChange={setProgramId}
+            onSubmit={handleFindCandidates}
+          />
+        </div>
+
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
           <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -411,52 +436,6 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
           </section>
 
           <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Find Candidates to Enroll</p>
-              <p className="text-sm font-semibold text-slate-700">Matches: {candidateTotal}</p>
-            </div>
-
-            <form className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_auto]" onSubmit={handleFindCandidates}>
-              <Input
-                placeholder="Search by code, name, or email"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              <select
-                className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
-                value={courseId}
-                onChange={(event) => {
-                  const nextCourseId = event.target.value;
-                  setCourseId(nextCourseId);
-                  setProgramId("");
-                  void loadPrograms(nextCourseId);
-                }}
-              >
-                <option value="">All courses</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
-                value={programId}
-                onChange={(event) => setProgramId(event.target.value)}
-              >
-                <option value="">All programs</option>
-                {programs.map((program) => (
-                  <option key={program.id} value={program.id}>
-                    {program.name} ({program.type})
-                  </option>
-                ))}
-              </select>
-              <Button type="submit" variant="secondary" className="h-10">
-                <Search className="mr-1 h-4 w-4" />
-                Find
-              </Button>
-            </form>
-
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
               <div className="flex items-center gap-2">
                 <Checkbox
