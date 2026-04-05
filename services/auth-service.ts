@@ -670,7 +670,8 @@ export async function loginWithPassword(email: string, password: string): Promis
     });
   }
 
-  const requiresTwoFactor = user.security?.twoFactorEnabled ?? true;
+  // Require a second factor for interactive logins by default.
+  const requiresTwoFactor = true;
 
   const userRole = await getUserPrimaryRoleCode(user.id);
   const requiresPasswordReset = requiresPasswordResetFromMetadata(user.metadata);
