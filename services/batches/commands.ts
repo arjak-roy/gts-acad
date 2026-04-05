@@ -5,9 +5,10 @@ import { AuditActionType, AuditEntityType } from "@prisma/client";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateBatchInput, UpdateBatchInput } from "@/lib/validation-schemas/batches";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
+import { addLearnerEnrollmentService } from "@/services/learners-service";
 import { formatMockTrainerNames, mapBatchRecord, normalizeTrainerIds, resolveProgramAndTrainersWithAutoMapping } from "@/services/batches/internal-helpers";
 import { MOCK_BATCHES } from "@/services/batches/mock-data";
-import { BatchCreateResult, BatchOption } from "@/services/batches/types";
+import { BatchBulkEnrollmentResult, BatchCreateResult, BatchOption } from "@/services/batches/types";
 
 export async function generateBatchCode(programName: string): Promise<string> {
   const prefix = programName.substring(0, 3).toUpperCase();
@@ -318,4 +319,106 @@ export async function archiveBatchService(batchId: string): Promise<BatchOption>
   });
 
   return mapBatchRecord(batch);
+}
+
+type EnrollmentBatchContext = {
+  id: string;
+  code: string;
+  status: BatchOption["status"];
+};
+
+async function resolveBatchForEnrollment(batchId: string): Promise<EnrollmentBatchContext> {
+  const normalizedBatchId = batchId.trim();
+
+  if (!isDatabaseConfigured) {
+    const mockBatch = MOCK_BATCHES.find((batch) => batch.id === normalizedBatchId);
+
+    if (!mockBatch) {
+      throw new Error("Batch not found.");
+    }
+
+    if (mockBatch.status !== "PLANNED" && mockBatch.status !== "IN_SESSION") {
+      throw new Error("Only planned or in-session batches can accept enrollments.");
+    }
+
+    return {
+      id: mockBatch.id,
+      code: mockBatch.code,
+      status: mockBatch.status,
+    };
+  }
+
+  const batch = await prisma.batch.findUnique({
+    where: { id: normalizedBatchId },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+    },
+  });
+
+  if (!batch) {
+    throw new Error("Batch not found.");
+  }
+
+  if (batch.status !== "PLANNED" && batch.status !== "IN_SESSION") {
+    throw new Error("Only planned or in-session batches can accept enrollments.");
+  }
+
+  return batch;
+}
+
+export async function enrollLearnerToBatchService(batchId: string, learnerCode: string) {
+  const batch = await resolveBatchForEnrollment(batchId);
+  return addLearnerEnrollmentService(learnerCode.trim(), { batchCode: batch.code });
+}
+
+export async function bulkEnrollLearnersToBatchService(batchId: string, learnerCodes: string[]): Promise<BatchBulkEnrollmentResult> {
+  const batch = await resolveBatchForEnrollment(batchId);
+  const uniqueLearnerCodes = Array.from(new Set(learnerCodes.map((code) => code.trim()).filter((code) => code.length > 0)));
+  const results: BatchBulkEnrollmentResult["results"] = [];
+
+  let enrolled = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const learnerCode of uniqueLearnerCodes) {
+    try {
+      await addLearnerEnrollmentService(learnerCode, { batchCode: batch.code });
+      results.push({
+        learnerCode,
+        status: "ENROLLED",
+        message: "Enrolled successfully.",
+      });
+      enrolled += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Enrollment failed.";
+
+      if (message.toLowerCase().includes("already enrolled")) {
+        results.push({
+          learnerCode,
+          status: "SKIPPED",
+          message,
+        });
+        skipped += 1;
+      } else {
+        results.push({
+          learnerCode,
+          status: "FAILED",
+          message,
+        });
+        failed += 1;
+      }
+    }
+  }
+
+  return {
+    batchId: batch.id,
+    batchCode: batch.code,
+    processed: uniqueLearnerCodes.length,
+    enrolled,
+    skipped,
+    failed,
+    results,
+  };
 }

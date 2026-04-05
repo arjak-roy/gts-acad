@@ -2,12 +2,13 @@
 
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, ChevronLeft, ChevronRight, LayoutGrid, Rows3 } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, Download, LayoutGrid, Rows3 } from "lucide-react";
 import { ColumnDef, SortingState, flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BatchDetailSheet } from "@/components/modules/batches/batch-detail-sheet";
+import { BatchEnrollmentSheet } from "@/components/modules/batches/batch-enrollment-sheet";
 import { EditBatchSheet } from "@/components/modules/batches/edit-batch-sheet";
 import { AddCourseSheet } from "@/components/modules/courses/add-course-sheet";
 import { CourseDetailSheet } from "@/components/modules/courses/course-detail-sheet";
@@ -25,7 +26,6 @@ import { CreateBatchSheet } from "@/components/modules/batches/create-batch-shee
 import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet";
 import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
 import { ScheduleSection } from "@/components/modules/schedule/schedule-section";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
 import { CanAccess } from "@/components/ui/can-access";
@@ -40,20 +40,6 @@ type SectionPageContentProps = {
 type ViewMode = "table" | "card";
 
 const PAGE_SIZE = 4;
-
-type BatchLearner = {
-  id: string;
-  learnerCode: string;
-  fullName: string;
-};
-
-type LearnersResponse = {
-  items: BatchLearner[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-  pageCount: number;
-};
 
 export function SectionPageContent({ section, sectionKey }: SectionPageContentProps) {
   const router = useRouter();
@@ -71,10 +57,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [editingTrainerId, setEditingTrainerId] = useState<string | null>(null);
   const [editingEmailTemplateId, setEditingEmailTemplateId] = useState<string | null>(null);
   const [studentsBatch, setStudentsBatch] = useState<{ id: string; code: string } | null>(null);
-  const [batchStudents, setBatchStudents] = useState<BatchLearner[]>([]);
-  const [studentsTotal, setStudentsTotal] = useState(0);
-  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [studentsError, setStudentsError] = useState<string | null>(null);
+  const [exportingBatchId, setExportingBatchId] = useState<string | null>(null);
+  const [batchActionError, setBatchActionError] = useState<string | null>(null);
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
   const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || sectionKey === "settings";
@@ -206,40 +190,45 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const closePanel = () => setParam("viewId", null);
   const closeEditor = () => setParam("editId", null);
 
-  const openStudentsPopup = async (row: PortalSectionTableRow) => {
+  const openStudentsPopup = (row: PortalSectionTableRow) => {
     const batchCode = row.code;
     if (!batchCode) {
       return;
     }
 
+    setBatchActionError(null);
     setStudentsBatch({ id: row.id, code: batchCode });
-    setBatchStudents([]);
-    setStudentsTotal(0);
-    setStudentsError(null);
-    setIsLoadingStudents(true);
+  };
+
+  const exportBatchCsv = async (row: PortalSectionTableRow) => {
+    setBatchActionError(null);
+    setExportingBatchId(row.id);
 
     try {
-      const params = new URLSearchParams({
-        batchCode,
-        page: "1",
-        pageSize: "50",
-        sortBy: "fullName",
-        sortDirection: "asc",
-      });
+      const response = await fetch(`/api/batches/${row.id}/export`, { cache: "no-store" });
 
-      const response = await fetch(`/api/learners?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
-        throw new Error("Failed to load candidates.");
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Failed to export batch CSV.");
       }
 
-      const payload = (await response.json()) as { data?: LearnersResponse };
-      setBatchStudents(payload.data?.items ?? []);
-      setStudentsTotal(payload.data?.totalCount ?? 0);
-    } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : "Failed to load candidates.";
-      setStudentsError(message);
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename=\"?([^\";]+)\"?/i);
+      const filename = match?.[1] ?? `${row.code.toLowerCase()}-enrollments.csv`;
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (exportError) {
+      setBatchActionError(exportError instanceof Error ? exportError.message : "Failed to export batch CSV.");
     } finally {
-      setIsLoadingStudents(false);
+      setExportingBatchId(null);
     }
   };
 
@@ -266,8 +255,16 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
               </Button>
             </CanAccess>
             {sectionKey === "batches" ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
-                Students
+              <CanAccess permission="batches.edit">
+                <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
+                  Students
+                </Button>
+              </CanAccess>
+            ) : null}
+            {sectionKey === "batches" ? (
+              <Button type="button" variant="ghost" size="sm" onClick={() => void exportBatchCsv(row.original)} disabled={exportingBatchId === row.original.id}>
+                <Download className="mr-1 h-3.5 w-3.5" />
+                {exportingBatchId === row.original.id ? "Exporting" : "Export"}
               </Button>
             ) : null}
           </div>
@@ -277,7 +274,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
     return baseColumns;
   },
-  [hasDetailActions, section.tableColumns, editPermForSection, sectionKey],
+  [hasDetailActions, section.tableColumns, editPermForSection, sectionKey, exportingBatchId],
   );
 
   const table = useReactTable({
@@ -360,6 +357,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
       </div>
 
       <div className="grid gap-6">
+        {batchActionError ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{batchActionError}</p> : null}
         <Card>
           <CardHeader>
             <CardTitle>{section.tableTitle}</CardTitle>
@@ -428,8 +426,22 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
                               </Button>
                             </CanAccess>
                             {sectionKey === "batches" ? (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
-                                Students
+                              <CanAccess permission="batches.edit">
+                                <Button type="button" variant="ghost" size="sm" onClick={() => void openStudentsPopup(row.original)}>
+                                  Students
+                                </Button>
+                              </CanAccess>
+                            ) : null}
+                            {sectionKey === "batches" ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void exportBatchCsv(row.original)}
+                                disabled={exportingBatchId === row.original.id}
+                              >
+                                <Download className="mr-1 h-3.5 w-3.5" />
+                                {exportingBatchId === row.original.id ? "Exporting" : "Export"}
                               </Button>
                             ) : null}
                           </div>
@@ -504,46 +516,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         open={Boolean(editingEmailTemplateId)}
         onOpenChange={(nextOpen) => !nextOpen && closeEditor()}
       />
-
-      <Sheet open={Boolean(studentsBatch)} onOpenChange={(nextOpen) => !nextOpen && setStudentsBatch(null)}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Batch Candidates</SheetTitle>
-            <SheetDescription>
-              {studentsBatch ? `Batch ${studentsBatch.code}` : "Candidates enrolled in this batch"}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-3 p-6">
-            {isLoadingStudents ? <p className="text-sm text-slate-500">Loading candidates...</p> : null}
-            {studentsError ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{studentsError}</p> : null}
-
-            {!isLoadingStudents && !studentsError ? (
-              <>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Total Candidates: {studentsTotal}</p>
-                {batchStudents.length > 0 ? (
-                  <div className="space-y-2">
-                    {batchStudents.map((learner) => (
-                      <div key={learner.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p className="text-sm font-semibold text-slate-900">{learner.fullName}</p>
-                        <p className="text-xs text-slate-500">{learner.learnerCode}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No candidates found for this batch.</p>
-                )}
-              </>
-            ) : null}
-          </div>
-
-          <SheetFooter>
-            <Button type="button" variant="secondary" onClick={() => setStudentsBatch(null)}>
-              Close
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <BatchEnrollmentSheet
+        open={Boolean(studentsBatch)}
+        batch={studentsBatch}
+        onOpenChange={(nextOpen) => !nextOpen && setStudentsBatch(null)}
+        onDataChange={() => router.refresh()}
+      />
     </div>
   );
 }

@@ -1,6 +1,31 @@
 import "server-only";
 
-export { getBatchByIdService, getBatchesForProgramService, listBatchesService, searchBatchesService } from "@/services/batches/queries";
-export { archiveBatchService, createBatchService, generateBatchCode, updateBatchService } from "@/services/batches/commands";
+export {
+	getBatchByIdService,
+	getBatchesForProgramService,
+	getBatchEnrollmentCandidatesService,
+	getBatchEnrolledLearnersService,
+	getBatchEnrollmentExportService,
+	listBatchesService,
+	searchBatchesService,
+} from "@/services/batches/queries";
+export {
+	archiveBatchService,
+	bulkEnrollLearnersToBatchService,
+	createBatchService,
+	enrollLearnerToBatchService,
+	generateBatchCode,
+	updateBatchService,
+} from "@/services/batches/commands";
 
-export type { BatchCreateResult, BatchOption } from "@/services/batches/types";
+export type {
+	BatchBulkEnrollmentResult,
+	BatchBulkEnrollmentResultItem,
+	BatchCreateResult,
+	BatchEnrollmentCandidate,
+	BatchEnrollmentCandidatesResponse,
+	BatchEnrolledLearner,
+	BatchEnrolledLearnersResponse,
+	BatchEnrollmentExportRow,
+	BatchOption,
+} from "@/services/batches/types";

@@ -51,3 +51,84 @@ export type BatchCreateResult = {
   trainerIds: string[];
   trainerNames: string[];
 };
+
+export type BatchEnrollmentCandidate = {
+  id: string;
+  learnerCode: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  country: string | null;
+  programId: string | null;
+  programName: string | null;
+  courseId: string | null;
+  courseName: string | null;
+  currentBatchCode: string | null;
+  currentBatchName: string | null;
+  campus: string | null;
+};
+
+export type BatchEnrollmentCandidatesResponse = {
+  items: BatchEnrollmentCandidate[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export type BatchEnrolledLearner = {
+  id: string;
+  learnerCode: string;
+  fullName: string;
+};
+
+export type BatchEnrolledLearnersResponse = {
+  items: BatchEnrolledLearner[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export type BatchBulkEnrollmentResultItem = {
+  learnerCode: string;
+  status: "ENROLLED" | "SKIPPED" | "FAILED";
+  message: string;
+};
+
+export type BatchBulkEnrollmentResult = {
+  batchId: string;
+  batchCode: string;
+  processed: number;
+  enrolled: number;
+  skipped: number;
+  failed: number;
+  results: BatchBulkEnrollmentResultItem[];
+};
+
+export type BatchEnrollmentExportRow = {
+  learnerCode: string;
+  learnerName: string;
+  learnerEmail: string;
+  learnerPhone: string;
+  learnerCountry: string;
+  placementStatus: string;
+  recruiterSyncStatus: string;
+  readinessPercentage: string;
+  attendancePercentage: string;
+  averageScore: string;
+  courseCode: string;
+  courseName: string;
+  programCode: string;
+  programName: string;
+  programType: string;
+  batchCode: string;
+  batchName: string;
+  batchStatus: string;
+  batchMode: string;
+  campus: string;
+  enrollmentStatus: string;
+  joinedAt: string;
+  completedAt: string;
+  trainerNames: string;
+};
