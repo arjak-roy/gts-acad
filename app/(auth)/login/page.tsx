@@ -25,6 +25,7 @@ export default function LoginPage() {
   const [activeTab, setActiveTab] = useState<LoginTab>("Admin");
   const [showPassword, setShowPassword] = useState(false);
   const [loginId, setLoginId] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authCode, setAuthCode] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
@@ -170,9 +171,33 @@ export default function LoginPage() {
     }
   };
 
-  const handleSendResetLink = (e: React.FormEvent) => {
+  const handleSendResetLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("Password reset email is not implemented yet.");
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/auth/password-reset/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: resetEmail,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to send password reset instructions right now.");
+      }
+
+      setViewState("RESET_SENT");
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Unable to send password reset instructions right now.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const resetToSignIn = () => {
@@ -180,6 +205,7 @@ export default function LoginPage() {
     setAuthCode("");
     setRecoveryCode("");
     setTwoFactorHint("");
+    setResetEmail("");
     setIsVerified(false);
     setError("");
   };
@@ -404,6 +430,8 @@ export default function LoginPage() {
                       <input
                         type="email"
                         required
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
                         className="w-full rounded-xl border border-[#DDE1E6] py-2.5 pl-10 pr-4 text-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-100"
                         placeholder="example@gtis.com"
                       />

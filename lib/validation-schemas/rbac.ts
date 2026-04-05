@@ -32,7 +32,7 @@ export const setRolePermissionsSchema = z.object({
 });
 
 export const assignUserRolesSchema = z.object({
-  roleIds: z.array(z.string().uuid()),
+  roleIds: z.array(z.string().uuid()).min(1, "At least one role is required."),
 });
 
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;

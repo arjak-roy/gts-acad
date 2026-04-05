@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     const user = await verifyLoginTwoFactor(session.userId, session.challengeId, code);
     const response = apiSuccess({
       ok: true,
+      requiresPasswordReset: user.requiresPasswordReset,
       user: {
         id: user.id,
         email: user.email,
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        requiresPasswordReset: user.requiresPasswordReset,
         state: "authenticated",
       },
       FULL_SESSION_MAX_AGE_SECONDS,

@@ -18,10 +18,23 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = await getAuthSession(request);
   const isFullyAuthenticated = session?.state === "authenticated";
+  const requiresPasswordReset = isFullyAuthenticated && session?.requiresPasswordReset === true;
+
+  if (pathname === "/reset-password") {
+    if (request.nextUrl.searchParams.has("token")) {
+      return appendPathnameHeader(request);
+    }
+
+    if (!isFullyAuthenticated) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    return appendPathnameHeader(request);
+  }
 
   if (pathname === "/login") {
     if (isFullyAuthenticated) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      return NextResponse.redirect(new URL(requiresPasswordReset ? "/reset-password" : "/dashboard", request.url));
     }
     return appendPathnameHeader(request);
   }
@@ -32,6 +45,10 @@ export async function middleware(request: NextRequest) {
 
   if (!isFullyAuthenticated) {
     return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  if (requiresPasswordReset) {
+    return NextResponse.redirect(new URL("/reset-password", request.url));
   }
 
   return appendPathnameHeader(request);

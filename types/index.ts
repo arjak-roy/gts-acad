@@ -221,3 +221,39 @@ export type PortalSectionContent = {
   primaryAction: string;
   secondaryAction: string;
 };
+
+export type InternalUserRoleInfo = {
+  id: string;
+  name: string;
+  code: string;
+  isSystemRole: boolean;
+};
+
+export type WelcomeEmailStatus = "not_requested" | "pending" | "sent" | "failed";
+
+export type InternalUserListItem = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  roles: InternalUserRoleInfo[];
+  primaryRoleCode: string | null;
+  onboardingStatus: WelcomeEmailStatus;
+  requiresPasswordReset: boolean;
+};
+
+export type InternalUsersResponse = {
+  items: InternalUserListItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export type InternalUserDetail = InternalUserListItem & {
+  metadata: Record<string, unknown>;
+};

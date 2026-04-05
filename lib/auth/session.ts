@@ -14,6 +14,7 @@ export type AuthSessionClaims = {
   name: string;
   role: string;
   state: AuthSessionState;
+  requiresPasswordReset?: boolean;
   challengeId?: string;
   purpose?: string;
 };
@@ -55,6 +56,7 @@ export async function verifyAuthSessionToken(token: string) {
       name: String(payload.name ?? ""),
       role: String(payload.role ?? ""),
       state: payload.state === "pending" ? "pending" : "authenticated",
+      requiresPasswordReset: payload.requiresPasswordReset === true,
       challengeId: typeof payload.challengeId === "string" ? payload.challengeId : undefined,
       purpose: typeof payload.purpose === "string" ? payload.purpose : undefined,
     } satisfies AuthSessionClaims;

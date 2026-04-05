@@ -115,6 +115,10 @@ const PERMISSION_DEFINITIONS = [
   { module: "users", action: "create", key: "users.create", description: "Create learners/users" },
   { module: "users", action: "edit", key: "users.edit", description: "Edit learners/users" },
   { module: "users", action: "delete", key: "users.delete", description: "Delete learners/users" },
+  { module: "staff_users", action: "view", key: "staff_users.view", description: "View internal users" },
+  { module: "staff_users", action: "create", key: "staff_users.create", description: "Create internal users" },
+  { module: "staff_users", action: "edit", key: "staff_users.edit", description: "Edit internal users" },
+  { module: "staff_users", action: "delete", key: "staff_users.delete", description: "Deactivate internal users" },
   { module: "courses", action: "view", key: "courses.view", description: "View courses" },
   { module: "courses", action: "create", key: "courses.create", description: "Create courses" },
   { module: "courses", action: "edit", key: "courses.edit", description: "Edit courses" },
@@ -181,6 +185,7 @@ const ROLE_PERMISSION_MAP = {
   ACADEMY_ADMIN: [
     "dashboard.view",
     "users.view", "users.create", "users.edit", "users.delete",
+    "staff_users.view", "staff_users.create", "staff_users.edit", "staff_users.delete",
     "courses.view", "courses.create", "courses.edit", "courses.delete",
     "programs.view", "programs.create", "programs.edit", "programs.delete",
     "batches.view", "batches.create", "batches.edit", "batches.delete",
