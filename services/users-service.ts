@@ -201,8 +201,41 @@ function buildInternalUserWhere(input?: { search?: string; status?: GetUsersInpu
 }
 
 function buildInternalLoginUrl() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
-  return `${appUrl.replace(/\/$/, "")}/login`;
+  const normalizeOrigin = (value: string | undefined) => {
+    const normalized = value?.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    if (/^https?:\/\//i.test(normalized)) {
+      return normalized.replace(/\/$/, "");
+    }
+
+    return `https://${normalized}`.replace(/\/$/, "");
+  };
+
+  const isLoopbackOrigin = (origin: string) => {
+    try {
+      const url = new URL(origin);
+      return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
+    } catch {
+      return false;
+    }
+  };
+
+  const candidates = [
+    process.env.INTERNAL_APP_ORIGIN,
+    process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN,
+    process.env.APP_ORIGIN,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+  ]
+    .map(normalizeOrigin)
+    .filter((origin): origin is string => Boolean(origin));
+
+  const resolvedOrigin = candidates.find((origin) => !isLoopbackOrigin(origin)) ?? "https://gts-acad.vercel.app";
+  return `${resolvedOrigin}/login`;
 }
 
 function buildRoleSummary(roles: Array<Pick<InternalRoleRecord, "name">>) {
