@@ -19,10 +19,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requirePermission(request, "programs.create");
+    const session = await requirePermission(request, "programs.create");
     const body = await request.json();
     const input = createProgramSchema.parse(body);
-    const program = await createProgramService(input);
+    const program = await createProgramService(input, session.userId);
     return apiSuccess(program, { status: 201 });
   } catch (error) {
     return apiError(error);

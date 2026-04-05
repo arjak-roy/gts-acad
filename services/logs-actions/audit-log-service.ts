@@ -58,10 +58,24 @@ export async function listAuditLogsService(input: ListAuditLogsInput): Promise<A
     };
   }
 
-  const where = {
+  const normalizedStatus = input.status?.trim();
+  const normalizedEntityId = input.entityId?.trim();
+  const normalizedSearch = input.search?.trim();
+
+  const where: Prisma.AuditLogWhereInput = {
     ...(input.entityType && input.entityType !== "ALL" ? { entityType: input.entityType } : {}),
     ...(input.level && input.level !== "ALL" ? { level: input.level } : {}),
-    ...(input.search?.trim() ? { message: { contains: input.search.trim(), mode: "insensitive" } } : {}),
+    ...(input.action && input.action !== "ALL" ? { action: input.action } : {}),
+    ...(normalizedStatus ? { status: { equals: normalizedStatus, mode: "insensitive" } } : {}),
+    ...(normalizedEntityId ? { entityId: { contains: normalizedEntityId, mode: "insensitive" } } : {}),
+    ...(normalizedSearch
+      ? {
+          OR: [
+            { message: { contains: normalizedSearch, mode: "insensitive" } },
+            { entityId: { contains: normalizedSearch, mode: "insensitive" } },
+          ],
+        }
+      : {}),
   };
 
   const [totalCount, rows] = await prismaWithLogs.$transaction([

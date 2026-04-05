@@ -75,6 +75,9 @@ export type ListAuditLogsInput = {
   pageSize?: number;
   entityType?: "ALL" | AuditEntityType;
   level?: "ALL" | AuditLogLevel;
+  action?: "ALL" | AuditActionType;
+  status?: string;
+  entityId?: string;
   search?: string;
 };
 

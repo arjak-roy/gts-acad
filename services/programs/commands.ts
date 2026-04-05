@@ -3,6 +3,7 @@ import "server-only";
 import { deriveGeneratedCodePrefix, formatGeneratedCode } from "@/lib/utils";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateProgramInput, UpdateProgramInput } from "@/lib/validation-schemas/programs";
+import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { mapProgramRecord, mapProgramSummaryRecord, requireCourse, resolveUniqueSlug, selectProgramRecord, slugify } from "@/services/programs/internal-helpers";
 import { MOCK_PROGRAMS } from "@/services/programs/mock-data";
 import { ProgramCreateResult, ProgramOption } from "@/services/programs/types";
@@ -29,7 +30,7 @@ export async function generateProgramCode(programName: string): Promise<string> 
   return formatGeneratedCode("P", programName, number);
 }
 
-export async function updateProgramService(input: UpdateProgramInput): Promise<ProgramCreateResult> {
+export async function updateProgramService(input: UpdateProgramInput, actorUserId?: string): Promise<ProgramCreateResult> {
   const normalizedName = input.name.trim();
   const normalizedCategory = input.category.trim() || null;
   const normalizedDescription = input.description.trim() || null;
@@ -38,7 +39,7 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
 
   if (!isDatabaseConfigured) {
     const courseName = MOCK_PROGRAMS.find((program) => program.courseId === input.courseId)?.courseName ?? "Assigned Course";
-    return {
+    const result = {
       id: input.programId,
       courseId: input.courseId,
       courseName,
@@ -50,6 +51,23 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
       description: normalizedDescription,
       isActive: input.isActive,
     };
+
+    await createAuditLogEntry({
+      entityType: "SYSTEM",
+      entityId: result.id,
+      action: "UPDATED",
+      status: "PROGRAM",
+      message: `Program ${result.name} updated.`,
+      metadata: {
+        programId: result.id,
+        courseId: result.courseId,
+        type: result.type,
+        isActive: result.isActive,
+      },
+      actorUserId: actorUserId ?? null,
+    });
+
+    return result;
   }
 
   const existingProgram = await prisma.program.findUnique({
@@ -97,10 +115,27 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
       select: selectProgramRecord(),
     });
 
-    return mapProgramRecord(program);
+    const mappedProgram = mapProgramRecord(program);
+
+    await createAuditLogEntry({
+      entityType: "SYSTEM",
+      entityId: mappedProgram.id,
+      action: "UPDATED",
+      status: "PROGRAM",
+      message: `Program ${mappedProgram.name} updated.`,
+      metadata: {
+        programId: mappedProgram.id,
+        courseId: mappedProgram.courseId,
+        type: mappedProgram.type,
+        isActive: mappedProgram.isActive,
+      },
+      actorUserId: actorUserId ?? null,
+    });
+
+    return mappedProgram;
   }
 
-  return prisma.$transaction(async (tx) => {
+  const mappedProgram = await prisma.$transaction(async (tx) => {
     if (selectedTrainerIds) {
       const [selectedTrainers, currentlyAssigned] = await Promise.all([
         selectedTrainerIds.length
@@ -187,16 +222,35 @@ export async function updateProgramService(input: UpdateProgramInput): Promise<P
 
     return mapProgramRecord(updatedProgram);
   });
+
+  await createAuditLogEntry({
+    entityType: "SYSTEM",
+    entityId: mappedProgram.id,
+    action: "UPDATED",
+    status: "PROGRAM",
+    message: `Program ${mappedProgram.name} updated.`,
+    metadata: {
+      programId: mappedProgram.id,
+      courseId: mappedProgram.courseId,
+      type: mappedProgram.type,
+      isActive: mappedProgram.isActive,
+      trainerCount: selectedTrainerIds?.length ?? null,
+      batchCount: selectedBatchIds?.length ?? null,
+    },
+    actorUserId: actorUserId ?? null,
+  });
+
+  return mappedProgram;
 }
 
-export async function archiveProgramService(programId: string): Promise<ProgramOption> {
+export async function archiveProgramService(programId: string, actorUserId?: string): Promise<ProgramOption> {
   if (!isDatabaseConfigured) {
     const mock = MOCK_PROGRAMS.find((program) => program.id === programId);
     if (!mock) {
       throw new Error("Program not found.");
     }
 
-    return {
+    const result = {
       id: mock.id,
       courseId: mock.courseId,
       courseName: mock.courseName,
@@ -204,6 +258,23 @@ export async function archiveProgramService(programId: string): Promise<ProgramO
       type: mock.type,
       isActive: false,
     };
+
+    await createAuditLogEntry({
+      entityType: "SYSTEM",
+      entityId: result.id,
+      action: "UPDATED",
+      status: "PROGRAM",
+      message: `Program ${result.name} archived.`,
+      metadata: {
+        programId: result.id,
+        courseId: result.courseId,
+        type: result.type,
+        isActive: result.isActive,
+      },
+      actorUserId: actorUserId ?? null,
+    });
+
+    return result;
   }
 
   const program = await prisma.program.update({
@@ -219,10 +290,27 @@ export async function archiveProgramService(programId: string): Promise<ProgramO
     },
   });
 
-  return mapProgramSummaryRecord(program);
+  const mappedProgram = mapProgramSummaryRecord(program);
+
+  await createAuditLogEntry({
+    entityType: "SYSTEM",
+    entityId: mappedProgram.id,
+    action: "UPDATED",
+    status: "PROGRAM",
+    message: `Program ${mappedProgram.name} archived.`,
+    metadata: {
+      programId: mappedProgram.id,
+      courseId: mappedProgram.courseId,
+      type: mappedProgram.type,
+      isActive: mappedProgram.isActive,
+    },
+    actorUserId: actorUserId ?? null,
+  });
+
+  return mappedProgram;
 }
 
-export async function createProgramService(input: CreateProgramInput): Promise<ProgramCreateResult> {
+export async function createProgramService(input: CreateProgramInput, actorUserId?: string): Promise<ProgramCreateResult> {
   const normalizedName = input.name.trim();
   const normalizedCategory = input.category.trim() || null;
   const normalizedDescription = input.description.trim() || null;
@@ -236,7 +324,7 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
 
   if (!isDatabaseConfigured) {
     const courseName = MOCK_PROGRAMS.find((program) => program.courseId === input.courseId)?.courseName ?? "Assigned Course";
-    return {
+    const result = {
       id: `mock-${Date.now()}`,
       courseId: input.courseId,
       courseName,
@@ -248,6 +336,23 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
       description: normalizedDescription,
       isActive: input.isActive,
     };
+
+    await createAuditLogEntry({
+      entityType: "SYSTEM",
+      entityId: result.id,
+      action: "CREATED",
+      status: "PROGRAM",
+      message: `Program ${result.name} created.`,
+      metadata: {
+        programId: result.id,
+        courseId: result.courseId,
+        type: result.type,
+        isActive: result.isActive,
+      },
+      actorUserId: actorUserId ?? null,
+    });
+
+    return result;
   }
 
   const [existingName, existingCode, course] = await Promise.all([
@@ -272,7 +377,7 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
 
   const slug = await resolveUniqueSlug(slugify(normalizedName));
 
-  return prisma.$transaction(async (tx) => {
+  const createdProgram = await prisma.$transaction(async (tx) => {
     const program = await tx.program.create({
       data: {
         courseId: course.id,
@@ -337,4 +442,23 @@ export async function createProgramService(input: CreateProgramInput): Promise<P
 
     return mapProgramRecord(program);
   });
+
+  await createAuditLogEntry({
+    entityType: "SYSTEM",
+    entityId: createdProgram.id,
+    action: "CREATED",
+    status: "PROGRAM",
+    message: `Program ${createdProgram.name} created.`,
+    metadata: {
+      programId: createdProgram.id,
+      courseId: createdProgram.courseId,
+      type: createdProgram.type,
+      isActive: createdProgram.isActive,
+      trainerCount: selectedTrainerIds.length,
+      batchCount: selectedBatchIds.length,
+    },
+    actorUserId: actorUserId ?? null,
+  });
+
+  return createdProgram;
 }

@@ -15,6 +15,9 @@ export const listAuditLogsSchema = z.object({
   pageSize: positiveInt.max(100).default(10),
   entityType: z.enum(["ALL", "BATCH", "CANDIDATE", "COURSE", "EMAIL", "AUTH", "SYSTEM"]).default("ALL"),
   level: z.enum(["ALL", "INFO", "WARN", "ERROR"]).default("ALL"),
+  action: z.enum(["ALL", "CREATED", "UPDATED", "ENROLLED", "MAIL_SENT", "MAIL_FAILED", "MAIL_RETRIED", "LOGIN", "TWO_FACTOR", "RETRY"]).default("ALL"),
+  status: z.string().trim().max(50).optional().default(""),
+  entityId: z.string().trim().max(120).optional().default(""),
   search: z.string().trim().max(120).optional().default(""),
 });
 

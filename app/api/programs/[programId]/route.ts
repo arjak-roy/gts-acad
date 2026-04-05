@@ -29,10 +29,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "programs.edit");
+    const session = await requirePermission(request, "programs.edit");
     const body = await request.json();
     const input = updateProgramSchema.parse({ ...body, programId: params.programId });
-    const program = await updateProgramService(input);
+    const program = await updateProgramService(input, session.userId);
     return apiSuccess(program);
   } catch (error) {
     return apiError(error);
@@ -41,9 +41,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "programs.delete");
+    const session = await requirePermission(request, "programs.delete");
     const { programId } = programIdSchema.parse(params);
-    const program = await archiveProgramService(programId);
+    const program = await archiveProgramService(programId, session.userId);
     return apiSuccess(program);
   } catch (error) {
     return apiError(error);

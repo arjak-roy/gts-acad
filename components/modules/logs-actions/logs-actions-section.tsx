@@ -11,9 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-type LogsModule = "email" | "batch" | "candidate" | "course";
+type LogsModule = "email" | "batch" | "candidate" | "course" | "program";
 
 type EmailStatus = "ALL" | "PENDING" | "SENT" | "FAILED" | "RETRYING";
+type EmailCategory = "ALL" | "CANDIDATE_WELCOME" | "TWO_FACTOR" | "SYSTEM";
+type AuditLevel = "ALL" | "INFO" | "WARN" | "ERROR";
+type AuditAction = "ALL" | "CREATED" | "UPDATED" | "ENROLLED" | "MAIL_SENT" | "MAIL_FAILED" | "MAIL_RETRIED" | "LOGIN" | "TWO_FACTOR" | "RETRY";
 
 type EmailLogItem = {
   id: string;
@@ -65,7 +68,28 @@ const MODULE_CONFIG: Array<{ key: LogsModule; label: string }> = [
   { key: "batch", label: "Batch Logs" },
   { key: "candidate", label: "Candidate Logs" },
   { key: "course", label: "Course Logs" },
+  { key: "program", label: "Program Logs" },
 ];
+
+function resolveAuditScope(module: LogsModule): { entityType: "BATCH" | "CANDIDATE" | "COURSE" | "SYSTEM"; status?: string } {
+  if (module === "batch") {
+    return { entityType: "BATCH" };
+  }
+
+  if (module === "candidate") {
+    return { entityType: "CANDIDATE" };
+  }
+
+  if (module === "course") {
+    return { entityType: "COURSE" };
+  }
+
+  if (module === "program") {
+    return { entityType: "SYSTEM", status: "PROGRAM" };
+  }
+
+  return { entityType: "SYSTEM" };
+}
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -108,6 +132,11 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
   const [activeModule, setActiveModule] = useState<LogsModule>("email");
   const [search, setSearch] = useState("");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("ALL");
+  const [emailCategory, setEmailCategory] = useState<EmailCategory>("ALL");
+  const [auditLevel, setAuditLevel] = useState<AuditLevel>("ALL");
+  const [auditAction, setAuditAction] = useState<AuditAction>("ALL");
+  const [auditStatus, setAuditStatus] = useState("");
+  const [auditEntityId, setAuditEntityId] = useState("");
   const [emailPage, setEmailPage] = useState(1);
   const [auditPage, setAuditPage] = useState(1);
   const [emailData, setEmailData] = useState<EmailLogsResponse | null>(null);
@@ -135,6 +164,7 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
           page: String(emailPage),
           pageSize: "10",
           status: emailStatus,
+          category: emailCategory,
           search,
         });
 
@@ -142,13 +172,25 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
         const data = await parseResponse<EmailLogsResponse>(response);
         setEmailData(data);
       } else {
-        const entityType = activeModule.toUpperCase();
+        const scope = resolveAuditScope(activeModule);
+        const statusFilter = auditStatus.trim() || scope.status;
+        const entityIdFilter = auditEntityId.trim();
         const params = new URLSearchParams({
           page: String(auditPage),
           pageSize: "10",
-          entityType,
+          entityType: scope.entityType,
+          level: auditLevel,
+          action: auditAction,
           search,
         });
+
+        if (statusFilter) {
+          params.set("status", statusFilter);
+        }
+
+        if (entityIdFilter) {
+          params.set("entityId", entityIdFilter);
+        }
 
         const response = await fetch(`/api/logs-actions/audit?${params.toString()}`, { cache: "no-store" });
         const data = await parseResponse<AuditLogsResponse>(response);
@@ -160,7 +202,7 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
     } finally {
       setLoading(false);
     }
-  }, [activeModule, emailPage, auditPage, emailStatus, search]);
+  }, [activeModule, auditAction, auditEntityId, auditLevel, auditPage, auditStatus, emailCategory, emailPage, emailStatus, search]);
 
   useEffect(() => {
     void fetchLogs();
@@ -232,7 +274,7 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">{title}</h1>
           <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">{description}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             value={search}
             onChange={(event) => {
@@ -244,21 +286,93 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
             className="w-64"
           />
           {activeModule === "email" ? (
-            <select
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
-              value={emailStatus}
-              onChange={(event) => {
-                setEmailStatus(event.target.value as EmailStatus);
-                setEmailPage(1);
-              }}
-            >
-              <option value="ALL">All statuses</option>
-              <option value="FAILED">Failed</option>
-              <option value="RETRYING">Retrying</option>
-              <option value="PENDING">Pending</option>
-              <option value="SENT">Sent</option>
-            </select>
-          ) : null}
+            <>
+              <select
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
+                value={emailStatus}
+                onChange={(event) => {
+                  setEmailStatus(event.target.value as EmailStatus);
+                  setEmailPage(1);
+                }}
+              >
+                <option value="ALL">All statuses</option>
+                <option value="FAILED">Failed</option>
+                <option value="RETRYING">Retrying</option>
+                <option value="PENDING">Pending</option>
+                <option value="SENT">Sent</option>
+              </select>
+
+              <select
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
+                value={emailCategory}
+                onChange={(event) => {
+                  setEmailCategory(event.target.value as EmailCategory);
+                  setEmailPage(1);
+                }}
+              >
+                <option value="ALL">All categories</option>
+                <option value="CANDIDATE_WELCOME">Candidate Welcome</option>
+                <option value="TWO_FACTOR">Two Factor</option>
+                <option value="SYSTEM">System</option>
+              </select>
+            </>
+          ) : (
+            <>
+              <select
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
+                value={auditLevel}
+                onChange={(event) => {
+                  setAuditLevel(event.target.value as AuditLevel);
+                  setAuditPage(1);
+                }}
+              >
+                <option value="ALL">All levels</option>
+                <option value="INFO">Info</option>
+                <option value="WARN">Warn</option>
+                <option value="ERROR">Error</option>
+              </select>
+
+              <select
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
+                value={auditAction}
+                onChange={(event) => {
+                  setAuditAction(event.target.value as AuditAction);
+                  setAuditPage(1);
+                }}
+              >
+                <option value="ALL">All actions</option>
+                <option value="CREATED">Created</option>
+                <option value="UPDATED">Updated</option>
+                <option value="ENROLLED">Enrolled</option>
+                <option value="MAIL_SENT">Mail Sent</option>
+                <option value="MAIL_FAILED">Mail Failed</option>
+                <option value="MAIL_RETRIED">Mail Retried</option>
+                <option value="LOGIN">Login</option>
+                <option value="TWO_FACTOR">Two Factor</option>
+                <option value="RETRY">Retry</option>
+              </select>
+
+              <Input
+                value={auditEntityId}
+                onChange={(event) => {
+                  setAuditEntityId(event.target.value);
+                  setAuditPage(1);
+                }}
+                placeholder="Filter by entity ID"
+                className="w-52"
+              />
+
+              <Input
+                value={auditStatus}
+                onChange={(event) => {
+                  setAuditStatus(event.target.value);
+                  setAuditPage(1);
+                }}
+                placeholder={activeModule === "program" ? "Status (default PROGRAM)" : "Filter by status"}
+                className="w-52"
+              />
+            </>
+          )}
         </div>
       </div>
 
