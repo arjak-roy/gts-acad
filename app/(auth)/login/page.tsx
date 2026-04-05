@@ -17,12 +17,9 @@ import {
 
 type ViewState = "SIGN_IN" | "TWO_STEP" | "RECOVERY" | "FORGOT_PASSWORD" | "RESET_SENT";
 
-type LoginTab = "Admin" | "Trainer";
-
 export default function LoginPage() {
   const router = useRouter();
   const [viewState, setViewState] = useState<ViewState>("SIGN_IN");
-  const [activeTab, setActiveTab] = useState<LoginTab>("Admin");
   const [showPassword, setShowPassword] = useState(false);
   const [loginId, setLoginId] = useState("");
   const [resetEmail, setResetEmail] = useState("");
@@ -224,17 +221,9 @@ export default function LoginPage() {
     setIsVerified(false);
   };
 
-  const getTwoStepTitle = () => {
-    if (activeTab === "Admin") return "Internal Admin Panel Email Verification";
-    if (activeTab === "Trainer") return "Trainer Portal Email Verification";
-    return "Client Portal Email Verification";
-  };
+  const getTwoStepTitle = () => "Email Verification";
 
-  const getRecoveryTitle = () => {
-    if (activeTab === "Admin") return "Internal Admin Panel";
-    if (activeTab === "Trainer") return "Trainer Portal";
-    return "Client Portal";
-  };
+  const getRecoveryTitle = () => "Recovery Verification";
 
   return (
     <div className="flex h-screen w-full flex-col bg-white md:flex-row">
@@ -276,25 +265,6 @@ export default function LoginPage() {
               <>
                 <h2 className="text-2xl font-semibold tracking-tight text-gray-900">Signing into Global Talent Square</h2>
                 <p className="mb-6 mt-1 text-sm text-gray-500">Enter your credentials to continue</p>
-                <div className="mb-8 flex rounded-xl border border-[#DDE1E6] bg-[#F6F7F9] p-1 text-sm">
-                  {(["Admin", "Trainer"] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => {
-                        setActiveTab(tab);
-                        resetToSignIn();
-                      }}
-                      className={`flex-1 rounded-xl px-2 py-2.5 text-center font-medium transition-all duration-200 ${
-                        activeTab === tab
-                          ? "border border-[#DDE1E6] bg-white text-[#0D3B84] shadow-sm"
-                          : "text-gray-500 hover:text-gray-700"
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
                 <form onSubmit={handleInitialSignIn} className="space-y-6">
                   <div>
                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-gray-400">Login ID</label>
