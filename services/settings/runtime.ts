@@ -146,11 +146,13 @@ export async function getEmailRuntimeSettings() {
 }
 
 export async function getFileUploadRuntimeSettings() {
+  const storageLocation = String(await getRuntimeSettingValue("uploads.storage_location", "LOCAL_PUBLIC"));
+
   return {
     maximumFileUploadSizeMb: Number(await getRuntimeSettingValue("uploads.maximum_file_upload_size_mb", 20)),
     allowedFileTypes: (await getRuntimeSettingValue("uploads.allowed_file_types", ["pdf", "docx", "jpg", "png", "mp4"])) as string[],
     allowedImageTypes: (await getRuntimeSettingValue("uploads.allowed_image_types", ["jpg", "jpeg", "png", "webp", "svg", "ico"])) as string[],
-    storageLocation: String(await getRuntimeSettingValue("uploads.storage_location", "LOCAL_PUBLIC")),
+    storageLocation: storageLocation === "S3" ? "S3" : "LOCAL_PUBLIC",
     enableDocumentPreview: Boolean(await getRuntimeSettingValue("uploads.enable_document_preview", true)),
   };
 }

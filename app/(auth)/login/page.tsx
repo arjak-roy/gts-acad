@@ -253,6 +253,13 @@ function LoginPageContent() {
     <div className="flex h-screen w-full flex-col bg-white md:flex-row">
       <div className="relative hidden w-[40%] flex-col items-start justify-center overflow-hidden bg-[#0D3B84] p-16 text-white md:flex">
         <div
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-20"
+          style={{
+            backgroundImage: "url('/api/branding/login-page-banner')",
+          }}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(13,59,132,0.72),rgba(13,59,132,0.9))]" />
+        <div
           className="pointer-events-none absolute inset-0 opacity-10"
           style={{
             backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
@@ -261,11 +268,13 @@ function LoginPageContent() {
         />
         <div className="z-20 mx-auto w-full max-w-lg">
           <div className="mb-12">
-            <img
-              src="https://globaltalentsquare.com/assets/images/gts-logo.svg"
-              alt="Global Talent Square Logo"
-              className="h-16 object-contain brightness-0 invert"
-            />
+            <div className="inline-flex items-center justify-center rounded-2xl bg-white p-2 shadow-sm">
+              <img
+                src="/api/branding/application-logo"
+                alt="Global Talent Square Logo"
+                className="h-16 object-contain"
+              />
+            </div>
           </div>
           <h1 className="mb-6 text-4xl font-bold leading-tight lg:text-5xl">Global Talent Square Academy</h1>
           <p className="text-lg font-light leading-relaxed opacity-90">

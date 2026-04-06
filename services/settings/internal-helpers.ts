@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import {
   SETTINGS_CATALOG,
+  getSettingsCatalogField,
   type SettingsCatalogCategory,
   type SettingsCatalogOption,
 } from "@/lib/settings/catalog";
@@ -87,21 +88,26 @@ export function isSettingsInfrastructureError(error: unknown) {
 }
 
 export function mapSettingRecord(setting: SettingRecordWithCategory, includeSecrets = false): SettingDefinitionItem {
+  const catalogField = setting.isSystem ? getSettingsCatalogField(setting.key)?.field ?? null : null;
+
   return {
     id: setting.id,
     key: setting.key,
-    label: setting.label,
-    description: setting.description ?? null,
-    type: setting.type,
+    label: catalogField?.label ?? setting.label,
+    description: catalogField?.description ?? setting.description ?? null,
+    type: catalogField?.type ?? setting.type,
     value: setting.isEncrypted ? null : getEffectiveSettingValue(setting, includeSecrets),
     defaultValue: setting.isEncrypted ? null : setting.defaultValue ?? null,
-    placeholder: setting.placeholder ?? null,
-    helpText: setting.helpText ?? null,
-    options: normalizeSettingOptions(setting.options),
-    validationRules: normalizeSettingValidationRules(setting.validationRules),
-    groupName: setting.groupName ?? null,
-    displayOrder: setting.displayOrder,
-    isRequired: setting.isRequired,
+    placeholder: catalogField?.placeholder ?? setting.placeholder ?? null,
+    helpText: catalogField?.helpText ?? setting.helpText ?? null,
+    options: catalogField?.options ?? normalizeSettingOptions(setting.options),
+    validationRules: {
+      ...normalizeSettingValidationRules(setting.validationRules),
+      ...(catalogField?.validationRules ?? {}),
+    },
+    groupName: catalogField?.groupName ?? setting.groupName ?? null,
+    displayOrder: catalogField?.displayOrder ?? setting.displayOrder,
+    isRequired: catalogField?.isRequired ?? setting.isRequired,
     isEncrypted: setting.isEncrypted,
     isReadonly: setting.isReadonly,
     isSystem: setting.isSystem,

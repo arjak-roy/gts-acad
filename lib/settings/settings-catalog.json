@@ -794,7 +794,8 @@
         "displayOrder": 40,
         "groupName": "Storage",
         "options": [
-          { "label": "Local Public Storage", "value": "LOCAL_PUBLIC" }
+          { "label": "Local Public Storage", "value": "LOCAL_PUBLIC" },
+          { "label": "Amazon S3", "value": "S3" }
         ]
       },
       {

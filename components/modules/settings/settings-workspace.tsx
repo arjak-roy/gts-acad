@@ -41,6 +41,7 @@ import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { SettingsFileUploadField } from "@/components/modules/settings/settings-file-upload-field";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
@@ -1012,61 +1013,23 @@ export function SettingsWorkspace() {
 
     if (setting.type === "FILE") {
       const asset = isSettingsAssetValue(value) ? value : null;
-      const isImageAsset = asset?.mimeType.startsWith("image/") ?? false;
 
       return (
-        <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
-          {asset ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{asset.originalName}</p>
-                  <p className="text-xs text-slate-500">{asset.mimeType} · {Math.round(asset.size / 1024)} KB</p>
-                </div>
-                <a href={asset.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-primary">
-                  Open asset
-                </a>
-              </div>
-              {isImageAsset ? (
-                <img src={asset.url} alt={setting.label} className="mt-3 max-h-32 rounded-xl border border-slate-100 object-contain" />
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">No asset uploaded for this setting yet.</p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-[#dde1e6] transition-colors hover:bg-slate-50">
-              {uploadingKey === setting.key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Upload file
-              <input
-                className="hidden"
-                type="file"
-                disabled={disabled}
-                onChange={(event) => {
-                  void handleFileUpload(setting, event.target.files?.[0] ?? null);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
-            {asset ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={disabled}
-                onClick={() => {
-                  setFormValues((current) => ({
-                    ...current,
-                    [setting.key]: null,
-                  }));
-                }}
-              >
-                Remove
-              </Button>
-            ) : null}
-          </div>
-        </div>
+        <SettingsFileUploadField
+          setting={setting}
+          asset={asset}
+          disabled={disabled}
+          isUploading={uploadingKey === setting.key}
+          onUpload={(file) => {
+            void handleFileUpload(setting, file);
+          }}
+          onRemove={() => {
+            setFormValues((current) => ({
+              ...current,
+              [setting.key]: null,
+            }));
+          }}
+        />
       );
     }
 

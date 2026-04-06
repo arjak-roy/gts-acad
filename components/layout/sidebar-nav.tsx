@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, Network, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
 
-import academyLogo from "@/Logo 9-02.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
 import { useRbac } from "@/lib/rbac-context";
@@ -94,7 +93,7 @@ export function SidebarNav() {
       <div className="flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-3 overflow-hidden px-2">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
-            <Image src={academyLogo} alt="GTS Academy" className="h-full w-full object-scale-down" priority />
+            <Image src="/api/branding/application-logo" alt="GTS Academy" width={44} height={44} className="h-full w-full object-scale-down" priority unoptimized />
           </div>
           <div className="min-w-0 transition-all group-data-[collapsed=true]/sidebar:hidden">
             <p className="text-[10px] font-black uppercase tracking-[0.32em] text-slate-400">Admin Operations</p>

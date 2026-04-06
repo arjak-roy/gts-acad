@@ -104,6 +104,7 @@ export function isStoredSettingsAsset(value: unknown): value is {
   kind: "settings-asset";
   url: string;
   storagePath: string;
+  storageProvider?: "LOCAL_PUBLIC" | "S3";
   fileName: string;
   originalName: string;
   mimeType: string;
@@ -119,6 +120,7 @@ export function isStoredSettingsAsset(value: unknown): value is {
     candidate.kind === "settings-asset" &&
     typeof candidate.url === "string" &&
     typeof candidate.storagePath === "string" &&
+    (candidate.storageProvider === undefined || candidate.storageProvider === "LOCAL_PUBLIC" || candidate.storageProvider === "S3") &&
     typeof candidate.fileName === "string" &&
     typeof candidate.originalName === "string" &&
     typeof candidate.mimeType === "string" &&

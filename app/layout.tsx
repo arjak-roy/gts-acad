@@ -10,6 +10,11 @@ const inter = Inter({ subsets: ["latin"], display: "swap" });
 export const metadata: Metadata = {
   title: "GTS Academy Admin",
   description: "Production-grade admin portal for academy operations and learner readiness.",
+  icons: {
+    icon: "/api/branding/favicon",
+    shortcut: "/api/branding/favicon",
+    apple: "/api/branding/favicon",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

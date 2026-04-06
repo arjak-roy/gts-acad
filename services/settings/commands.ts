@@ -8,11 +8,13 @@ import type {
   UpdateSettingDefinitionInput,
   UpdateSettingsCategoryInput,
 } from "@/lib/validation-schemas/settings";
+import { getSettingsCatalogField } from "@/lib/settings/catalog";
 import { encryptSettingsValue } from "@/lib/settings/crypto";
 import { hasMeaningfulSettingValue, isStoredSettingsAsset, validateDynamicSettingValue } from "@/lib/settings/validation";
 import { invalidateMailTransportCache } from "@/lib/mail-service";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
+import { areStoredAssetsFromSameLocation, publishBrandingSettingsAsset } from "@/services/file-upload";
 import { invalidateSettingsRuntimeCache } from "@/services/settings/cache";
 import {
   getEffectiveSettingValue,
@@ -439,69 +441,98 @@ export async function updateSettingsCategoryValuesService(
   const preserveEncryptedKeys = new Set(input.preserveEncryptedKeys ?? []);
   const assetsToDelete: unknown[] = [];
   const changedKeys: string[] = [];
+  const preparedUpdates: Array<{
+    settingId: string;
+    settingKey: string;
+    nextStoredValue: unknown;
+    previousAuditValue: unknown;
+    nextAuditValue: unknown;
+  }> = [];
+
+  for (const setting of category.settings) {
+    if (!Object.prototype.hasOwnProperty.call(input.values, setting.key)) {
+      continue;
+    }
+
+    if (setting.isReadonly) {
+      throw new Error(`Forbidden: ${setting.label} is read-only.`);
+    }
+
+    const catalogField = setting.isSystem ? getSettingsCatalogField(setting.key)?.field ?? null : null;
+    const currentValue = getEffectiveSettingValue(setting, true);
+    const validationResult = validateDynamicSettingValue(
+      {
+        key: setting.key,
+        label: catalogField?.label ?? setting.label,
+        type: catalogField?.type ?? setting.type,
+        isRequired: catalogField?.isRequired ?? setting.isRequired,
+        isEncrypted: setting.isEncrypted,
+        options: catalogField?.options ?? normalizeSettingOptions(setting.options),
+        validationRules: {
+          ...normalizeSettingValidationRules(setting.validationRules),
+          ...(catalogField?.validationRules ?? {}),
+        },
+      },
+      input.values[setting.key],
+      {
+        preserveEncryptedValue: preserveEncryptedKeys.has(setting.key),
+        hasStoredValue: setting.value !== null,
+      },
+    );
+
+    if (validationResult.preserveExisting) {
+      continue;
+    }
+
+    const normalizedValue = setting.type === "FILE"
+      ? await publishBrandingSettingsAsset(setting.key, validationResult.normalizedValue)
+      : validationResult.normalizedValue;
+
+    const nextStoredValue = setting.isEncrypted ? encryptSettingsValue(normalizedValue) : normalizedValue;
+    const previousAuditValue = buildAuditValue(setting.isEncrypted, currentValue);
+    const nextAuditValue = buildAuditValue(setting.isEncrypted, normalizedValue);
+
+    if (JSON.stringify(previousAuditValue) === JSON.stringify(nextAuditValue)) {
+      continue;
+    }
+
+    if (
+      setting.type === "FILE" &&
+      isStoredSettingsAsset(currentValue) &&
+      JSON.stringify(currentValue) !== JSON.stringify(normalizedValue) &&
+      !areStoredAssetsFromSameLocation(currentValue, normalizedValue)
+    ) {
+      assetsToDelete.push(currentValue);
+    }
+
+    preparedUpdates.push({
+      settingId: setting.id,
+      settingKey: setting.key,
+      nextStoredValue,
+      previousAuditValue,
+      nextAuditValue,
+    });
+    changedKeys.push(setting.key);
+  }
 
   await prisma.$transaction(async (tx) => {
-    for (const setting of category.settings) {
-      if (!Object.prototype.hasOwnProperty.call(input.values, setting.key)) {
-        continue;
-      }
-
-      if (setting.isReadonly) {
-        throw new Error(`Forbidden: ${setting.label} is read-only.`);
-      }
-
-      const currentValue = getEffectiveSettingValue(setting, true);
-      const validationResult = validateDynamicSettingValue(
-        {
-          key: setting.key,
-          label: setting.label,
-          type: setting.type,
-          isRequired: setting.isRequired,
-          isEncrypted: setting.isEncrypted,
-          options: normalizeSettingOptions(setting.options),
-          validationRules: normalizeSettingValidationRules(setting.validationRules),
-        },
-        input.values[setting.key],
-        {
-          preserveEncryptedValue: preserveEncryptedKeys.has(setting.key),
-          hasStoredValue: setting.value !== null,
-        },
-      );
-
-      if (validationResult.preserveExisting) {
-        continue;
-      }
-
-      const nextValue = setting.isEncrypted ? encryptSettingsValue(validationResult.normalizedValue) : validationResult.normalizedValue;
-      const previousAuditValue = buildAuditValue(setting.isEncrypted, currentValue);
-      const nextAuditValue = buildAuditValue(setting.isEncrypted, validationResult.normalizedValue);
-
-      if (JSON.stringify(previousAuditValue) === JSON.stringify(nextAuditValue)) {
-        continue;
-      }
-
-      if (setting.type === "FILE" && isStoredSettingsAsset(currentValue) && JSON.stringify(currentValue) !== JSON.stringify(validationResult.normalizedValue)) {
-        assetsToDelete.push(currentValue);
-      }
-
+    for (const update of preparedUpdates) {
       await tx.setting.update({
-        where: { id: setting.id },
+        where: { id: update.settingId },
         data: {
-          value: toJsonInputValue(nextValue),
+          value: toJsonInputValue(update.nextStoredValue),
         },
       });
 
       await writeSettingsAuditLog(tx, {
-        settingId: setting.id,
-        settingKey: setting.key,
+        settingId: update.settingId,
+        settingKey: update.settingKey,
         categoryCode: category.code,
         action: "value.updated",
-        oldValue: previousAuditValue,
-        newValue: nextAuditValue,
+        oldValue: update.previousAuditValue,
+        newValue: update.nextAuditValue,
         actorUserId: actor.actorUserId ?? null,
       });
-
-      changedKeys.push(setting.key);
     }
   });
 

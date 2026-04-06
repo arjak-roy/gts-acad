@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { SETTINGS_PERMISSIONS } from "@/lib/settings/constants";
+import { validateUploadedFileAgainstGlobalSettings } from "@/services/file-upload";
 import { getSettingByKeyService } from "@/services/settings";
 import { storeSettingsAsset } from "@/services/settings/storage";
 
@@ -52,7 +53,9 @@ export async function POST(request: NextRequest) {
       throw new Error("Uploaded file exceeds the allowed size.");
     }
 
-    const asset = await storeSettingsAsset(file);
+    await validateUploadedFileAgainstGlobalSettings(file);
+
+    const asset = await storeSettingsAsset(file, { settingKey });
     return apiSuccess(asset, { status: 201 });
   } catch (error) {
     return apiError(error);

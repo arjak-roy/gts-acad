@@ -1,7 +1,7 @@
-import { renderEmailTemplateSource } from "@/lib/mail-templates/email-template-defaults";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { buildTestTemplateVariables } from "@/services/email-templates/helpers";
 import { getEmailTemplateByIdService } from "@/services/email-templates/queries";
+import { renderEmailTemplateSourceWithBrandingService } from "@/services/email-templates/render";
 import { SendTestEmailTemplateResult } from "@/services/email-templates/types";
 
 export async function sendTestEmailTemplateService(input: {
@@ -16,7 +16,7 @@ export async function sendTestEmailTemplateService(input: {
   }
 
   const variables = buildTestTemplateVariables(template, input.recipientEmail, input.actorName);
-  const rendered = renderEmailTemplateSource(
+  const rendered = await renderEmailTemplateSourceWithBrandingService(
     {
       subject: template.subject,
       htmlContent: template.htmlContent,

@@ -4,6 +4,7 @@ export type SettingsAssetValue = {
   kind: "settings-asset";
   url: string;
   storagePath: string;
+  storageProvider?: "LOCAL_PUBLIC" | "S3";
   fileName: string;
   originalName: string;
   mimeType: string;
