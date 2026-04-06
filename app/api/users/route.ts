@@ -4,7 +4,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { STAFF_USERS_PERMISSIONS } from "@/lib/users/constants";
 import { createUserSchema, getUsersSchema } from "@/lib/validation-schemas/users";
-import { createInternalUserService, getUsersService } from "@/services/users-service";
+import { createInternalUserService, getUsersService } from "@/services/users";
 
 export async function GET(request: NextRequest) {
   try {

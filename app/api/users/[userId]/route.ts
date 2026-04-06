@@ -4,7 +4,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { STAFF_USERS_PERMISSIONS } from "@/lib/users/constants";
 import { updateUserSchema, userIdSchema } from "@/lib/validation-schemas/users";
-import { getUserByIdService, updateInternalUserService } from "@/services/users-service";
+import { getUserByIdService, updateInternalUserService } from "@/services/users";
 
 type RouteContext = {
   params: {

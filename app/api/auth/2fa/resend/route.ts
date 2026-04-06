@@ -4,7 +4,7 @@ import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { buildAuthSessionCookie, createAuthSessionToken, getAuthSession } from "@/lib/auth/session";
 import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
-import { resendLoginTwoFactor } from "@/services/auth-service";
+import { resendLoginTwoFactor } from "@/services/auth";
 
 export function OPTIONS(request: NextRequest) {
   return handleCorsPreflight(request, ["POST", "OPTIONS"]);

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { resetPasswordWithToken } from "@/services/auth-service";
+import { resetPasswordWithToken } from "@/services/auth";
 
 const confirmPasswordResetSchema = z.object({
   token: z.string().trim().min(1, "Password reset token is required."),

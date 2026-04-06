@@ -3,8 +3,9 @@ import { Prisma } from "@prisma/client";
 import { CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { prisma } from "@/lib/prisma-client";
 import { GetLearnersInput } from "@/lib/validation-schemas/learners";
-import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
+import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
 import { LearnerActiveEnrollment, LearnerDetail, LearnerListItem, LearnersResponse } from "@/types";
 
 const MOCK_LEARNERS: LearnerListItem[] = [
@@ -407,18 +408,33 @@ export async function sendCandidateEnrollmentCredentialsEmail(input: {
   learnerCode: string;
   programName: string;
 }) {
-  const appName = process.env.APP_NAME ?? "GTS Academy App";
-  const loginUrl =
-    process.env.CANDIDATE_APP_ORIGIN ?? process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN ?? "https://gts-acad.vercel.app";
-  const supportEmail = process.env.ADMIN_MAIL ?? process.env.MAIL_FROM_ADDRESS ?? "support@gts-academy.test";
+  const generalSettings = await getGeneralRuntimeSettings();
+  const normalizeOrigin = (value: string | undefined) => {
+    const normalized = value?.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    if (/^https?:\/\//i.test(normalized)) {
+      return normalized.replace(/\/$/, "");
+    }
+
+    return `https://${normalized}`.replace(/\/$/, "");
+  };
+
+  const candidateOrigin =
+    normalizeOrigin(process.env.CANDIDATE_APP_ORIGIN) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN) ??
+    normalizeOrigin(generalSettings.applicationUrl) ??
+    "https://gts-acad.vercel.app";
 
   const template = await renderEmailTemplateByKeyService(CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY, {
-    appName,
+    appName: generalSettings.applicationName,
     recipientName: input.recipientName,
     recipientEmail: input.recipientEmail,
     temporaryPassword: input.temporaryPassword,
-    loginUrl,
-    supportEmail,
+    loginUrl: `${candidateOrigin}/login`,
+    supportEmail: generalSettings.supportEmail,
     learnerCode: input.learnerCode,
     programName: input.programName,
   });

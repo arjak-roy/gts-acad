@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { createEmailTemplateSchema } from "@/lib/validation-schemas/email-templates";
-import { createEmailTemplateService, listEmailTemplatesService } from "@/services/email-templates-service";
+import { createEmailTemplateService, listEmailTemplatesService } from "@/services/email-templates";
 
 export async function GET(request: NextRequest) {
   try {

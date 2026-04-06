@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/auth/route-guards";
 import { STAFF_USERS_PERMISSIONS } from "@/lib/users/constants";
 import { assignUserRolesSchema } from "@/lib/validation-schemas/rbac";
 import { userIdSchema } from "@/lib/validation-schemas/users";
-import { assignInternalUserRolesService, getInternalUserRolesService } from "@/services/users-service";
+import { assignInternalUserRolesService, getInternalUserRolesService } from "@/services/users";
 
 type RouteContext = {
   params: {

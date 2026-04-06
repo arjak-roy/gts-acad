@@ -17,20 +17,15 @@ export const routePermissionMap: Record<string, string> = {
   "/payments": "payments.view",
   "/support": "support.view",
   "/logs-actions": "logs.view",
+  "/settings/email-templates": "email_templates.view",
   "/settings": "settings.view",
   "/roles": "roles.view",
 };
 
 export function getRequiredPermission(pathname: string): string | null {
-  if (routePermissionMap[pathname]) {
-    return routePermissionMap[pathname];
-  }
+  const matchingRoute = Object.keys(routePermissionMap)
+    .sort((left, right) => right.length - left.length)
+    .find((route) => pathname === route || pathname.startsWith(`${route}/`));
 
-  for (const [route, permission] of Object.entries(routePermissionMap)) {
-    if (pathname.startsWith(`${route}/`)) {
-      return permission;
-    }
-  }
-
-  return null;
+  return matchingRoute ? routePermissionMap[matchingRoute] : null;
 }

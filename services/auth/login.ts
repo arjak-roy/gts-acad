@@ -1,4 +1,9 @@
+import { Prisma } from "@prisma/client";
+
+import { isAccountActivationRequired, requiresPasswordResetFromMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { prisma } from "@/lib/prisma-client";
+import { AccountActivationRequiredError } from "@/services/auth/account-activation";
 import {
   LOGIN_CHALLENGE_PURPOSE,
   LoginResult,
@@ -14,7 +19,8 @@ import {
   requireDatabase,
   validateChallenge,
 } from "@/services/auth/internal-helpers";
-import { prisma } from "@/lib/prisma-client";
+import { LoginLockedError, assertUserLoginNotLocked, clearUserLoginLockout, registerFailedUserLoginAttempt } from "@/services/auth/login-lockout";
+import { getUserPrimaryRoleCode } from "@/services/rbac-service";
 
 export async function loginWithPassword(email: string, password: string): Promise<LoginResult> {
   requireDatabase();
@@ -31,8 +37,15 @@ export async function loginWithPassword(email: string, password: string): Promis
     throw new Error("Invalid email or password.");
   }
 
+  await assertUserLoginNotLocked(user.id);
+
   const passwordCheck = await verifyPassword(normalizedPassword, user.password);
   if (!passwordCheck.isValid) {
+    const lockoutResult = await registerFailedUserLoginAttempt(user.id);
+    if (!lockoutResult.allowed) {
+      throw new LoginLockedError(lockoutResult.retryAfterSeconds);
+    }
+
     throw new Error("Invalid email or password.");
   }
 
@@ -43,10 +56,17 @@ export async function loginWithPassword(email: string, password: string): Promis
     });
   }
 
+  await clearUserLoginLockout(user.id);
+
+  if (isAccountActivationRequired(user.metadata, user.emailVerifiedAt)) {
+    throw new AccountActivationRequiredError();
+  }
+
   // Require a second factor for interactive logins by default.
   const requiresTwoFactor = true;
 
-  const userRole = (await finalizeLogin(user.id)).role;
+  const userRole = await getUserPrimaryRoleCode(user.id);
+  const requiresPasswordReset = requiresPasswordResetFromMetadata(user.metadata);
 
   if (!requiresTwoFactor) {
     return {
@@ -56,6 +76,7 @@ export async function loginWithPassword(email: string, password: string): Promis
         email: user.email,
         name: user.name,
         role: userRole,
+        requiresPasswordReset,
         security: user.security,
       },
     };
@@ -71,6 +92,7 @@ export async function loginWithPassword(email: string, password: string): Promis
       email: user.email,
       name: user.name,
       role: userRole,
+      requiresPasswordReset,
       security: user.security,
     },
     challengeId: challenge.id,
@@ -118,11 +140,13 @@ export async function verifyRecoveryCode(userId: string, challengeId: string, re
       data: { recoveryCodes: remainingRecoveryCodes },
     });
 
-    await tx.$executeRaw`
-      UPDATE "two_factor_challenges"
-      SET "consumed_at" = NOW()
-      WHERE "challenge_id" = ${challenge.id}::uuid
-    `;
+    await tx.$executeRaw(
+      Prisma.sql`
+        UPDATE "two_factor_challenges"
+        SET "consumed_at" = NOW()
+        WHERE "challenge_id" = ${challenge.id}::uuid
+      `,
+    );
   });
 
   return finalizeLogin(userId);

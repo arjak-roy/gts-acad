@@ -1,56 +1,64 @@
-const DEFAULT_PASSWORD_MIN_LENGTH = 12;
+import { getAuthenticationSecurityRuntimeSettings } from "@/services/settings/runtime";
 
-function getConfiguredPasswordMinLength() {
-  const rawValue = Number.parseInt(process.env.AUTH_PASSWORD_MIN_LENGTH ?? "", 10);
-  if (!Number.isFinite(rawValue) || rawValue < 8) {
-    return DEFAULT_PASSWORD_MIN_LENGTH;
-  }
+async function getPasswordPolicyConfiguration() {
+  const settings = await getAuthenticationSecurityRuntimeSettings();
+  const minimumLength = Math.min(Math.max(settings.passwordMinimumLength, 8), 128);
+  const requirements = settings.passwordComplexityRequirement.length > 0
+    ? settings.passwordComplexityRequirement
+    : ["UPPERCASE", "LOWERCASE", "NUMBER", "SPECIAL"];
 
-  return Math.min(rawValue, 128);
+  return {
+    minimumLength,
+    requirements,
+  };
 }
 
-export const PASSWORD_MIN_LENGTH = getConfiguredPasswordMinLength();
+export async function getPasswordPolicyRequirements() {
+  const configuration = await getPasswordPolicyConfiguration();
 
-export const PASSWORD_POLICY_REQUIREMENTS = [
-  `At least ${PASSWORD_MIN_LENGTH} characters`,
-  "At least one uppercase letter",
-  "At least one lowercase letter",
-  "At least one number",
-  "At least one special character",
-];
+  return [
+    `At least ${configuration.minimumLength} characters`,
+    ...(configuration.requirements.includes("UPPERCASE") ? ["At least one uppercase letter"] : []),
+    ...(configuration.requirements.includes("LOWERCASE") ? ["At least one lowercase letter"] : []),
+    ...(configuration.requirements.includes("NUMBER") ? ["At least one number"] : []),
+    ...(configuration.requirements.includes("SPECIAL") ? ["At least one special character"] : []),
+  ];
+}
 
-export function getPasswordPolicyErrors(password: string) {
+export async function getPasswordPolicyErrors(password: string) {
+  const configuration = await getPasswordPolicyConfiguration();
   const errors: string[] = [];
 
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    errors.push(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long.`);
+  if (password.length < configuration.minimumLength) {
+    errors.push(`Password must be at least ${configuration.minimumLength} characters long.`);
   }
 
-  if (!/[A-Z]/.test(password)) {
+  if (configuration.requirements.includes("UPPERCASE") && !/[A-Z]/.test(password)) {
     errors.push("Password must include at least one uppercase letter.");
   }
 
-  if (!/[a-z]/.test(password)) {
+  if (configuration.requirements.includes("LOWERCASE") && !/[a-z]/.test(password)) {
     errors.push("Password must include at least one lowercase letter.");
   }
 
-  if (!/[0-9]/.test(password)) {
+  if (configuration.requirements.includes("NUMBER") && !/[0-9]/.test(password)) {
     errors.push("Password must include at least one number.");
   }
 
-  if (!/[^A-Za-z0-9]/.test(password)) {
+  if (configuration.requirements.includes("SPECIAL") && !/[^A-Za-z0-9]/.test(password)) {
     errors.push("Password must include at least one special character.");
   }
 
   return errors;
 }
 
-export function getPasswordPolicyHint() {
-  return `Use at least ${PASSWORD_MIN_LENGTH} characters with uppercase, lowercase, number, and special characters.`;
+export async function getPasswordPolicyHint() {
+  const requirements = await getPasswordPolicyRequirements();
+  return requirements.join(", ");
 }
 
-export function assertPasswordPolicy(password: string) {
-  const errors = getPasswordPolicyErrors(password);
+export async function assertPasswordPolicy(password: string) {
+  const errors = await getPasswordPolicyErrors(password);
   if (errors.length > 0) {
     throw new Error(errors[0]);
   }

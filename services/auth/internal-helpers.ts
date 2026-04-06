@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 
+import { requiresPasswordResetFromMetadata } from "@/lib/auth/account-metadata";
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
 import {
   generateEmailOtpCode,
@@ -10,10 +11,15 @@ import {
   hashSensitiveToken,
   maskEmail,
 } from "@/lib/auth/two-factor";
-import { PASSWORD_RESET_EMAIL_TEMPLATE_KEY, TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
-import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import {
+  INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
+  PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+  TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+} from "@/lib/mail-templates/email-template-defaults";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { getUserPrimaryRoleCode } from "@/services/rbac-service";
+import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
 
 export const LOGIN_CHALLENGE_PURPOSE = "LOGIN";
 export const ENABLE_2FA_CHALLENGE_PURPOSE = "ENABLE_2FA";
@@ -26,6 +32,7 @@ export type AuthUser = {
   email: string;
   name: string;
   role: string;
+  requiresPasswordReset: boolean;
   security: {
     id: string;
     twoFactorEnabled: boolean;
@@ -70,6 +77,7 @@ export type PasswordResetTokenRecord = {
 export type PasswordResetRequestMetadata = {
   requestIp?: string | null;
   userAgent?: string | null;
+  appOrigin?: string | null;
 };
 
 export function requireDatabase() {
@@ -104,26 +112,76 @@ function getPasswordResetResendCooldownSeconds() {
   );
 }
 
-function getPasswordResetUrlBase() {
-  const candidateOrigin = process.env.AUTH_PASSWORD_RESET_URL_BASE?.trim();
-  if (candidateOrigin) {
-    return candidateOrigin.replace(/\/$/, "");
+function normalizeOrigin(origin: string | undefined) {
+  const normalized = origin?.trim();
+  if (!normalized) {
+    return null;
   }
 
-  const fallbackOrigin =
-    process.env.CANDIDATE_APP_ORIGIN?.trim() ?? process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN?.trim() ?? process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized.replace(/\/$/, "");
+  }
 
-  return fallbackOrigin ? fallbackOrigin.replace(/\/$/, "") : null;
+  return `https://${normalized}`.replace(/\/$/, "");
 }
 
-function buildPasswordResetUrl(resetToken: string) {
-  const urlBase = getPasswordResetUrlBase();
+function getInternalAppBaseUrl(fallbackApplicationUrl?: string | null) {
+  return (
+    normalizeOrigin(process.env.INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(process.env.AUTH_PASSWORD_RESET_URL_BASE) ??
+    normalizeOrigin(fallbackApplicationUrl ?? undefined) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL)
+  );
+}
+
+function getPasswordResetUrlBase(isInternalUser: boolean, appOrigin?: string | null, fallbackApplicationUrl?: string | null) {
+  const normalizedAppOrigin = normalizeOrigin(appOrigin ?? undefined);
+
+  if (isInternalUser) {
+    return normalizedAppOrigin ?? getInternalAppBaseUrl(fallbackApplicationUrl);
+  }
+
+  return (
+    normalizedAppOrigin ??
+    normalizeOrigin(process.env.AUTH_PASSWORD_RESET_URL_BASE) ??
+    normalizeOrigin(process.env.CANDIDATE_APP_ORIGIN) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_CANDIDATE_APP_ORIGIN) ??
+    normalizeOrigin(fallbackApplicationUrl ?? undefined) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL)
+  );
+}
+
+function buildPasswordResetUrl(
+  resetToken: string,
+  isInternalUser: boolean,
+  appOrigin?: string | null,
+  fallbackApplicationUrl?: string | null,
+) {
+  const urlBase = getPasswordResetUrlBase(isInternalUser, appOrigin, fallbackApplicationUrl);
 
   if (!urlBase) {
     return null;
   }
 
-  return `${urlBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
+  try {
+    const url = new URL(urlBase);
+    url.pathname = "/reset-password";
+    url.search = "";
+    url.searchParams.set("token", resetToken);
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function buildInternalLoginUrl(fallbackApplicationUrl?: string | null) {
+  const baseUrl = getInternalAppBaseUrl(fallbackApplicationUrl);
+  if (!baseUrl) {
+    return null;
+  }
+
+  return `${baseUrl}/login`;
 }
 
 function generatePasswordResetToken() {
@@ -140,7 +198,9 @@ export async function getUserByEmail(email: string) {
       id: true,
       email: true,
       name: true,
+      emailVerifiedAt: true,
       password: true,
+      metadata: true,
       security: {
         select: {
           id: true,
@@ -162,13 +222,16 @@ export async function getPasswordResetUserByEmail(email: string) {
       id: true,
       email: true,
       name: true,
+      metadata: true,
     },
   });
 }
 
 export async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name">, code: string, purposeLabel: string) {
+  const generalSettings = await getGeneralRuntimeSettings();
+
   const template = await renderEmailTemplateByKeyService(TWO_FACTOR_EMAIL_TEMPLATE_KEY, {
-    appName: process.env.APP_NAME ?? "GTS Academy App",
+    appName: generalSettings.applicationName,
     recipientName: user.name,
     code,
     expiresInMinutes: getTwoFactorCodeTtlMinutes(),
@@ -189,11 +252,21 @@ export async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name
   });
 }
 
-export async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "email" | "name">, resetToken: string) {
-  const resetUrl = buildPasswordResetUrl(resetToken) ?? "Open the GTS Academy app to continue password reset.";
+export async function deliverPasswordResetEmail(
+  user: Pick<AuthUser, "id" | "email" | "name">,
+  resetToken: string,
+  isInternalUser: boolean,
+  appOrigin?: string | null,
+) {
+  const generalSettings = await getGeneralRuntimeSettings();
+  const resetUrl = buildPasswordResetUrl(resetToken, isInternalUser, appOrigin, generalSettings.applicationUrl);
+
+  if (!resetUrl) {
+    throw new Error("Password reset URL is not configured.");
+  }
 
   const template = await renderEmailTemplateByKeyService(PASSWORD_RESET_EMAIL_TEMPLATE_KEY, {
-    appName: process.env.APP_NAME ?? "GTS Academy App",
+    appName: generalSettings.applicationName,
     recipientName: user.name,
     resetUrl,
     resetToken,
@@ -209,6 +282,35 @@ export async function deliverPasswordResetEmail(user: Pick<AuthUser, "id" | "ema
     templateKey: PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
     metadata: {
       purpose: "password-reset",
+    },
+    audit: {
+      entityType: "AUTH",
+      entityId: user.id,
+    },
+  });
+}
+
+export async function deliverInternalPasswordChangedEmail(user: Pick<AuthUser, "id" | "email" | "name">, changedAt: string) {
+  const generalSettings = await getGeneralRuntimeSettings();
+  const loginUrl = buildInternalLoginUrl(generalSettings.applicationUrl);
+
+  const template = await renderEmailTemplateByKeyService(INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY, {
+    appName: generalSettings.applicationName,
+    recipientName: user.name,
+    loginUrl: loginUrl ?? "",
+    supportEmail: generalSettings.supportEmail,
+    changedAt,
+  });
+
+  await deliverLoggedEmail({
+    to: user.email,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+    category: "SYSTEM",
+    templateKey: INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
+    metadata: {
+      purpose: "internal-password-changed",
     },
     audit: {
       entityType: "AUTH",
@@ -349,6 +451,7 @@ function mapChallengeRows(rows: Array<{
   userId: string;
   userEmail: string;
   userName: string;
+  userMetadata: Prisma.JsonValue | null;
   securityId: string | null;
   twoFactorEnabled: boolean | null;
   recoveryCodes: string[] | null;
@@ -366,6 +469,7 @@ function mapChallengeRows(rows: Array<{
       email: row.userEmail,
       name: row.userName,
       role: "",
+      requiresPasswordReset: requiresPasswordResetFromMetadata(row.userMetadata),
       security: row.securityId
         ? {
             id: row.securityId,
@@ -438,6 +542,7 @@ export async function validateChallenge(userId: string, challengeId: string, pur
     userId: string;
     userEmail: string;
     userName: string;
+    userMetadata: Prisma.JsonValue | null;
     securityId: string | null;
     twoFactorEnabled: boolean | null;
     recoveryCodes: string[] | null;
@@ -454,6 +559,7 @@ export async function validateChallenge(userId: string, challengeId: string, pur
         u."user_id" AS "userId",
         u."email" AS "userEmail",
         u."full_name" AS "userName",
+        u."metadata" AS "userMetadata",
         s."id" AS "securityId",
         s."two_factor_enabled" AS "twoFactorEnabled",
         s."recovery_codes" AS "recoveryCodes"
@@ -502,6 +608,7 @@ export async function finalizeLogin(userId: string) {
       id: true,
       email: true,
       name: true,
+      metadata: true,
       security: {
         select: {
           id: true,
@@ -514,7 +621,14 @@ export async function finalizeLogin(userId: string) {
 
   const role = await getUserPrimaryRoleCode(userId);
 
-  return { ...user, role };
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role,
+    requiresPasswordReset: requiresPasswordResetFromMetadata(user.metadata),
+    security: user.security,
+  };
 }
 
 export { getTwoFactorResendCooldownSeconds, hashSensitiveToken, maskEmail };

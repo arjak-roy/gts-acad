@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { SectionPageSkeleton } from "@/components/modules/page-skeletons";
 import { SectionPageContent } from "@/components/modules/portal/section-page-content";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import { listEmailTemplatesService } from "@/services/email-templates-service";
+import { listEmailTemplatesService } from "@/services/email-templates";
 import { PortalSectionContent } from "@/types";
 
 const sectionConfig = {
@@ -170,10 +170,10 @@ const sectionConfig = {
     secondaryAction: "Sync to Recruiter",
   },
   "language-lab": {
-    title: "Language Lab Admin",
-    description: "Managing speaking prep workflows, topic libraries, and fluency scoring.",
-    accent: "CEFR-aligned scoring",
-    summary: "Language practice sessions and fluency tracking.",
+    title: "Language Lab Command Center",
+    description: "Preview speaking, listening, vocabulary, and AI-scored roleplay analytics in a presentation-ready language dashboard.",
+    accent: "AI language intelligence",
+    summary: "Language practice sessions, pronunciation trends, and fluency tracking.",
     metrics: [],
     highlights: [],
     tableTitle: "Speaking Sessions",

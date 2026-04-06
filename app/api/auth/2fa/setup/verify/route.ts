@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
-import { verifyTwoFactorSetup } from "@/services/auth-service";
+import { verifyTwoFactorSetup } from "@/services/auth";
 
 const setupVerifySchema = z.object({
   code: z.string().trim().min(6, "Verification code is required.").max(6, "Verification code must be 6 digits."),

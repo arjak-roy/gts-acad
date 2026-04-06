@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
-import { startTwoFactorSetup } from "@/services/auth-service";
+import { startTwoFactorSetup } from "@/services/auth";
 
 export async function POST(request: NextRequest) {
   try {

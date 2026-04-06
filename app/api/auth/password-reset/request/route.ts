@@ -4,7 +4,7 @@ import { z } from "zod";
 import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getClientIpAddress } from "@/lib/auth/login-rate-limiter";
-import { requestPasswordReset } from "@/services/auth-service";
+import { requestPasswordReset } from "@/services/auth";
 
 const requestPasswordResetSchema = z.object({
   email: z.string().trim().email("Valid email is required."),

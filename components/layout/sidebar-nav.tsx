@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mic2, Network, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
+import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, Network, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
 
 import academyLogo from "@/Logo 9-02.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,6 +18,7 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   requiredPermission?: string;
+  matchMode?: "exact" | "prefix";
 };
 
 type NavGroup = {
@@ -56,7 +57,8 @@ const navGroups: NavGroup[] = [
       { href: "/payments", label: "Fees & Payments", icon: Wallet, requiredPermission: routePermissionMap["/payments"] },
       { href: "/support", label: "Support Tickets", icon: HelpCircle, requiredPermission: routePermissionMap["/support"] },
       { href: "/logs-actions", label: "Logs & Actions", icon: ClipboardList, requiredPermission: routePermissionMap["/logs-actions"] },
-      { href: "/settings", label: "System Config", icon: Settings, requiredPermission: routePermissionMap["/settings"] },
+      { href: "/settings", label: "Application Settings", icon: Settings, requiredPermission: routePermissionMap["/settings"], matchMode: "exact" },
+      { href: "/settings/email-templates", label: "Email Settings", icon: Mail, requiredPermission: routePermissionMap["/settings/email-templates"] },
       { href: "/roles", label: "Roles & Permissions", icon: Shield, requiredPermission: routePermissionMap["/roles"] },
     ],
   },
@@ -116,7 +118,9 @@ export function SidebarNav() {
               <div className="mt-2 space-y-1">
                 {visibleItems.map((item) => {
                   const Icon = item.icon;
-                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  const active = item.matchMode === "exact"
+                    ? pathname === item.href
+                    : pathname === item.href || pathname.startsWith(`${item.href}/`);
                   return (
                     <Link
                       key={item.href}

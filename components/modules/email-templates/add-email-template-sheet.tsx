@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { getEmailTemplateKeyOption } from "@/lib/mail-templates/email-template-keys";
 
 type AddEmailTemplateForm = {
   key: string;
@@ -44,7 +46,11 @@ function extractVariables(...sources: string[]) {
   return Array.from(matches).sort((left, right) => left.localeCompare(right));
 }
 
-export function AddEmailTemplateSheet() {
+type AddEmailTemplateSheetProps = {
+  existingTemplateKeys?: string[];
+};
+
+export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTemplateSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
@@ -80,6 +86,22 @@ export function AddEmailTemplateSheet() {
 
     setError(null);
     setStep("confirm");
+  };
+
+  const handleTemplateKeyChange = (nextKey: string) => {
+    setForm((previous) => {
+      const previousOption = getEmailTemplateKeyOption(previous.key);
+      const nextOption = getEmailTemplateKeyOption(nextKey);
+      const shouldReplaceName = !previous.name.trim() || (previousOption ? previous.name.trim() === previousOption.label : false);
+      const shouldReplaceDescription = !previous.description.trim() || (previousOption ? previous.description.trim() === previousOption.description : false);
+
+      return {
+        ...previous,
+        key: nextKey,
+        name: shouldReplaceName ? (nextOption?.label ?? "") : previous.name,
+        description: shouldReplaceDescription ? (nextOption?.description ?? "") : previous.description,
+      };
+    });
   };
 
   const handleCreate = async () => {
@@ -123,11 +145,7 @@ export function AddEmailTemplateSheet() {
         {step === "form" ? (
           <form className="space-y-4 p-6" onSubmit={handleDone}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Key</label>
-                <Input value={form.key} placeholder="auth-2fa-code" onChange={(event) => setForm((prev) => ({ ...prev, key: event.target.value }))} />
-                <p className="text-xs text-slate-500">Use a stable slug-like key. It will be normalized on save.</p>
-              </div>
+              <TemplateKeyField value={form.key} onChange={handleTemplateKeyChange} unavailableKeys={existingTemplateKeys} />
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Name</label>
                 <Input value={form.name} placeholder="Two-Factor Verification Code" onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />

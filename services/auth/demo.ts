@@ -1,6 +1,6 @@
 import { generateEmailOtpCode, getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
 import { TWO_FACTOR_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
-import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 
 export async function sendDemoTwoFactorMail(recipient: string) {

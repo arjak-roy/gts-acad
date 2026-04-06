@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 
@@ -64,9 +65,10 @@ type EditEmailTemplateSheetProps = {
   templateId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  existingTemplateKeys?: string[];
 };
 
-export function EditEmailTemplateSheet({ templateId, open, onOpenChange }: EditEmailTemplateSheetProps) {
+export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existingTemplateKeys = [] }: EditEmailTemplateSheetProps) {
   const router = useRouter();
   const [form, setForm] = useState<EditEmailTemplateForm>(emptyForm);
   const [isSystem, setIsSystem] = useState(false);
@@ -202,15 +204,13 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange }: EditE
             ) : (
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Key</label>
-                    <Input
-                      value={form.key}
-                      disabled={isSystem}
-                      onChange={(event) => setForm((prev) => ({ ...prev, key: event.target.value }))}
-                    />
-                    {isSystem ? <p className="text-xs text-slate-500">System templates keep a fixed key so mail flows continue resolving correctly.</p> : null}
-                  </div>
+                  <TemplateKeyField
+                    value={form.key}
+                    onChange={(nextKey) => setForm((prev) => ({ ...prev, key: nextKey }))}
+                    unavailableKeys={existingTemplateKeys}
+                    disabled={isSystem}
+                    lockedMessage="System templates keep a fixed key so mail flows continue resolving correctly."
+                  />
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Name</label>
                     <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />

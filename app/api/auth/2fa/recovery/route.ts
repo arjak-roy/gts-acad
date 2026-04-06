@@ -4,7 +4,7 @@ import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getAuthSession } from "@/lib/auth/session";
 import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
-import { verifyRecoveryCode } from "@/services/auth-service";
+import { verifyRecoveryCode } from "@/services/auth";
 
 const recoverySchema = z.object({
   recoveryCode: z.string().trim().min(3, "Recovery code is required."),

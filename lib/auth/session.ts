@@ -4,35 +4,6 @@ import type { NextRequest } from "next/server";
 import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 
 export const AUTH_SESSION_COOKIE = "gts_auth_session";
-const DEFAULT_FULL_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
-const DEFAULT_REMEMBER_ME_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
-
-function parseMaxAgeSeconds(rawValue: string | undefined, fallbackValue: number, minimumValue: number, maximumValue: number) {
-  if (!rawValue) {
-    return fallbackValue;
-  }
-
-  const parsedValue = Number.parseInt(rawValue, 10);
-  if (!Number.isFinite(parsedValue)) {
-    return fallbackValue;
-  }
-
-  return Math.min(Math.max(parsedValue, minimumValue), maximumValue);
-}
-
-export const FULL_SESSION_MAX_AGE_SECONDS = parseMaxAgeSeconds(
-  process.env.AUTH_SESSION_MAX_AGE_SECONDS,
-  DEFAULT_FULL_SESSION_MAX_AGE_SECONDS,
-  15 * 60,
-  DEFAULT_REMEMBER_ME_SESSION_MAX_AGE_SECONDS,
-);
-
-export const REMEMBER_ME_SESSION_MAX_AGE_SECONDS = parseMaxAgeSeconds(
-  process.env.AUTH_REMEMBER_ME_MAX_AGE_SECONDS,
-  DEFAULT_REMEMBER_ME_SESSION_MAX_AGE_SECONDS,
-  FULL_SESSION_MAX_AGE_SECONDS,
-  60 * 60 * 24 * 180,
-);
 
 export type AuthSessionState = "pending" | "authenticated";
 
@@ -106,10 +77,6 @@ export async function verifyAuthSessionToken(token: string) {
   } catch {
     return null;
   }
-}
-
-export function getAuthenticatedSessionMaxAgeSeconds(rememberMe: boolean) {
-  return rememberMe ? REMEMBER_ME_SESSION_MAX_AGE_SECONDS : FULL_SESSION_MAX_AGE_SECONDS;
 }
 
 export async function getAuthSession(request: NextRequest) {

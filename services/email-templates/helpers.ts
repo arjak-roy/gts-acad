@@ -48,6 +48,8 @@ export function buildTestTemplateVariables(template: EmailTemplateDetail, recipi
     recipientEmail,
     supportEmail: "support@gts-academy.app",
     loginUrl: process.env.NEXT_PUBLIC_APP_URL || "https://gts-acad.vercel.app",
+    primaryRole: "Academy Admin",
+    roleSummary: "Academy Admin, Content Manager",
     code: "123456",
     expiresInMinutes: 10,
     purposeLabel: "verify your account",

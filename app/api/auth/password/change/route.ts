@@ -4,7 +4,7 @@ import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
 import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
-import { changeAuthenticatedPassword } from "@/services/auth-service";
+import { changeAuthenticatedPassword } from "@/services/auth";
 
 const passwordChangeSchema = z.object({
   currentPassword: z.string().trim().min(1, "Current password is required."),

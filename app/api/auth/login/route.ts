@@ -9,7 +9,7 @@ import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
 import { AccountActivationRequiredError } from "@/services/auth/account-activation";
 import { LoginLockedError } from "@/services/auth/login-lockout";
 import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
-import { loginWithPassword } from "@/services/auth-service";
+import { loginWithPassword } from "@/services/auth";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Valid email is required."),

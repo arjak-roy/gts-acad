@@ -235,6 +235,23 @@ enum AuditLogLevel {
   @@map("audit_log_level")
 }
 
+enum SettingType {
+  TEXT         @map("text")
+  TEXTAREA     @map("textarea")
+  NUMBER       @map("number")
+  SELECT       @map("select")
+  TOGGLE       @map("toggle")
+  FILE         @map("file")
+  PASSWORD     @map("password")
+  MULTI_SELECT @map("multi_select")
+  EMAIL        @map("email")
+  PHONE        @map("phone")
+  URL          @map("url")
+  COLOR        @map("color")
+
+  @@map("setting_type")
+}
+
 model Country {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(100)
@@ -298,6 +315,7 @@ model User {
   interviews        Interview[]        @relation("InterviewedBy")
   createdScheduleEvents BatchScheduleEvent[] @relation("ScheduleEventCreatedBy")
   auditLogs         AuditLog[]         @relation("AuditActor")
+  settingsAuditLogs SettingsAuditLog[] @relation("SettingsAuditActor")
   triggeredEmailLogs EmailLog[]        @relation("EmailTriggeredBy")
 
   @@map("users")
@@ -436,6 +454,73 @@ model EmailLog {
   @@index([toEmail], map: "idx_email_logs_to_email")
   @@index([triggeredById], map: "idx_email_logs_triggered_by")
   @@map("email_logs")
+}
+
+model SettingsCategory {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("category_id")
+  name         String    @db.VarChar(120)
+  code         String    @unique @db.VarChar(80)
+  description  String?   @db.VarChar(500)
+  icon         String?   @db.VarChar(80)
+  displayOrder Int       @default(0) @map("display_order")
+  isSystem     Boolean   @default(false) @map("is_system")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  settings     Setting[]
+
+  @@index([displayOrder, isActive], map: "idx_settings_categories_order")
+  @@map("settings_categories")
+}
+
+model Setting {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("setting_id")
+  categoryId      String            @db.Uuid @map("category_id")
+  key             String            @unique @map("setting_key") @db.VarChar(120)
+  label           String            @db.VarChar(160)
+  description     String?           @db.VarChar(500)
+  type            SettingType
+  value           Json?
+  defaultValue    Json?             @map("default_value")
+  placeholder     String?           @db.VarChar(255)
+  helpText        String?           @map("help_text") @db.VarChar(500)
+  options         Json?
+  validationRules Json?             @map("validation_rules")
+  groupName       String?           @map("group_name") @db.VarChar(120)
+  displayOrder    Int               @default(0) @map("display_order")
+  isRequired      Boolean           @default(false) @map("is_required")
+  isEncrypted     Boolean           @default(false) @map("is_encrypted")
+  isReadonly      Boolean           @default(false) @map("is_readonly")
+  isSystem        Boolean           @default(false) @map("is_system")
+  isActive        Boolean           @default(true) @map("is_active")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  category        SettingsCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  auditLogs       SettingsAuditLog[]
+
+  @@index([categoryId, displayOrder], map: "idx_settings_category_order")
+  @@index([isActive, updatedAt], map: "idx_settings_active_updated")
+  @@map("settings")
+}
+
+model SettingsAuditLog {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("settings_audit_log_id")
+  settingId    String?   @db.Uuid @map("setting_id")
+  settingKey   String    @map("setting_key") @db.VarChar(120)
+  categoryCode String    @map("category_code") @db.VarChar(80)
+  action       String    @db.VarChar(50)
+  oldValue     Json?     @map("old_value")
+  newValue     Json?     @map("new_value")
+  metadata     Json      @default("{}")
+  actorUserId  String?   @db.Uuid @map("actor_user_id")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  setting      Setting?  @relation(fields: [settingId], references: [id], onDelete: SetNull)
+  actorUser    User?     @relation("SettingsAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([categoryCode, createdAt], map: "idx_settings_audit_category_created")
+  @@index([settingKey, createdAt], map: "idx_settings_audit_key_created")
+  @@index([actorUserId], map: "idx_settings_audit_actor")
+  @@map("settings_audit_logs")
 }
 
 model AuditLog {

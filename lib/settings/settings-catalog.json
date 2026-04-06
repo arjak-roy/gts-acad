@@ -1,0 +1,916 @@
+[
+  {
+    "name": "General Settings",
+    "code": "general",
+    "description": "Core platform identity, support contact, and regional display defaults.",
+    "icon": "Settings2",
+    "displayOrder": 10,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "general.application_name",
+        "label": "Application Name",
+        "description": "Primary application name shown in admin screens and system emails.",
+        "type": "TEXT",
+        "defaultValue": "Academy Admin Portal",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Platform Identity",
+        "placeholder": "Academy Admin Portal",
+        "validationRules": { "minLength": 3, "maxLength": 120 }
+      },
+      {
+        "key": "general.application_url",
+        "label": "Application URL",
+        "description": "Base URL used for portal links and admin-facing navigation.",
+        "type": "URL",
+        "defaultValue": "https://gts-acad.vercel.app",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Platform Identity",
+        "placeholder": "https://gts-acad.vercel.app"
+      },
+      {
+        "key": "general.support_email",
+        "label": "Support Email",
+        "description": "Default support email shown in notifications and help content.",
+        "type": "EMAIL",
+        "defaultValue": "support@gts-academy.test",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Support",
+        "placeholder": "support@gts-academy.test"
+      },
+      {
+        "key": "general.support_contact_number",
+        "label": "Support Contact Number",
+        "description": "Support phone number shown in admin-facing help and onboarding communication.",
+        "type": "PHONE",
+        "defaultValue": "+91-9000000000",
+        "isRequired": false,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Support",
+        "placeholder": "+91-9000000000",
+        "validationRules": { "maxLength": 30 }
+      },
+      {
+        "key": "general.time_zone",
+        "label": "Time Zone",
+        "description": "Default application time zone.",
+        "type": "SELECT",
+        "defaultValue": "Asia/Kolkata",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "Asia/Kolkata", "value": "Asia/Kolkata" },
+          { "label": "UTC", "value": "UTC" },
+          { "label": "Europe/Berlin", "value": "Europe/Berlin" },
+          { "label": "America/New_York", "value": "America/New_York" }
+        ]
+      },
+      {
+        "key": "general.default_language",
+        "label": "Default Language",
+        "description": "Default interface language for new sessions.",
+        "type": "SELECT",
+        "defaultValue": "English",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 60,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "English", "value": "English" },
+          { "label": "Hindi", "value": "Hindi" },
+          { "label": "German", "value": "German" }
+        ]
+      },
+      {
+        "key": "general.date_format",
+        "label": "Date Format",
+        "description": "Default date formatting pattern across the portal.",
+        "type": "SELECT",
+        "defaultValue": "DD/MM/YYYY",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 70,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "DD/MM/YYYY", "value": "DD/MM/YYYY" },
+          { "label": "MM/DD/YYYY", "value": "MM/DD/YYYY" },
+          { "label": "YYYY-MM-DD", "value": "YYYY-MM-DD" }
+        ]
+      },
+      {
+        "key": "general.time_format",
+        "label": "Time Format",
+        "description": "Default time formatting pattern across the portal.",
+        "type": "SELECT",
+        "defaultValue": "24_HOUR",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 80,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "24-hour", "value": "24_HOUR" },
+          { "label": "12-hour", "value": "12_HOUR" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Branding Settings",
+    "code": "branding",
+    "description": "Manage brand identity, asset uploads, and visual defaults used by the platform.",
+    "icon": "Palette",
+    "displayOrder": 20,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "branding.application_logo",
+        "label": "Application Logo",
+        "description": "Primary logo used in admin-facing surfaces.",
+        "type": "FILE",
+        "defaultValue": null,
+        "isRequired": false,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Assets",
+        "validationRules": {
+          "maxSizeBytes": 2097152,
+          "allowedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
+        }
+      },
+      {
+        "key": "branding.favicon",
+        "label": "Favicon",
+        "description": "Browser favicon for the admin portal.",
+        "type": "FILE",
+        "defaultValue": null,
+        "isRequired": false,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Assets",
+        "validationRules": {
+          "maxSizeBytes": 524288,
+          "allowedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon"]
+        }
+      },
+      {
+        "key": "branding.primary_theme_color",
+        "label": "Primary Theme Color",
+        "description": "Primary color used for accents and actions.",
+        "type": "COLOR",
+        "defaultValue": "#0d3b84",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Colors"
+      },
+      {
+        "key": "branding.secondary_theme_color",
+        "label": "Secondary Theme Color",
+        "description": "Secondary accent color used for supporting actions and highlights.",
+        "type": "COLOR",
+        "defaultValue": "#0f766e",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Colors"
+      },
+      {
+        "key": "branding.login_page_banner",
+        "label": "Login Page Banner",
+        "description": "Banner image used on the login page and welcome surfaces.",
+        "type": "FILE",
+        "defaultValue": null,
+        "isRequired": false,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Assets",
+        "validationRules": {
+          "maxSizeBytes": 5242880,
+          "allowedMimeTypes": ["image/png", "image/jpeg", "image/webp"]
+        }
+      },
+      {
+        "key": "branding.footer_text",
+        "label": "Footer Text",
+        "description": "Footer copy shown in emails and settings-related pages.",
+        "type": "TEXT",
+        "defaultValue": "Powered by GTS Academy",
+        "isRequired": false,
+        "isSystem": true,
+        "displayOrder": 60,
+        "groupName": "Messaging",
+        "validationRules": { "maxLength": 160 }
+      },
+      {
+        "key": "branding.company_name",
+        "label": "Company / Academy Name",
+        "description": "Formal organization name used for system-generated content.",
+        "type": "TEXT",
+        "defaultValue": "GTS Academy",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 70,
+        "groupName": "Messaging",
+        "validationRules": { "minLength": 2, "maxLength": 120 }
+      }
+    ]
+  },
+  {
+    "name": "Authentication & Security Settings",
+    "code": "auth-security",
+    "description": "Control password policy, login lockout behavior, sessions, and first-login requirements.",
+    "icon": "ShieldCheck",
+    "displayOrder": 30,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "auth.enable_two_factor_auth",
+        "label": "Enable Two-Factor Authentication",
+        "description": "Default two-factor requirement for eligible internal accounts.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Access Protection"
+      },
+      {
+        "key": "auth.password_minimum_length",
+        "label": "Password Minimum Length",
+        "description": "Minimum required password length.",
+        "type": "NUMBER",
+        "defaultValue": 12,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Password Policy",
+        "validationRules": { "min": 8, "max": 128 }
+      },
+      {
+        "key": "auth.password_complexity_requirement",
+        "label": "Password Complexity Requirement",
+        "description": "Required password character classes.",
+        "type": "MULTI_SELECT",
+        "defaultValue": ["UPPERCASE", "LOWERCASE", "NUMBER", "SPECIAL"],
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Password Policy",
+        "options": [
+          { "label": "Uppercase Letter", "value": "UPPERCASE" },
+          { "label": "Lowercase Letter", "value": "LOWERCASE" },
+          { "label": "Number", "value": "NUMBER" },
+          { "label": "Special Character", "value": "SPECIAL" }
+        ]
+      },
+      {
+        "key": "auth.session_timeout_duration_minutes",
+        "label": "Session Timeout Duration",
+        "description": "Default authenticated session lifetime in minutes.",
+        "type": "NUMBER",
+        "defaultValue": 480,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Sessions",
+        "validationRules": { "min": 15, "max": 43200 }
+      },
+      {
+        "key": "auth.maximum_failed_login_attempts",
+        "label": "Maximum Failed Login Attempts",
+        "description": "Number of failed password attempts before lockout.",
+        "type": "NUMBER",
+        "defaultValue": 5,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Access Protection",
+        "validationRules": { "min": 1, "max": 20 }
+      },
+      {
+        "key": "auth.account_lock_duration_seconds",
+        "label": "Account Lock Duration",
+        "description": "Account lock duration in seconds after max failed attempts.",
+        "type": "NUMBER",
+        "defaultValue": 900,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 60,
+        "groupName": "Access Protection",
+        "validationRules": { "min": 30, "max": 86400 }
+      },
+      {
+        "key": "auth.allow_multiple_active_sessions",
+        "label": "Allow Multiple Active Sessions",
+        "description": "Allow users to stay logged in on multiple devices simultaneously.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 70,
+        "groupName": "Sessions"
+      },
+      {
+        "key": "auth.force_password_change_on_first_login",
+        "label": "Force Password Change on First Login",
+        "description": "Require first-time users to change their password immediately.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 80,
+        "groupName": "Password Policy"
+      }
+    ]
+  },
+  {
+    "name": "Email Settings",
+    "code": "email",
+    "description": "Configure SMTP transport, sender identity, and secure delivery defaults.",
+    "icon": "Mail",
+    "displayOrder": 40,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "email.smtp_host",
+        "label": "SMTP Host",
+        "description": "SMTP server host name.",
+        "type": "TEXT",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Transport",
+        "placeholder": "smtp.example.com"
+      },
+      {
+        "key": "email.smtp_port",
+        "label": "SMTP Port",
+        "description": "SMTP server port.",
+        "type": "NUMBER",
+        "defaultValue": 587,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Transport",
+        "validationRules": { "min": 1, "max": 65535 }
+      },
+      {
+        "key": "email.smtp_username",
+        "label": "SMTP Username",
+        "description": "Username used to authenticate with the SMTP server.",
+        "type": "TEXT",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Transport"
+      },
+      {
+        "key": "email.smtp_password",
+        "label": "SMTP Password",
+        "description": "Password or app-specific token used to authenticate with the SMTP server.",
+        "type": "PASSWORD",
+        "defaultValue": null,
+        "isRequired": false,
+        "isEncrypted": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Transport"
+      },
+      {
+        "key": "email.sender_email_address",
+        "label": "Sender Email Address",
+        "description": "Default From address for outgoing mail.",
+        "type": "EMAIL",
+        "defaultValue": "support@gts-academy.test",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Sender",
+        "placeholder": "support@gts-academy.test"
+      },
+      {
+        "key": "email.sender_name",
+        "label": "Sender Name",
+        "description": "Friendly sender name displayed in outgoing messages.",
+        "type": "TEXT",
+        "defaultValue": "GTS Academy App",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 60,
+        "groupName": "Sender",
+        "placeholder": "GTS Academy App"
+      },
+      {
+        "key": "email.enable_ssl_tls",
+        "label": "Enable SSL / TLS",
+        "description": "Use secure SMTP transport by default.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 70,
+        "groupName": "Transport"
+      }
+    ]
+  },
+  {
+    "name": "Notification Settings",
+    "code": "notifications",
+    "description": "Control default delivery channels and message retention.",
+    "icon": "Bell",
+    "displayOrder": 50,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "notifications.enable_email_notifications",
+        "label": "Enable Email Notifications",
+        "description": "Allow the platform to send email notifications by default.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Channels"
+      },
+      {
+        "key": "notifications.enable_in_app_notifications",
+        "label": "Enable In-App Notifications",
+        "description": "Enable in-app notification delivery by default.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Channels"
+      },
+      {
+        "key": "notifications.enable_sms_notifications",
+        "label": "Enable SMS Notifications",
+        "description": "Enable SMS notification delivery by default.",
+        "type": "TOGGLE",
+        "defaultValue": false,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Channels"
+      },
+      {
+        "key": "notifications.default_notification_preferences",
+        "label": "Default Notification Preferences",
+        "description": "Default notification channels selected for new records.",
+        "type": "MULTI_SELECT",
+        "defaultValue": ["EMAIL", "IN_APP"],
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Defaults",
+        "options": [
+          { "label": "Email", "value": "EMAIL" },
+          { "label": "In-App", "value": "IN_APP" },
+          { "label": "SMS", "value": "SMS" }
+        ]
+      },
+      {
+        "key": "notifications.notification_retention_period_days",
+        "label": "Notification Retention Period",
+        "description": "Number of days notification history should be retained.",
+        "type": "NUMBER",
+        "defaultValue": 30,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Retention",
+        "validationRules": { "min": 1, "max": 3650 }
+      }
+    ]
+  },
+  {
+    "name": "LMS Settings",
+    "code": "lms",
+    "description": "Configure LMS defaults used for learning experiences and landing behavior.",
+    "icon": "GraduationCap",
+    "displayOrder": 60,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "lms.default_course_visibility",
+        "label": "Default Course Visibility",
+        "description": "Default visibility applied to newly created courses.",
+        "type": "SELECT",
+        "defaultValue": "PRIVATE",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Defaults",
+        "options": [
+          { "label": "Private", "value": "PRIVATE" },
+          { "label": "Internal", "value": "INTERNAL" },
+          { "label": "Public", "value": "PUBLIC" }
+        ]
+      },
+      {
+        "key": "lms.default_course_duration_unit",
+        "label": "Default Course Duration Unit",
+        "description": "Default duration unit for new course content.",
+        "type": "SELECT",
+        "defaultValue": "WEEKS",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Defaults",
+        "options": [
+          { "label": "Days", "value": "DAYS" },
+          { "label": "Weeks", "value": "WEEKS" },
+          { "label": "Months", "value": "MONTHS" }
+        ]
+      },
+      {
+        "key": "lms.enable_course_completion_certificate",
+        "label": "Enable Course Completion Certificate",
+        "description": "Issue certificates for completed LMS courses by default.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Features"
+      },
+      {
+        "key": "lms.enable_progress_tracking",
+        "label": "Enable Progress Tracking",
+        "description": "Track learner progress across LMS content.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Features"
+      },
+      {
+        "key": "lms.enable_trainer_ratings",
+        "label": "Enable Trainer Ratings",
+        "description": "Allow trainer rating features in the LMS.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Features"
+      },
+      {
+        "key": "lms.default_lms_landing_page",
+        "label": "Default LMS Landing Page",
+        "description": "Landing page shown when opening LMS experiences.",
+        "type": "SELECT",
+        "defaultValue": "dashboard",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 60,
+        "groupName": "Navigation",
+        "options": [
+          { "label": "Dashboard", "value": "dashboard" },
+          { "label": "Courses", "value": "courses" },
+          { "label": "Learners", "value": "learners" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Course Settings",
+    "code": "courses",
+    "description": "Defaults used when creating and managing course records.",
+    "icon": "BookOpen",
+    "displayOrder": 70,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "courses.allow_self_enrollment",
+        "label": "Allow Self Enrollment",
+        "description": "Allow learners to enroll without admin approval.",
+        "type": "TOGGLE",
+        "defaultValue": false,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Enrollment"
+      },
+      {
+        "key": "courses.enable_course_approval_workflow",
+        "label": "Enable Course Approval Workflow",
+        "description": "Require approval before courses become active.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Workflow"
+      },
+      {
+        "key": "courses.maximum_courses_per_learner",
+        "label": "Maximum Courses Per Learner",
+        "description": "Maximum number of concurrent course assignments per learner.",
+        "type": "NUMBER",
+        "defaultValue": 3,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Enrollment",
+        "validationRules": { "min": 1, "max": 100 }
+      },
+      {
+        "key": "courses.default_course_status",
+        "label": "Default Course Status",
+        "description": "Default status applied to new course records.",
+        "type": "SELECT",
+        "defaultValue": "DRAFT",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Workflow",
+        "options": [
+          { "label": "Draft", "value": "DRAFT" },
+          { "label": "Published", "value": "PUBLISHED" },
+          { "label": "Archived", "value": "ARCHIVED" }
+        ]
+      },
+      {
+        "key": "courses.allow_course_duplication",
+        "label": "Allow Course Duplication",
+        "description": "Allow admins to duplicate course content.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Workflow"
+      }
+    ]
+  },
+  {
+    "name": "Quiz Settings",
+    "code": "quizzes",
+    "description": "Global defaults applied to quiz attempts and evaluation behavior.",
+    "icon": "ClipboardCheck",
+    "displayOrder": 80,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "quizzes.default_quiz_passing_percentage",
+        "label": "Default Quiz Passing Percentage",
+        "description": "Default required percentage for new quizzes.",
+        "type": "NUMBER",
+        "defaultValue": 70,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Defaults",
+        "validationRules": { "min": 0, "max": 100 }
+      },
+      {
+        "key": "quizzes.allow_quiz_retake",
+        "label": "Allow Quiz Retake",
+        "description": "Allow learners to retake quizzes after failure.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Attempts"
+      },
+      {
+        "key": "quizzes.maximum_retake_attempts",
+        "label": "Maximum Retake Attempts",
+        "description": "Maximum number of retake attempts per quiz.",
+        "type": "NUMBER",
+        "defaultValue": 3,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Attempts",
+        "validationRules": { "min": 0, "max": 20 }
+      },
+      {
+        "key": "quizzes.show_correct_answers_after_submission",
+        "label": "Show Correct Answers After Submission",
+        "description": "Show correct answers to learners immediately after submission.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Review"
+      },
+      {
+        "key": "quizzes.enable_quiz_timer_by_default",
+        "label": "Enable Quiz Timer by Default",
+        "description": "Enable time limits on newly created quizzes by default.",
+        "type": "TOGGLE",
+        "defaultValue": false,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Defaults"
+      }
+    ]
+  },
+  {
+    "name": "File Upload Settings",
+    "code": "file-upload",
+    "description": "Global constraints and behavior for uploaded files and media.",
+    "icon": "Upload",
+    "displayOrder": 90,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "uploads.maximum_file_upload_size_mb",
+        "label": "Maximum File Upload Size",
+        "description": "Maximum upload size allowed for documents and media in megabytes.",
+        "type": "NUMBER",
+        "defaultValue": 20,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Limits",
+        "validationRules": { "min": 1, "max": 1024 }
+      },
+      {
+        "key": "uploads.allowed_file_types",
+        "label": "Allowed File Types",
+        "description": "Globally allowed document and media extensions.",
+        "type": "MULTI_SELECT",
+        "defaultValue": ["pdf", "docx", "jpg", "png", "mp4"],
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Formats",
+        "options": [
+          { "label": "PDF", "value": "pdf" },
+          { "label": "DOCX", "value": "docx" },
+          { "label": "JPG", "value": "jpg" },
+          { "label": "PNG", "value": "png" },
+          { "label": "MP4", "value": "mp4" },
+          { "label": "CSV", "value": "csv" },
+          { "label": "XLSX", "value": "xlsx" }
+        ]
+      },
+      {
+        "key": "uploads.allowed_image_types",
+        "label": "Allowed Image Types",
+        "description": "Globally allowed image extensions.",
+        "type": "MULTI_SELECT",
+        "defaultValue": ["jpg", "jpeg", "png", "webp", "svg", "ico"],
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Formats",
+        "options": [
+          { "label": "JPG", "value": "jpg" },
+          { "label": "JPEG", "value": "jpeg" },
+          { "label": "PNG", "value": "png" },
+          { "label": "WEBP", "value": "webp" },
+          { "label": "SVG", "value": "svg" },
+          { "label": "ICO", "value": "ico" }
+        ]
+      },
+      {
+        "key": "uploads.storage_location",
+        "label": "Storage Location",
+        "description": "Backing storage used for uploaded assets.",
+        "type": "SELECT",
+        "defaultValue": "LOCAL_PUBLIC",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Storage",
+        "options": [
+          { "label": "Local Public Storage", "value": "LOCAL_PUBLIC" }
+        ]
+      },
+      {
+        "key": "uploads.enable_document_preview",
+        "label": "Enable Document Preview",
+        "description": "Allow preview behavior for supported uploaded documents.",
+        "type": "TOGGLE",
+        "defaultValue": true,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Storage"
+      }
+    ]
+  },
+  {
+    "name": "Localization / Regional Settings",
+    "code": "localization",
+    "description": "Regional defaults for currency, locale, and date/number formatting.",
+    "icon": "Globe2",
+    "displayOrder": 100,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "localization.default_currency",
+        "label": "Default Currency",
+        "description": "Default currency used in reports and finance screens.",
+        "type": "SELECT",
+        "defaultValue": "INR",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "Indian Rupee (INR)", "value": "INR" },
+          { "label": "US Dollar (USD)", "value": "USD" },
+          { "label": "Euro (EUR)", "value": "EUR" },
+          { "label": "British Pound (GBP)", "value": "GBP" }
+        ]
+      },
+      {
+        "key": "localization.default_country",
+        "label": "Default Country",
+        "description": "Default country used for locale-sensitive features.",
+        "type": "TEXT",
+        "defaultValue": "India",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Regional Defaults",
+        "validationRules": { "minLength": 2, "maxLength": 80 }
+      },
+      {
+        "key": "localization.default_time_zone",
+        "label": "Default Time Zone",
+        "description": "Fallback time zone when a category-specific time zone is not set.",
+        "type": "SELECT",
+        "defaultValue": "Asia/Kolkata",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "Asia/Kolkata", "value": "Asia/Kolkata" },
+          { "label": "UTC", "value": "UTC" },
+          { "label": "Europe/Berlin", "value": "Europe/Berlin" },
+          { "label": "America/New_York", "value": "America/New_York" }
+        ]
+      },
+      {
+        "key": "localization.week_start_day",
+        "label": "Week Start Day",
+        "description": "First day of the week used in calendars and reports.",
+        "type": "SELECT",
+        "defaultValue": "MONDAY",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "Monday", "value": "MONDAY" },
+          { "label": "Sunday", "value": "SUNDAY" },
+          { "label": "Saturday", "value": "SATURDAY" }
+        ]
+      },
+      {
+        "key": "localization.number_format",
+        "label": "Number Format",
+        "description": "Formatting convention used for decimal and grouped numbers.",
+        "type": "SELECT",
+        "defaultValue": "INDIAN",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "Indian (1,23,456.78)", "value": "INDIAN" },
+          { "label": "Western (123,456.78)", "value": "WESTERN" }
+        ]
+      },
+      {
+        "key": "localization.language_selection",
+        "label": "Language Selection",
+        "description": "Languages available to end users in locale selectors.",
+        "type": "MULTI_SELECT",
+        "defaultValue": ["English"],
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 60,
+        "groupName": "Regional Defaults",
+        "options": [
+          { "label": "English", "value": "English" },
+          { "label": "Hindi", "value": "Hindi" },
+          { "label": "German", "value": "German" }
+        ]
+      }
+    ]
+  }
+]

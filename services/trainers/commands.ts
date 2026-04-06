@@ -7,9 +7,10 @@ import { hashPassword } from "@/lib/auth/password";
 import { INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
-import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
+import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerCreateResult, TrainerOption } from "@/services/trainers/types";
 import { CreateTrainerInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
@@ -18,7 +19,7 @@ function normalizeProgramList(programs: string[]) {
   return Array.from(new Set(programs.map((program) => program.trim()).filter(Boolean)));
 }
 
-function buildInternalLoginUrl() {
+function buildInternalLoginUrl(fallbackApplicationUrl?: string | null) {
   const normalizeOrigin = (value: string | undefined) => {
     const normalized = value?.trim();
     if (!normalized) {
@@ -35,6 +36,7 @@ function buildInternalLoginUrl() {
   const resolvedOrigin =
     normalizeOrigin(process.env.INTERNAL_APP_ORIGIN) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(fallbackApplicationUrl ?? undefined) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL) ??
     "https://gts-acad.vercel.app";
 
@@ -47,13 +49,15 @@ async function sendTrainerWelcomeEmail(input: {
   recipientName: string;
   temporaryPassword: string;
 }) {
+  const generalSettings = await getGeneralRuntimeSettings();
+
   const template = await renderEmailTemplateByKeyService(INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY, {
-    appName: process.env.APP_NAME ?? "GTS Academy App",
+    appName: generalSettings.applicationName,
     recipientName: input.recipientName,
     recipientEmail: input.recipientEmail,
     temporaryPassword: input.temporaryPassword,
-    loginUrl: buildInternalLoginUrl(),
-    supportEmail: process.env.ADMIN_MAIL ?? process.env.MAIL_FROM_ADDRESS ?? "support@gts-academy.test",
+    loginUrl: buildInternalLoginUrl(generalSettings.applicationUrl),
+    supportEmail: generalSettings.supportEmail,
     roleSummary: "Trainer",
   });
 

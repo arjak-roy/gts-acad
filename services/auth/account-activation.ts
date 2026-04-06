@@ -14,8 +14,10 @@ import {
 import { hashSensitiveToken } from "@/lib/auth/two-factor";
 import { ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
+import { clearUserLoginLockoutWithClient } from "@/services/auth/login-lockout";
+import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { createAuditLogEntry, deliverLoggedEmail } from "@/services/logs-actions-service";
+import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
 
 const DEFAULT_ACTIVATION_TOKEN_TTL_HOURS = 72;
 const DEFAULT_ACTIVATION_RESEND_COOLDOWN_SECONDS = 60;
@@ -78,21 +80,23 @@ function normalizeOrigin(origin: string | undefined | null) {
   return `https://${normalized}`.replace(/\/$/, "");
 }
 
-function getActivationAppBaseUrl(appOrigin?: string | null) {
+function getActivationAppBaseUrl(appOrigin?: string | null, fallbackApplicationUrl?: string | null) {
   return (
     normalizeOrigin(appOrigin) ??
     normalizeOrigin(process.env.INTERNAL_APP_ORIGIN) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(fallbackApplicationUrl ?? undefined) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL) ??
     normalizeOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
     normalizeOrigin(process.env.VERCEL_URL)
   );
 }
 
-function getLoginUrlForUser(metadataValue: Prisma.JsonValue | null | undefined) {
+function getLoginUrlForUser(metadataValue: Prisma.JsonValue | null | undefined, fallbackApplicationUrl?: string | null) {
   const internalLoginBase =
     normalizeOrigin(process.env.INTERNAL_APP_ORIGIN) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN) ??
+    normalizeOrigin(fallbackApplicationUrl ?? undefined) ??
     normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL);
 
   const candidateLoginBase =
@@ -105,8 +109,8 @@ function getLoginUrlForUser(metadataValue: Prisma.JsonValue | null | undefined) 
   return loginBase ? `${loginBase}/login` : "/login";
 }
 
-function buildActivationUrl(token: string, appOrigin?: string | null) {
-  const activationBase = getActivationAppBaseUrl(appOrigin);
+function buildActivationUrl(token: string, appOrigin?: string | null, fallbackApplicationUrl?: string | null) {
+  const activationBase = getActivationAppBaseUrl(appOrigin, fallbackApplicationUrl);
   if (!activationBase) {
     return null;
   }
@@ -197,20 +201,21 @@ export async function sendAccountActivationEmail(userId: string, options: Activa
     throw new Error("Please wait before requesting another activation email.");
   }
 
-  const activationUrl = buildActivationUrl(activationToken, options.appOrigin);
+  const generalSettings = await getGeneralRuntimeSettings();
+  const activationUrl = buildActivationUrl(activationToken, options.appOrigin, generalSettings.applicationUrl);
   if (!activationUrl) {
     throw new Error("Account activation URL is not configured.");
   }
 
-  const loginUrl = getLoginUrlForUser(user.metadata);
+  const loginUrl = getLoginUrlForUser(user.metadata, generalSettings.applicationUrl);
   const template = await renderEmailTemplateByKeyService(ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY, {
-    appName: process.env.APP_NAME ?? "GTS Academy App",
+    appName: generalSettings.applicationName,
     recipientName: user.name,
     activationUrl,
     activationToken,
     expiresInHours: getActivationTokenTtlHours(),
     loginUrl,
-    supportEmail: process.env.ADMIN_MAIL ?? process.env.MAIL_FROM_ADDRESS ?? "support@gts-academy.test",
+    supportEmail: generalSettings.supportEmail,
   });
 
   try {
@@ -321,21 +326,7 @@ export async function activateAccountWithToken(activationToken: string) {
       },
     });
 
-    await tx.userSecurity.upsert({
-      where: { userId: tokenRecord.userId },
-      update: {
-        failedLoginAttempts: 0,
-        loginLockedUntil: null,
-        lastFailedLoginAt: null,
-      },
-      create: {
-        userId: tokenRecord.userId,
-        recoveryCodes: [],
-        failedLoginAttempts: 0,
-        loginLockedUntil: null,
-        lastFailedLoginAt: null,
-      },
-    });
+    await clearUserLoginLockoutWithClient(tx, tokenRecord.userId);
   });
 
   await createAuditLogEntry({
@@ -346,9 +337,11 @@ export async function activateAccountWithToken(activationToken: string) {
     message: `Account activated for ${tokenRecord.user.email}.`,
   });
 
+  const generalSettings = await getGeneralRuntimeSettings();
+
   return {
     email: tokenRecord.user.email,
     name: tokenRecord.user.name,
-    loginUrl: getLoginUrlForUser(tokenRecord.user.metadata),
+    loginUrl: getLoginUrlForUser(tokenRecord.user.metadata, generalSettings.applicationUrl),
   };
 }

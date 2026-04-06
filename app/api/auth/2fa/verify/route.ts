@@ -5,7 +5,7 @@ import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getAuthSession } from "@/lib/auth/session";
 import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
-import { verifyLoginTwoFactor } from "@/services/auth-service";
+import { verifyLoginTwoFactor } from "@/services/auth";
 
 const verifySchema = z.object({
   code: z.string().trim().min(6, "Verification code is required.").max(6, "Verification code must be 6 digits."),

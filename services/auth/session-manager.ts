@@ -6,10 +6,10 @@ import { getClientIpAddress } from "@/lib/auth/login-rate-limiter";
 import {
   buildAuthSessionCookie,
   createAuthSessionToken,
-  getAuthenticatedSessionMaxAgeSeconds,
   type AuthSessionClaims,
 } from "@/lib/auth/session";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { getAuthenticationSecurityRuntimeSettings } from "@/services/settings/runtime";
 
 const SESSION_ACTIVITY_TOUCH_INTERVAL_MS = 60_000;
 
@@ -25,6 +25,41 @@ function requireDatabase() {
   if (!isDatabaseConfigured) {
     throw new Error("Authentication requires database configuration.");
   }
+}
+
+const DEFAULT_FULL_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+const DEFAULT_REMEMBER_ME_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+function parseMaxAgeSeconds(rawValue: string | undefined, fallbackValue: number, minimumValue: number, maximumValue: number) {
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  const parsedValue = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsedValue)) {
+    return fallbackValue;
+  }
+
+  return Math.min(Math.max(parsedValue, minimumValue), maximumValue);
+}
+
+async function getAuthenticatedSessionMaxAgeSeconds(rememberMe: boolean) {
+  const authSecuritySettings = await getAuthenticationSecurityRuntimeSettings();
+  const fullSessionMaxAgeSeconds = parseMaxAgeSeconds(
+    String(authSecuritySettings.sessionTimeoutDurationMinutes * 60),
+    DEFAULT_FULL_SESSION_MAX_AGE_SECONDS,
+    15 * 60,
+    DEFAULT_REMEMBER_ME_SESSION_MAX_AGE_SECONDS,
+  );
+
+  const rememberMeSessionMaxAgeSeconds = parseMaxAgeSeconds(
+    process.env.AUTH_REMEMBER_ME_MAX_AGE_SECONDS,
+    DEFAULT_REMEMBER_ME_SESSION_MAX_AGE_SECONDS,
+    fullSessionMaxAgeSeconds,
+    60 * 60 * 24 * 180,
+  );
+
+  return rememberMe ? rememberMeSessionMaxAgeSeconds : fullSessionMaxAgeSeconds;
 }
 
 function getBrowserLabel(userAgent: string | null) {
@@ -77,23 +112,51 @@ export async function createAuthenticatedUserSession(request: NextRequest, user:
   requireDatabase();
 
   const now = new Date();
-  const maxAgeSeconds = getAuthenticatedSessionMaxAgeSeconds(rememberMe);
+  const maxAgeSeconds = await getAuthenticatedSessionMaxAgeSeconds(rememberMe);
   const expiresAt = new Date(now.getTime() + maxAgeSeconds * 1_000);
   const userAgent = request.headers.get("user-agent");
+  const authSecuritySettings = await getAuthenticationSecurityRuntimeSettings();
 
-  const session = await prisma.userSession.create({
-    data: {
-      userId: user.id,
-      device: getDeviceLabel(userAgent),
-      browser: getBrowserLabel(userAgent),
-      ipAddress: getClientIpAddress(request),
-      userAgent: userAgent?.slice(0, 255) ?? null,
-      rememberMe,
-      loginAt: now,
-      lastActivityAt: now,
-      expiresAt,
-    },
-  });
+  const session = authSecuritySettings.allowMultipleActiveSessions
+    ? await prisma.userSession.create({
+        data: {
+          userId: user.id,
+          device: getDeviceLabel(userAgent),
+          browser: getBrowserLabel(userAgent),
+          ipAddress: getClientIpAddress(request),
+          userAgent: userAgent?.slice(0, 255) ?? null,
+          rememberMe,
+          loginAt: now,
+          lastActivityAt: now,
+          expiresAt,
+        },
+      })
+    : await prisma.$transaction(async (tx) => {
+        await tx.userSession.updateMany({
+          where: {
+            userId: user.id,
+            revokedAt: null,
+          },
+          data: {
+            revokedAt: now,
+            revokedReason: "single-session-policy",
+          },
+        });
+
+        return tx.userSession.create({
+          data: {
+            userId: user.id,
+            device: getDeviceLabel(userAgent),
+            browser: getBrowserLabel(userAgent),
+            ipAddress: getClientIpAddress(request),
+            userAgent: userAgent?.slice(0, 255) ?? null,
+            rememberMe,
+            loginAt: now,
+            lastActivityAt: now,
+            expiresAt,
+          },
+        });
+      });
 
   const token = await createAuthSessionToken(
     {

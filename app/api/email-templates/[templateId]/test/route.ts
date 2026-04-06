@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { emailTemplateIdSchema, sendTestEmailTemplateSchema } from "@/lib/validation-schemas/email-templates";
-import { sendTestEmailTemplateService } from "@/services/email-templates-service";
+import { sendTestEmailTemplateService } from "@/services/email-templates";
 
 type RouteContext = {
   params: {

@@ -1,7 +1,7 @@
 import "server-only";
 
 export { loginWithPassword, resendLoginTwoFactor, verifyLoginTwoFactor, verifyRecoveryCode } from "@/services/auth/login";
-export { requestPasswordReset, resetPasswordWithToken } from "@/services/auth/password-reset";
+export { changeAuthenticatedPassword, requestPasswordReset, resetPasswordWithToken } from "@/services/auth/password-reset";
 export { startTwoFactorSetup, verifyTwoFactorSetup } from "@/services/auth/two-factor-setup";
 export { sendDemoTwoFactorMail } from "@/services/auth/demo";
 

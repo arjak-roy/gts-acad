@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
-import { sendDemoTwoFactorMail } from "@/services/auth-service";
+import { sendDemoTwoFactorMail } from "@/services/auth";
 
 const demoMailSchema = z.object({
   recipient: z.string().trim().email().optional(),

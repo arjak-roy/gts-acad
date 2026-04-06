@@ -11,9 +11,11 @@ import {
   PlacementStatus,
   PrismaClient,
   ProgramType,
+  SettingType,
   SyncStatus,
 } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
+import settingsCatalog from "../lib/settings/settings-catalog.json" with { type: "json" };
 
 import { loadLocalEnv } from "../scripts/load-local-env.mjs";
 
@@ -173,6 +175,7 @@ const PERMISSION_DEFINITIONS = [
   { module: "logs", action: "view", key: "logs.view", description: "View logs and actions" },
   { module: "settings", action: "view", key: "settings.view", description: "View settings" },
   { module: "settings", action: "edit", key: "settings.edit", description: "Edit settings" },
+  { module: "settings", action: "manage", key: "settings.manage", description: "Manage settings categories and fields" },
   { module: "email_templates", action: "view", key: "email_templates.view", description: "View email templates" },
   { module: "email_templates", action: "create", key: "email_templates.create", description: "Create email templates" },
   { module: "email_templates", action: "edit", key: "email_templates.edit", description: "Edit email templates" },
@@ -206,7 +209,7 @@ const ROLE_PERMISSION_MAP = {
     "payments.view", "payments.manage",
     "support.view", "support.manage",
     "logs.view",
-    "settings.edit",
+    "settings.view", "settings.edit", "settings.manage",
     "email_templates.view", "email_templates.edit",
   ],
   TRAINER: [
@@ -323,6 +326,73 @@ async function seed() {
         where: { roleId_permissionId: { roleId: role.id, permissionId: perm.id } },
         update: {},
         create: { roleId: role.id, permissionId: perm.id },
+      });
+    }
+  }
+
+  // --- Seed settings categories and definitions ---
+  for (const categoryDef of settingsCatalog) {
+    const category = await prisma.settingsCategory.upsert({
+      where: { code: categoryDef.code },
+      update: {
+        name: categoryDef.name,
+        description: categoryDef.description ?? null,
+        icon: categoryDef.icon ?? null,
+        displayOrder: categoryDef.displayOrder,
+        isSystem: categoryDef.isSystem !== false,
+        isActive: true,
+      },
+      create: {
+        name: categoryDef.name,
+        code: categoryDef.code,
+        description: categoryDef.description ?? null,
+        icon: categoryDef.icon ?? null,
+        displayOrder: categoryDef.displayOrder,
+        isSystem: categoryDef.isSystem !== false,
+        isActive: true,
+      },
+    });
+
+    for (const settingDef of categoryDef.settings) {
+      await prisma.setting.upsert({
+        where: { key: settingDef.key },
+        update: {
+          categoryId: category.id,
+          label: settingDef.label,
+          description: settingDef.description ?? null,
+          type: settingDef.type ?? SettingType.TEXT,
+          defaultValue: settingDef.defaultValue ?? null,
+          placeholder: settingDef.placeholder ?? null,
+          helpText: settingDef.helpText ?? null,
+          options: settingDef.options ?? null,
+          validationRules: settingDef.validationRules ?? null,
+          groupName: settingDef.groupName ?? null,
+          displayOrder: settingDef.displayOrder,
+          isRequired: settingDef.isRequired === true,
+          isEncrypted: settingDef.isEncrypted === true,
+          isReadonly: settingDef.isReadonly === true,
+          isSystem: settingDef.isSystem !== false,
+          isActive: settingDef.isActive !== false,
+        },
+        create: {
+          categoryId: category.id,
+          key: settingDef.key,
+          label: settingDef.label,
+          description: settingDef.description ?? null,
+          type: settingDef.type ?? SettingType.TEXT,
+          defaultValue: settingDef.defaultValue ?? null,
+          placeholder: settingDef.placeholder ?? null,
+          helpText: settingDef.helpText ?? null,
+          options: settingDef.options ?? null,
+          validationRules: settingDef.validationRules ?? null,
+          groupName: settingDef.groupName ?? null,
+          displayOrder: settingDef.displayOrder,
+          isRequired: settingDef.isRequired === true,
+          isEncrypted: settingDef.isEncrypted === true,
+          isReadonly: settingDef.isReadonly === true,
+          isSystem: settingDef.isSystem !== false,
+          isActive: settingDef.isActive !== false,
+        },
       });
     }
   }

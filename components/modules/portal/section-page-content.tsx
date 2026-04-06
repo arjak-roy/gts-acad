@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CreateBatchSheet } from "@/components/modules/batches/create-batch-sheet";
 import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet";
+import { LanguageLabSection } from "@/components/modules/language-lab/language-lab-section";
 import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
 import { ScheduleSection } from "@/components/modules/schedule/schedule-section";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -62,14 +63,15 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [batchActionError, setBatchActionError] = useState<string | null>(null);
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
-  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || sectionKey === "settings";
+  const isEmailTemplatesSection = sectionKey === "settings" || sectionKey === "email-templates";
+  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || isEmailTemplatesSection;
 
   const editPermForSection =
     sectionKey === "courses" ? "courses.edit" :
     sectionKey === "batches" ? "batches.edit" :
     sectionKey === "programs" ? "programs.edit" :
     sectionKey === "trainers" ? "trainers.edit" :
-    sectionKey === "settings" ? "email_templates.edit" :
+    isEmailTemplatesSection ? "email_templates.edit" :
     undefined;
 
   const createPermForSection =
@@ -77,8 +79,20 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     sectionKey === "batches" ? "batches.create" :
     sectionKey === "programs" ? "programs.create" :
     sectionKey === "trainers" ? "trainers.create" :
-    sectionKey === "settings" ? "email_templates.create" :
+    isEmailTemplatesSection ? "email_templates.create" :
     undefined;
+
+  const emailTemplateKeys = useMemo(
+    () => (isEmailTemplatesSection
+      ? section.tableRows.reduce<string[]>((keys, row) => {
+          if (row.key) {
+            keys.push(row.key);
+          }
+          return keys;
+        }, [])
+      : []),
+    [isEmailTemplatesSection, section.tableRows],
+  );
 
   if (sectionKey === "logs-actions") {
     return <LogsActionsSection title={section.title} description={section.description} />;
@@ -86,6 +100,10 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
   if (sectionKey === "schedule") {
     return <ScheduleSection title={section.title} description={section.description} />;
+  }
+
+  if (sectionKey === "language-lab") {
+    return <LanguageLabSection title={section.title} description={section.description} />;
   }
 
   useEffect(() => {
@@ -113,7 +131,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         setViewingProgramId(viewId);
       } else if (sectionKey === "trainers") {
         setViewingTrainerId(viewId);
-      } else if (sectionKey === "settings") {
+      } else if (isEmailTemplatesSection) {
         setViewingEmailTemplateId(viewId);
       }
 
@@ -129,11 +147,11 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         setEditingProgramId(editId);
       } else if (sectionKey === "trainers") {
         setEditingTrainerId(editId);
-      } else if (sectionKey === "settings") {
+      } else if (isEmailTemplatesSection) {
         setEditingEmailTemplateId(editId);
       }
     }
-  }, [searchParams, sectionKey]);
+  }, [isEmailTemplatesSection, searchParams, sectionKey]);
 
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -337,8 +355,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
               <CreateBatchSheet />
             ) : sectionKey === "trainers" ? (
               <AddTrainerSheet />
-            ) : sectionKey === "settings" ? (
-              <AddEmailTemplateSheet />
+            ) : isEmailTemplatesSection ? (
+              <AddEmailTemplateSheet existingTemplateKeys={emailTemplateKeys} />
             ) : (
               <Button>{section.primaryAction}</Button>
             )}
@@ -519,6 +537,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         templateId={editingEmailTemplateId}
         open={Boolean(editingEmailTemplateId)}
         onOpenChange={(nextOpen) => !nextOpen && closeEditor()}
+        existingTemplateKeys={emailTemplateKeys}
       />
       <BatchEnrollmentSheet
         open={Boolean(studentsBatch)}
