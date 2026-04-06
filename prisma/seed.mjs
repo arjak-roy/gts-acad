@@ -119,6 +119,10 @@ const PERMISSION_DEFINITIONS = [
   { module: "staff_users", action: "create", key: "staff_users.create", description: "Create internal users" },
   { module: "staff_users", action: "edit", key: "staff_users.edit", description: "Edit internal users" },
   { module: "staff_users", action: "delete", key: "staff_users.delete", description: "Deactivate internal users" },
+  { module: "auth", action: "login", key: "auth.login", description: "Sign in to the academy admin portal" },
+  { module: "auth", action: "manage", key: "auth.manage", description: "Manage authentication and account recovery" },
+  { module: "sessions", action: "view", key: "sessions.view", description: "View active sessions" },
+  { module: "sessions", action: "manage", key: "sessions.manage", description: "Manage active sessions and logout all devices" },
   { module: "courses", action: "view", key: "courses.view", description: "View courses" },
   { module: "courses", action: "create", key: "courses.create", description: "Create courses" },
   { module: "courses", action: "edit", key: "courses.edit", description: "Edit courses" },
@@ -184,6 +188,8 @@ const PERMISSION_DEFINITIONS = [
 const ROLE_PERMISSION_MAP = {
   ACADEMY_ADMIN: [
     "dashboard.view",
+    "auth.login", "auth.manage",
+    "sessions.view", "sessions.manage",
     "users.view", "users.create", "users.edit", "users.delete",
     "staff_users.view", "staff_users.create", "staff_users.edit", "staff_users.delete",
     "courses.view", "courses.create", "courses.edit", "courses.delete",
@@ -205,6 +211,8 @@ const ROLE_PERMISSION_MAP = {
   ],
   TRAINER: [
     "dashboard.view",
+    "auth.login",
+    "sessions.view", "sessions.manage",
     "courses.view",
     "programs.view",
     "batches.view",
@@ -219,6 +227,8 @@ const ROLE_PERMISSION_MAP = {
   ],
   CONTENT_MANAGER: [
     "dashboard.view",
+    "auth.login",
+    "sessions.view", "sessions.manage",
     "courses.view", "courses.create", "courses.edit", "courses.delete",
     "programs.view", "programs.create", "programs.edit", "programs.delete",
     "assessments.view",
@@ -228,6 +238,8 @@ const ROLE_PERMISSION_MAP = {
   ],
   SUPPORT_USER: [
     "dashboard.view",
+    "auth.login",
+    "sessions.view", "sessions.manage",
     "users.view",
     "support.view", "support.manage",
   ],

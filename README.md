@@ -120,6 +120,22 @@ npm run db:test:push
 npm run db:test:seed
 ```
 
+If you already have an existing database and need the auth/session tables added without a full push, run:
+
+```bash
+npm run db:sync:auth
+npm run db:seed
+```
+
+That auth sync now applies the email 2FA, session registry, activation token, and login lockout schema changes.
+
+For the test database:
+
+```bash
+npm run db:test:sync:auth
+npm run db:test:seed
+```
+
 ## Seed Data
 
 The project includes an idempotent Prisma seed script at `prisma/seed.mjs`.

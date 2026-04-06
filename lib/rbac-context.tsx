@@ -1,10 +1,16 @@
 "use client";
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 const SUPER_ADMIN_ROLE_CODE = "SUPER_ADMIN";
+
+class AuthenticationRequiredError extends Error {
+  constructor() {
+    super("Authentication required");
+  }
+}
 
 type RoleInfo = {
   code: string;
@@ -32,6 +38,10 @@ const RbacContext = createContext<RbacContextValue | null>(null);
 async function fetchPermissions(): Promise<{ permissions: string[]; roleCodes: string[]; roles: RoleInfo[]; user: UserInfo | null }> {
   const response = await fetch("/api/auth/permissions", { credentials: "include" });
 
+  if (response.status === 401) {
+    throw new AuthenticationRequiredError();
+  }
+
   if (!response.ok) {
     throw new Error("Permission fetch failed");
   }
@@ -40,7 +50,7 @@ async function fetchPermissions(): Promise<{ permissions: string[]; roleCodes: s
   return json.data ?? { permissions: [], roleCodes: [], roles: [], user: null };
 }
 
-const AUTH_ROUTES = new Set(["/login", "/forgot-password", "/reset-password"]);
+const AUTH_ROUTES = new Set(["/login", "/forgot-password", "/reset-password", "/activate-account"]);
 
 function isAuthRoute(pathname: string) {
   return AUTH_ROUTES.has(pathname) || pathname.startsWith("/login/") || pathname.startsWith("/forgot-") || pathname.startsWith("/reset-");
@@ -48,19 +58,27 @@ function isAuthRoute(pathname: string) {
 
 export function RbacProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const enabled = !isAuthRoute(pathname);
 
-  const { data, isLoading: queryLoading } = useQuery({
+  const { data, error, isLoading: queryLoading } = useQuery({
     queryKey: ["auth", "permissions"],
     queryFn: fetchPermissions,
     staleTime: 5 * 60_000,
     gcTime: 0,
     refetchOnWindowFocus: true,
-    retry: 1,
+    retry: (failureCount, queryError) => !(queryError instanceof AuthenticationRequiredError) && failureCount < 1,
     enabled,
   });
 
-  const isLoading = enabled && queryLoading;
+  useEffect(() => {
+    if (error instanceof AuthenticationRequiredError) {
+      router.replace("/login");
+      router.refresh();
+    }
+  }, [error, router]);
+
+  const isLoading = enabled && (queryLoading || error instanceof AuthenticationRequiredError);
 
   const value = useMemo<RbacContextValue>(() => {
     const permSet = new Set(data?.permissions ?? []);

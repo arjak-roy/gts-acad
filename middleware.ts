@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 
 import { getAuthSession } from "@/lib/auth/session";
 
+const PUBLIC_AUTH_PATHS = new Set(["/forgot-password", "/activate-account"]);
+
 function appendPathnameHeader(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
@@ -36,6 +38,14 @@ export async function middleware(request: NextRequest) {
     if (isFullyAuthenticated) {
       return NextResponse.redirect(new URL(requiresPasswordReset ? "/reset-password" : "/dashboard", request.url));
     }
+    return appendPathnameHeader(request);
+  }
+
+  if (PUBLIC_AUTH_PATHS.has(pathname)) {
+    if (isFullyAuthenticated) {
+      return NextResponse.redirect(new URL(requiresPasswordReset ? "/reset-password" : "/dashboard", request.url));
+    }
+
     return appendPathnameHeader(request);
   }
 

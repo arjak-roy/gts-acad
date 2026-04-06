@@ -1,11 +1,43 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, KeyRound, LockKeyhole } from "lucide-react";
 
-export default function ResetPasswordPage() {
+const PASSWORD_REQUIREMENTS = [
+  "At least 12 characters",
+  "At least one uppercase letter",
+  "At least one lowercase letter",
+  "At least one number",
+  "At least one special character",
+];
+
+function getPasswordValidationError(password: string) {
+  if (password.trim().length < 12) {
+    return "Password must be at least 12 characters long.";
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return "Password must include at least one uppercase letter.";
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return "Password must include at least one lowercase letter.";
+  }
+
+  if (!/[0-9]/.test(password)) {
+    return "Password must include at least one number.";
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include at least one special character.";
+  }
+
+  return null;
+}
+
+function ResetPasswordPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token")?.trim() ?? "";
@@ -35,8 +67,9 @@ export default function ResetPasswordPage() {
     event.preventDefault();
     setError("");
 
-    if (!password.trim() || password.trim().length < 8) {
-      setError("Password must be at least 8 characters long.");
+    const passwordValidationError = getPasswordValidationError(password);
+    if (passwordValidationError) {
+      setError(passwordValidationError);
       return;
     }
 
@@ -147,8 +180,13 @@ export default function ResetPasswordPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="w-full rounded-xl border border-[#dde1e6] bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-[#0d3b84] focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  placeholder="Minimum 8 characters"
+                  placeholder="Use a strong password"
                 />
+                <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                  {PASSWORD_REQUIREMENTS.map((requirement) => (
+                    <li key={requirement}>{requirement}</li>
+                  ))}
+                </ul>
               </div>
 
               <div>
@@ -183,5 +221,13 @@ export default function ResetPasswordPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f6f7f9]" />}>
+      <ResetPasswordPageContent />
+    </Suspense>
   );
 }

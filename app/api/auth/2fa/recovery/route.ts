@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS, getAuthSession } from "@/lib/auth/session";
+import { getAuthSession } from "@/lib/auth/session";
+import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
 import { verifyRecoveryCode } from "@/services/auth-service";
 
 const recoverySchema = z.object({
@@ -21,19 +22,8 @@ export async function POST(request: NextRequest) {
     const user = await verifyRecoveryCode(session.userId, session.challengeId, recoveryCode);
     const response = apiSuccess({ ok: true, requiresPasswordReset: user.requiresPasswordReset });
 
-    const token = await createAuthSessionToken(
-      {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        requiresPasswordReset: user.requiresPasswordReset,
-        state: "authenticated",
-      },
-      FULL_SESSION_MAX_AGE_SECONDS,
-    );
-
-    response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
+    const authenticatedSession = await createAuthenticatedUserSession(request, user, session.rememberMe === true);
+    response.cookies.set(authenticatedSession.cookie);
     return response;
   } catch (error) {
     return apiError(error);

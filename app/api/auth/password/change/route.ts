@@ -3,12 +3,12 @@ import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
-import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
+import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
 import { changeAuthenticatedPassword } from "@/services/auth-service";
 
 const passwordChangeSchema = z.object({
   currentPassword: z.string().trim().min(1, "Current password is required."),
-  password: z.string().trim().min(8, "Password must be at least 8 characters long."),
+  password: z.string().trim().min(1, "New password is required."),
 });
 
 export async function POST(request: NextRequest) {
@@ -20,19 +20,19 @@ export async function POST(request: NextRequest) {
     await changeAuthenticatedPassword(session.userId, currentPassword, password);
 
     const response = apiSuccess({ ok: true });
-    const token = await createAuthSessionToken(
+    const authenticatedSession = await createAuthenticatedUserSession(
+      request,
       {
-        userId: session.userId,
+        id: session.userId,
         email: session.email,
         name: session.name,
         role: session.role,
         requiresPasswordReset: false,
-        state: "authenticated",
       },
-      FULL_SESSION_MAX_AGE_SECONDS,
+      session.rememberMe === true,
     );
 
-    response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
+    response.cookies.set(authenticatedSession.cookie);
     return response;
   } catch (error) {
     return apiError(error);

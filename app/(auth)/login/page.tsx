@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
   Lock,
@@ -17,11 +17,21 @@ import {
 
 type ViewState = "SIGN_IN" | "TWO_STEP" | "RECOVERY" | "FORGOT_PASSWORD" | "RESET_SENT";
 
-export default function LoginPage() {
+function resolvePostLoginPath(candidatePath: string | null) {
+  if (!candidatePath || !candidatePath.startsWith("/") || candidatePath.startsWith("//")) {
+    return "/dashboard";
+  }
+
+  return candidatePath;
+}
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [viewState, setViewState] = useState<ViewState>("SIGN_IN");
   const [showPassword, setShowPassword] = useState(false);
   const [loginId, setLoginId] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authCode, setAuthCode] = useState("");
@@ -31,8 +41,21 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [twoFactorHint, setTwoFactorHint] = useState("");
 
+  const postLoginPath = useMemo(() => resolvePostLoginPath(searchParams.get("next")), [searchParams]);
+  const infoMessage = useMemo(() => {
+    if (searchParams.get("reason") === "session-expired") {
+      return "Your session expired. Sign in again to continue.";
+    }
+
+    if (searchParams.get("activated") === "1") {
+      return "Your account is active. Sign in to continue.";
+    }
+
+    return "";
+  }, [searchParams]);
+
   const completeSignIn = async () => {
-    router.replace("/dashboard");
+    router.replace(postLoginPath);
     router.refresh();
   };
 
@@ -73,6 +96,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: loginId,
           password,
+          rememberMe,
         }),
       });
 
@@ -265,6 +289,7 @@ export default function LoginPage() {
               <>
                 <h2 className="text-2xl font-semibold tracking-tight text-gray-900">Signing into Global Talent Square</h2>
                 <p className="mb-6 mt-1 text-sm text-gray-500">Enter your credentials to continue</p>
+                {infoMessage ? <p className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#0d3b84]">{infoMessage}</p> : null}
                 <form onSubmit={handleInitialSignIn} className="space-y-6">
                   <div>
                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-gray-400">Login ID</label>
@@ -303,6 +328,15 @@ export default function LoginPage() {
                       </button>
                     </div>
                   </div>
+                  <label className="flex items-center gap-3 text-xs font-semibold text-gray-500">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(event) => setRememberMe(event.target.checked)}
+                      className="h-4 w-4 rounded border border-[#DDE1E6] text-[#0D3B84] focus:ring-[#0D3B84]"
+                    />
+                    Remember me for 30 days
+                  </label>
                   {error && <p className="rounded-lg border border-red-100 bg-red-50 p-3 text-center text-xs font-bold text-red-600">{error}</p>}
                   <button
                     type="submit"
@@ -314,7 +348,10 @@ export default function LoginPage() {
                   <div className="flex justify-end pt-2">
                     <button
                       type="button"
-                      onClick={() => setViewState("FORGOT_PASSWORD")}
+                      onClick={() => {
+                        const target = loginId.trim() ? `/forgot-password?email=${encodeURIComponent(loginId.trim())}` : "/forgot-password";
+                        router.push(target);
+                      }}
                       className="text-xs font-bold text-[#0D3B84] hover:underline"
                     >
                       Forgot password?
@@ -507,5 +544,13 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f6f7f9]" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

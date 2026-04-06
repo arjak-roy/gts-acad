@@ -188,6 +188,11 @@ export function AppHeader() {
                 <User className="mr-2 h-4 w-4" />
                 My Profile
               </DropdownMenuItem>
+              <CanAccess permission="sessions.view">
+                <DropdownMenuItem asChild>
+                  <Link href="/sessions">Session Management</Link>
+                </DropdownMenuItem>
+              </CanAccess>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-rose-600" onSelect={handleLogout}>Logout</DropdownMenuItem>
             </DropdownMenuContent>

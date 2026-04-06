@@ -13,6 +13,8 @@ import { hashPassword } from "@/lib/auth/password";
 import {
   INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-defaults";
+import { buildPendingAccountActivationMetadata } from "@/lib/auth/account-metadata";
+import { sendAccountActivationEmail } from "@/services/auth/account-activation";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type { InternalUserDetail, InternalUserListItem, InternalUserRoleInfo, InternalUsersResponse, WelcomeEmailStatus } from "@/types";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
@@ -417,13 +419,13 @@ export async function createInternalUserService(
         phone: normalizedPhone,
         password: hashedTemporaryPassword,
         isActive: true,
-        metadata: {
+        metadata: buildPendingAccountActivationMetadata({
           accountType: "INTERNAL",
           createdFrom: "internal-user-management",
           requiresPasswordReset: true,
           welcomeCredentialsEmailStatus: "pending",
           welcomeCredentialsLastIssuedAt: issuedAt,
-        },
+        }, issuedAt) as Prisma.InputJsonValue,
       },
       select: {
         id: true,
@@ -469,6 +471,14 @@ export async function createInternalUserService(
       welcomeCredentialsEmailStatus: "failed",
       welcomeCredentialsFailureReason: error instanceof Error ? error.message : "Unknown delivery failure.",
     });
+  }
+
+  try {
+    await sendAccountActivationEmail(createdUser.id, {
+      actorUserId: actor.actorUserId ?? null,
+    });
+  } catch (error) {
+    console.warn("Internal user activation email dispatch failed.", error);
   }
 
   await createAuditLogEntry({
@@ -645,6 +655,14 @@ export async function resendInternalUserWelcomeService(userId: string, actorUser
         } as Prisma.InputJsonValue,
       },
     });
+  }
+
+  try {
+    await sendAccountActivationEmail(userId, {
+      actorUserId: actorUserId ?? null,
+    });
+  } catch (error) {
+    console.warn("Internal user activation email re-issue failed.", error);
   }
 
   await createAuditLogEntry({

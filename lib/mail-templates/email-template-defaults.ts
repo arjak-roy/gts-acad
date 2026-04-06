@@ -1,5 +1,6 @@
 export const TWO_FACTOR_EMAIL_TEMPLATE_KEY = "auth-2fa-code";
 export const PASSWORD_RESET_EMAIL_TEMPLATE_KEY = "auth-password-reset";
+export const ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY = "auth-account-activation";
 export const INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY = "internal-user-password-changed";
 export const CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "candidate-welcome-credentials";
 export const INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "internal-user-welcome-credentials";
@@ -82,6 +83,45 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
             <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Expires in:</strong> {{expiresInMinutes}} minutes</p>
           </div>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">If you did not request this reset, you can ignore this email.</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY,
+    name: "Account Activation",
+    description: "Email used to activate newly provisioned accounts.",
+    subject: "Activate your {{appName}} account",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "Your account is ready, but it must be activated before you can sign in.",
+      "",
+      "Activate your account:",
+      "{{activationUrl}}",
+      "",
+      "If the link does not open, use this activation token:",
+      "{{activationToken}}",
+      "",
+      "This activation link expires in {{expiresInHours}} hours.",
+      "After activation, sign in here: {{loginUrl}}",
+      "If you did not expect this email, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Activate your account</h1>
+          <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your account is ready. Activate it before signing in.</p>
+          <a href="{{activationUrl}}" style="display: inline-block; margin-bottom: 20px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Activate account</a>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Activation token:</strong> {{activationToken}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Expires in:</strong> {{expiresInHours}} hours</p>
+          </div>
+          <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #334155;">Sign in after activation: <a href="{{loginUrl}}" style="color: #0d3b84;">{{loginUrl}}</a></p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">If you did not expect this email, contact {{supportEmail}}.</p>
         </div>
       </div>
     `,

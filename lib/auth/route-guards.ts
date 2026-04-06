@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import type { AuthSessionClaims } from "@/lib/auth/session";
 import { getAuthSession } from "@/lib/auth/session";
+import { touchUserSessionActivity, validateAuthenticatedUserSession } from "@/services/auth/session-manager";
 import { hasPermission, hasAnyPermission, getUserPermissions } from "@/services/rbac-service";
 
 const candidateRoleCodes = new Set(["CANDIDATE"]);
@@ -15,6 +16,15 @@ export async function requireAuthenticatedSession(request: NextRequest): Promise
 
   if (!session || session.state !== "authenticated") {
     throw new Error("Unauthorized: authenticated session required.");
+  }
+
+  const isValid = await validateAuthenticatedUserSession(session);
+  if (!isValid) {
+    throw new Error("Unauthorized: session expired or invalidated.");
+  }
+
+  if (session.sessionId) {
+    await touchUserSessionActivity(session.userId, session.sessionId);
   }
 
   return session;

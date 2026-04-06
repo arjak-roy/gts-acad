@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { getAuthSession } from "@/lib/auth/session";
+import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
 import { sendDemoTwoFactorMail } from "@/services/auth-service";
 
 const demoMailSchema = z.object({
@@ -15,11 +15,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Demo mail route is disabled in production.");
     }
 
-    const session = await getAuthSession(request);
-    if (!session || session.state !== "authenticated") {
-      throw new Error("Demo mail requires an authenticated session.");
-    }
-
+    await requireAuthenticatedSession(request);
     const body = await request.json().catch(() => ({}));
     const { recipient } = demoMailSchema.parse(body);
     await sendDemoTwoFactorMail(recipient ?? "");

@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { handleCorsPreflight, withCors } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { buildAuthSessionCookie, createAuthSessionToken, FULL_SESSION_MAX_AGE_SECONDS, getAuthSession } from "@/lib/auth/session";
+import { getAuthSession } from "@/lib/auth/session";
+import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
 import { verifyLoginTwoFactor } from "@/services/auth-service";
 
 const verifySchema = z.object({
@@ -35,19 +36,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const token = await createAuthSessionToken(
-      {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        requiresPasswordReset: user.requiresPasswordReset,
-        state: "authenticated",
-      },
-      FULL_SESSION_MAX_AGE_SECONDS,
-    );
-
-    response.cookies.set(buildAuthSessionCookie(request, token, FULL_SESSION_MAX_AGE_SECONDS));
+    const authenticatedSession = await createAuthenticatedUserSession(request, user, session.rememberMe === true);
+    response.cookies.set(authenticatedSession.cookie);
     return withCors(request, response, ["POST", "OPTIONS"]);
   } catch (error) {
     return withCors(request, apiError(error), ["POST", "OPTIONS"]);

@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "crypto";
 import { AuditActionType, AuditEntityType, Prisma } from "@prisma/client";
 
+import { buildPendingAccountActivationMetadata, mergeAccountMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateLearnerEnrollmentInput, CreateLearnerInput, UpdateLearnerInput } from "@/lib/validation-schemas/learners";
@@ -18,6 +19,7 @@ import {
   sendCandidateEnrollmentCredentialsEmail,
   MOCK_ENROLLMENT_CATALOG,
 } from "@/services/learners/internal-helpers";
+import { sendAccountActivationEmail } from "@/services/auth/account-activation";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
 
@@ -95,17 +97,18 @@ export async function createLearnerService(input: CreateLearnerInput) {
               phone: normalizedPhone,
               password: hashedTemporaryPassword,
               isActive: true,
-              metadata: {
+              metadata: buildPendingAccountActivationMetadata({
                 createdFrom: "candidate-enrollment",
                 requiresPasswordReset: true,
                 learnerCode: generatedLearnerCode,
                 welcomeCredentialsEmailStatus: "pending",
-              },
+              }, new Date().toISOString()) as Prisma.InputJsonValue,
             },
             select: {
               id: true,
               email: true,
               name: true,
+              metadata: true,
             },
           });
 
@@ -170,12 +173,12 @@ export async function createLearnerService(input: CreateLearnerInput) {
         await prisma.user.update({
           where: { id: createdResult.createdUser.id },
           data: {
-            metadata: {
+            metadata: mergeAccountMetadata(createdResult.createdUser.metadata, {
               createdFrom: "candidate-enrollment",
               requiresPasswordReset: true,
               learnerCode: createdResult.learnerCode,
               welcomeCredentialsEmailStatus: "sent",
-            },
+            }) as Prisma.InputJsonValue,
           },
         });
       } catch (mailError) {
@@ -188,14 +191,20 @@ export async function createLearnerService(input: CreateLearnerInput) {
         await prisma.user.update({
           where: { id: createdResult.createdUser.id },
           data: {
-            metadata: {
+            metadata: mergeAccountMetadata(createdResult.createdUser.metadata, {
               createdFrom: "candidate-enrollment",
               requiresPasswordReset: true,
               learnerCode: createdResult.learnerCode,
               welcomeCredentialsEmailStatus: "failed",
-            },
+            }) as Prisma.InputJsonValue,
           },
         });
+      }
+
+      try {
+        await sendAccountActivationEmail(createdResult.createdUser.id);
+      } catch (error) {
+        console.warn("Candidate activation email dispatch failed.", error);
       }
 
       const mappedLearner = mapLearnerToDetail(learner);

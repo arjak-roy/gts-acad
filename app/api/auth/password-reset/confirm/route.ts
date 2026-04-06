@@ -7,7 +7,7 @@ import { resetPasswordWithToken } from "@/services/auth-service";
 
 const confirmPasswordResetSchema = z.object({
   token: z.string().trim().min(1, "Password reset token is required."),
-  password: z.string().trim().min(8, "Password must be at least 8 characters long."),
+  password: z.string().trim().min(1, "Password is required."),
 });
 
 export function OPTIONS(request: NextRequest) {

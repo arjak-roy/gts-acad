@@ -3,8 +3,15 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
+import {
+  buildCompletedPasswordResetMetadata,
+  isAccountActivationRequired,
+  isInternalAccount,
+  requiresPasswordResetFromMetadata,
+} from "@/lib/auth/account-metadata";
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { assertPasswordPolicy } from "@/lib/auth/password-policy";
 import { getUserPrimaryRoleCode } from "@/services/rbac-service";
 import {
   generateEmailOtpCode,
@@ -19,6 +26,8 @@ import {
   PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
   TWO_FACTOR_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-defaults";
+import { AccountActivationRequiredError } from "@/services/auth/account-activation";
+import { LoginLockedError, assertUserLoginNotLocked, clearUserLoginLockout, registerFailedUserLoginAttempt } from "@/services/auth/login-lockout";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates-service";
 import { createAuditLogEntry, deliverLoggedEmail } from "@/services/logs-actions-service";
 
@@ -26,7 +35,6 @@ const LOGIN_CHALLENGE_PURPOSE = "LOGIN";
 const ENABLE_2FA_CHALLENGE_PURPOSE = "ENABLE_2FA";
 const DEFAULT_PASSWORD_RESET_TOKEN_TTL_MINUTES = 30;
 const DEFAULT_PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60;
-const PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH = 8;
 
 type AuthUser = {
   id: string;
@@ -80,32 +88,6 @@ type PasswordResetRequestMetadata = {
   userAgent?: string | null;
   appOrigin?: string | null;
 };
-
-function getMetadataRecord(value: Prisma.JsonValue | null | undefined) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {} as Record<string, unknown>;
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function requiresPasswordResetFromMetadata(value: Prisma.JsonValue | null | undefined) {
-  const metadata = getMetadataRecord(value);
-  return metadata.requiresPasswordReset === true;
-}
-
-function buildCompletedPasswordResetMetadata(value: Prisma.JsonValue | null | undefined, completedAt: string) {
-  return {
-    ...getMetadataRecord(value),
-    requiresPasswordReset: false,
-    passwordResetCompletedAt: completedAt,
-  };
-}
-
-function isInternalAccount(value: Prisma.JsonValue | null | undefined) {
-  const metadata = getMetadataRecord(value);
-  return typeof metadata.accountType === "string" && metadata.accountType.toUpperCase() === "INTERNAL";
-}
 
 function requireDatabase() {
   if (!isDatabaseConfigured) {
@@ -218,6 +200,7 @@ async function getUserByEmail(email: string) {
       id: true,
       email: true,
       name: true,
+      emailVerifiedAt: true,
       password: true,
       metadata: true,
       security: {
@@ -658,8 +641,15 @@ export async function loginWithPassword(email: string, password: string): Promis
     throw new Error("Invalid email or password.");
   }
 
+  await assertUserLoginNotLocked(user.id);
+
   const passwordCheck = await verifyPassword(normalizedPassword, user.password);
   if (!passwordCheck.isValid) {
+    const lockoutResult = await registerFailedUserLoginAttempt(user.id);
+    if (!lockoutResult.allowed) {
+      throw new LoginLockedError(lockoutResult.retryAfterSeconds);
+    }
+
     throw new Error("Invalid email or password.");
   }
 
@@ -668,6 +658,12 @@ export async function loginWithPassword(email: string, password: string): Promis
       where: { id: user.id },
       data: { password: await hashPassword(normalizedPassword) },
     });
+  }
+
+  await clearUserLoginLockout(user.id);
+
+  if (isAccountActivationRequired(user.metadata, user.emailVerifiedAt)) {
+    throw new AccountActivationRequiredError();
   }
 
   // Require a second factor for interactive logins by default.
@@ -810,9 +806,7 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
     throw new Error("Password reset token is required.");
   }
 
-  if (normalizedPassword.length < PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH) {
-    throw new Error(`Password must be at least ${PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH} characters long.`);
-  }
+  assertPasswordPolicy(normalizedPassword);
 
   const tokenRecord = await getPasswordResetTokenRecord(normalizedToken);
   const passwordResetUser = await prisma.user.findUnique({
@@ -831,25 +825,45 @@ export async function resetPasswordWithToken(resetToken: string, nextPassword: s
   const nextPasswordHash = await hashPassword(normalizedPassword);
   const completedAt = new Date().toISOString();
   const isInternalUser = isInternalAccount(passwordResetUser.metadata);
+  const invalidatedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: tokenRecord.userId },
       data: {
         password: nextPasswordHash,
-        metadata: buildCompletedPasswordResetMetadata(passwordResetUser.metadata, completedAt),
+        metadata: buildCompletedPasswordResetMetadata(passwordResetUser.metadata, completedAt) as Prisma.InputJsonValue,
       },
     });
 
     await tx.userSecurity.upsert({
       where: { userId: tokenRecord.userId },
       update: {
-        passwordChangedAt: new Date(),
+        failedLoginAttempts: 0,
+        loginLockedUntil: null,
+        lastFailedLoginAt: null,
+        passwordChangedAt: invalidatedAt,
+        sessionInvalidatedAt: invalidatedAt,
       },
       create: {
         userId: tokenRecord.userId,
         recoveryCodes: [],
-        passwordChangedAt: new Date(),
+        failedLoginAttempts: 0,
+        loginLockedUntil: null,
+        lastFailedLoginAt: null,
+        passwordChangedAt: invalidatedAt,
+        sessionInvalidatedAt: invalidatedAt,
+      },
+    });
+
+    await tx.userSession.updateMany({
+      where: {
+        userId: tokenRecord.userId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: invalidatedAt,
+        revokedReason: "password-reset",
       },
     });
 
@@ -913,9 +927,7 @@ export async function changeAuthenticatedPassword(userId: string, currentPasswor
     throw new Error("Current password is required.");
   }
 
-  if (normalizedNextPassword.length < PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH) {
-    throw new Error(`Password must be at least ${PASSWORD_RESET_TOKEN_MIN_PASSWORD_LENGTH} characters long.`);
-  }
+  assertPasswordPolicy(normalizedNextPassword);
 
   if (normalizedCurrentPassword === normalizedNextPassword) {
     throw new Error("New password must be different from the current password.");
@@ -942,25 +954,45 @@ export async function changeAuthenticatedPassword(userId: string, currentPasswor
 
   const nextPasswordHash = await hashPassword(normalizedNextPassword);
   const completedAt = new Date().toISOString();
+  const invalidatedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
       data: {
         password: nextPasswordHash,
-        metadata: buildCompletedPasswordResetMetadata(user.metadata, completedAt),
+        metadata: buildCompletedPasswordResetMetadata(user.metadata, completedAt) as Prisma.InputJsonValue,
       },
     });
 
     await tx.userSecurity.upsert({
       where: { userId },
       update: {
-        passwordChangedAt: new Date(),
+        failedLoginAttempts: 0,
+        loginLockedUntil: null,
+        lastFailedLoginAt: null,
+        passwordChangedAt: invalidatedAt,
+        sessionInvalidatedAt: invalidatedAt,
       },
       create: {
         userId,
         recoveryCodes: [],
-        passwordChangedAt: new Date(),
+        failedLoginAttempts: 0,
+        loginLockedUntil: null,
+        lastFailedLoginAt: null,
+        passwordChangedAt: invalidatedAt,
+        sessionInvalidatedAt: invalidatedAt,
+      },
+    });
+
+    await tx.userSession.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: invalidatedAt,
+        revokedReason: "password-changed",
       },
     });
   });

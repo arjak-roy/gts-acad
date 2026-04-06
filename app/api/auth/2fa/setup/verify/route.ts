@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { getAuthSession } from "@/lib/auth/session";
+import { requireAuthenticatedSession } from "@/lib/auth/route-guards";
 import { verifyTwoFactorSetup } from "@/services/auth-service";
 
 const setupVerifySchema = z.object({
@@ -11,11 +11,7 @@ const setupVerifySchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getAuthSession(request);
-    if (!session || session.state !== "authenticated") {
-      throw new Error("Two-factor setup requires an authenticated session.");
-    }
-
+    const session = await requireAuthenticatedSession(request);
     const body = await request.json();
     const { code } = setupVerifySchema.parse(body);
     const result = await verifyTwoFactorSetup(session.userId, code);
