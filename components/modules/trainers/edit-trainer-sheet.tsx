@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
@@ -184,9 +185,11 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
 
       setStep("updated");
       router.refresh();
+      toast.success("Trainer updated successfully.");
     } catch (updateError) {
       const message = updateError instanceof Error ? updateError.message : "Failed to update trainer.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -212,9 +215,11 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
 
       onOpenChange(false);
       router.refresh();
+      toast.success("Trainer archived successfully.");
     } catch (archiveError) {
       const message = archiveError instanceof Error ? archiveError.message : "Failed to archive trainer.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

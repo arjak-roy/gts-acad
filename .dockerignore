@@ -16,7 +16,6 @@ npm-debug.log
 .turbo
 coverage
 .prisma/client
-docker-compose*.yml
 Dockerfile*
 .dockerignore
 README.md

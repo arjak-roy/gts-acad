@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Mail, RotateCcw, ShieldCheck, UserCog } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -193,8 +194,11 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
 
       setIsEditing(false);
       onUpdated();
+      toast.success("User updated successfully.");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to update the user.");
+      const message = saveError instanceof Error ? saveError.message : "Unable to update the user.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -241,8 +245,11 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
       }
 
       onUpdated();
+      toast.success(action === "toggle-status" ? (user.isActive ? "User deactivated." : "User activated.") : action === "welcome" ? "Welcome email sent." : "Password reset email sent.");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Unable to complete the action.");
+      const message = actionError instanceof Error ? actionError.message : "Unable to complete the action.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsActionLoading(false);
     }

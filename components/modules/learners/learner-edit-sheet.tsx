@@ -2,6 +2,7 @@
 
 import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
 import { LearnerAssignmentsCard } from "@/components/modules/learners/learner-assignments-card";
 import { Button } from "@/components/ui/button";
@@ -166,10 +167,12 @@ export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
 
       setBatchCode("");
       setSuccessMessage("Learner enrolled successfully.");
+      toast.success("Learner enrolled successfully.");
       startTransition(() => router.refresh());
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Failed to assign learner to batch.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -230,10 +233,12 @@ export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
       }
 
       setProfileSuccessMessage("Learner profile updated successfully.");
+      toast.success("Learner profile updated successfully.");
       startTransition(() => router.refresh());
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : "Failed to update learner profile.";
       setProfileError(message);
+      toast.error(message);
     } finally {
       setIsSavingProfile(false);
     }

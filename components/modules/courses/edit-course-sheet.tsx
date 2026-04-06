@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
@@ -148,8 +149,11 @@ export function EditCourseSheet({ courseId, open, onOpenChange }: EditCourseShee
 
       setStep("updated");
       router.refresh();
+      toast.success("Course updated successfully.");
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Failed to update course.");
+      const message = updateError instanceof Error ? updateError.message : "Failed to update course.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -173,8 +177,11 @@ export function EditCourseSheet({ courseId, open, onOpenChange }: EditCourseShee
 
       onOpenChange(false);
       router.refresh();
+      toast.success("Course archived successfully.");
     } catch (archiveError) {
-      setError(archiveError instanceof Error ? archiveError.message : "Failed to archive course.");
+      const message = archiveError instanceof Error ? archiveError.message : "Failed to archive course.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

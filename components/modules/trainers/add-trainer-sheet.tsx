@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -157,9 +158,11 @@ export function AddTrainerSheet() {
 
       setStep("created");
       router.refresh();
+      toast.success("Trainer created successfully.");
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : "Failed to create trainer.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

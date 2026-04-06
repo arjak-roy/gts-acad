@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Download, UserPlus, Users } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   EnrollmentFilterCourseOption,
@@ -295,11 +296,13 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
       }
 
       setActionMessage(`${learnerCode} enrolled successfully.`);
+      toast.success(`${learnerCode} enrolled successfully.`);
       setSelectedLearnerCodes((prev) => prev.filter((code) => code !== learnerCode));
       await refreshLists();
       onDataChange?.();
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "Failed to enroll candidate.");
+      toast.error(error instanceof Error ? error.message : "Failed to enroll candidate.");
     } finally {
       setActiveEnrollCode(null);
     }
@@ -334,11 +337,13 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
           ? `Bulk enrollment complete. Enrolled: ${result.enrolled}, skipped: ${result.skipped}, failed: ${result.failed}.`
           : "Bulk enrollment complete.",
       );
+      toast.success(result ? `Bulk enrollment: ${result.enrolled} enrolled, ${result.skipped} skipped.` : "Bulk enrollment complete.");
       setSelectedLearnerCodes([]);
       await refreshLists();
       onDataChange?.();
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "Bulk enrollment failed.");
+      toast.error(error instanceof Error ? error.message : "Bulk enrollment failed.");
     } finally {
       setIsBulkEnrolling(false);
     }

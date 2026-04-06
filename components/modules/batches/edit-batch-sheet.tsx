@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
@@ -279,9 +280,11 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
 
       setStep("updated");
       router.refresh();
+      toast.success("Batch updated successfully.");
     } catch (updateError) {
       const message = updateError instanceof Error ? updateError.message : "Failed to update batch.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -307,9 +310,11 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
 
       handleOpenChange(false);
       router.refresh();
+      toast.success("Batch archived successfully.");
     } catch (archiveError) {
       const message = archiveError instanceof Error ? archiveError.message : "Failed to archive batch.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

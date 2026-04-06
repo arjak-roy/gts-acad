@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -306,9 +307,11 @@ export function AddProgramSheet() {
 
       setStep("created");
       router.refresh();
+      toast.success("Program created successfully.");
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : "Failed to create program.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

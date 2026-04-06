@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -124,8 +125,11 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
 
       setStep("created");
       router.refresh();
+      toast.success("Email template created successfully.");
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to create email template.");
+      const message = createError instanceof Error ? createError.message : "Failed to create email template.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

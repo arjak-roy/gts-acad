@@ -1,49 +1,42 @@
-# Build stage
-FROM node:24-alpine AS builder
+FROM node:24-bookworm-slim AS base
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++ openssl-dev
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Install dependencies
+FROM base AS deps
+
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
-# Copy prisma schema and generate client
+FROM base AS builder
+
+# Prisma generate needs a datasource value even though the build does not connect to a database.
+ENV DATABASE_URL="postgresql://neondb_owner:npg_oWQ9BrUbi5ds@ep-lingering-unit-aj1y79lu-pooler.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package*.json ./
 COPY prisma ./prisma
 RUN npm run prisma:generate
 
-# Copy the rest of the application
 COPY . .
-
-# Ensure public directory exists
-RUN mkdir -p public
-
-# Build the Next.js application with no sourcemaps
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# Clean up builder artifacts
-RUN rm -rf .next/cache .next/static/chunks .git
-
-# Remove all Prisma engines from builder
-RUN rm -rf node_modules/.prisma node_modules/@prisma/engines || true
-
-# Runtime stage — distroless Node.js (~50MB vs ~160MB for node:alpine)
 FROM gcr.io/distroless/nodejs24-debian12:nonroot AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 
-# Copy .next standalone build (includes all dependencies)
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# nonroot user (uid 65532) is the default for this image
 EXPOSE 3000
 
 CMD ["server.js"]

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -830,9 +831,11 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       setIsCreateOpen(false);
       setEditingEvent(null);
       await loadEvents();
+      toast.success(editingEvent ? "Schedule event updated." : "Schedule event created.");
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Failed to save schedule event.";
       setFormError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -855,9 +858,11 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       }
 
       await loadEvents();
+      toast.success("Event cancelled.");
     } catch (cancelError) {
       const message = cancelError instanceof Error ? cancelError.message : "Failed to cancel event.";
       setError(message);
+      toast.error(message);
     }
   };
 

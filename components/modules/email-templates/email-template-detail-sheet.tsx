@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -158,8 +159,11 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
       }
 
       setTestMessage(`Test email sent to ${payload.data.recipientEmail}.`);
+      toast.success(`Test email sent to ${payload.data.recipientEmail}.`);
     } catch (sendError) {
-      setTestError(sendError instanceof Error ? sendError.message : "Failed to send test email.");
+      const message = sendError instanceof Error ? sendError.message : "Failed to send test email.";
+      setTestError(message);
+      toast.error(message);
     } finally {
       setIsSendingTest(false);
     }

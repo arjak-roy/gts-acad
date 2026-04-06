@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { CanAccess } from "@/components/ui/can-access";
 
@@ -73,15 +74,20 @@ export default function SessionsPage() {
     },
     onSuccess: (sessionId) => {
       if (sessionId === sessionsQuery.data?.currentSessionId) {
+        toast.success("Current session terminated. Redirecting to login.");
         router.replace("/login");
         router.refresh();
         return;
       }
 
+      toast.success("Session terminated successfully.");
       queryClient.invalidateQueries({ queryKey: ["auth", "sessions"] });
     },
     onSettled: () => {
       setPendingSessionId(null);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to terminate session.");
     },
   });
 
@@ -98,8 +104,12 @@ export default function SessionsPage() {
       }
     },
     onSuccess: () => {
+      toast.success("Logged out from all devices.");
       router.replace("/login");
       router.refresh();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to logout from all devices.");
     },
   });
 

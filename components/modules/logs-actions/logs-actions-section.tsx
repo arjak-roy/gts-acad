@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -226,11 +227,13 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
 
       const result = await parseResponse<{ requested: number; retried: number; failed: number }>(response);
       setActionMessage(`Retry completed: ${result.retried}/${result.requested} succeeded.`);
+      toast.success(`Retry completed: ${result.retried}/${result.requested} succeeded.`);
       setSelectedEmailIds([]);
       await fetchLogs();
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Bulk retry failed.";
       setError(message);
+      toast.error(message);
     } finally {
       setActionLoading(false);
     }
@@ -245,10 +248,12 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
       const response = await fetch(`/api/logs-actions/email/${emailLogId}/retry`, { method: "POST" });
       await parseResponse(response);
       setActionMessage("Email retry queued successfully.");
+      toast.success("Email retry queued successfully.");
       await fetchLogs();
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Retry failed.";
       setError(message);
+      toast.error(message);
     } finally {
       setActionLoading(false);
     }

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -267,9 +268,11 @@ export function CreateBatchSheet() {
 
       setStep("created");
       router.refresh();
+      toast.success("Batch created successfully.");
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : "Failed to create batch.";
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

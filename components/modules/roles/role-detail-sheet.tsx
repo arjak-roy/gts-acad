@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Lock, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -150,8 +151,11 @@ export function RoleDetailSheet({ roleId, open, onOpenChange, onUpdated }: Props
       onUpdated();
       router.refresh();
       fetchRoleData();
+      toast.success("Role updated successfully.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const message = err instanceof Error ? err.message : "Save failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -172,8 +176,11 @@ export function RoleDetailSheet({ roleId, open, onOpenChange, onUpdated }: Props
       onOpenChange(false);
       onUpdated();
       router.refresh();
+      toast.success("Role deleted successfully.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      const message = err instanceof Error ? err.message : "Delete failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsDeleting(false);
     }

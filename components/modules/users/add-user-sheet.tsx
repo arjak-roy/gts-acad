@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -112,8 +113,11 @@ export function AddUserSheet({ onCreated }: Props) {
 
       setOpen(false);
       onCreated();
+      toast.success("User created successfully.");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to create the user.");
+      const message = submitError instanceof Error ? submitError.message : "Unable to create the user.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

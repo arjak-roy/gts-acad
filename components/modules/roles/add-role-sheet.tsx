@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -112,8 +113,11 @@ export function AddRoleSheet({ onCreated }: Props) {
       setOpen(false);
       onCreated();
       router.refresh();
+      toast.success("Role created successfully.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      const message = err instanceof Error ? err.message : "Create failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

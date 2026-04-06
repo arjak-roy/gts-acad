@@ -24,6 +24,7 @@ import {
   Upload,
   Wrench,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { SETTING_FIELD_TYPES, type SettingFieldType, type SettingsCatalogOption } from "@/lib/settings/catalog";
 import { SETTINGS_SECRET_MASK } from "@/lib/settings/constants";
@@ -555,9 +556,12 @@ export function SettingsWorkspace() {
       setSelectedCategory(payload.data);
       setFormValues(buildSettingsFormState(payload.data.settings));
       setSuccessMessage(`Saved settings for ${payload.data.category.name}.`);
+      toast.success(`Saved settings for ${payload.data.category.name}.`);
       await loadOverview(payload.data.category.code);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save settings values.");
+      const message = saveError instanceof Error ? saveError.message : "Unable to save settings values.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSavingValues(false);
     }
@@ -591,9 +595,12 @@ export function SettingsWorkspace() {
       setSelectedCategory(payload.data);
       setFormValues(buildSettingsFormState(payload.data.settings));
       setSuccessMessage(`${payload.data.category.name} was reset to defaults.`);
+      toast.success(`${payload.data.category.name} was reset to defaults.`);
       await loadOverview(payload.data.category.code);
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : "Unable to reset settings category.");
+      const message = resetError instanceof Error ? resetError.message : "Unable to reset settings category.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsResettingCategory(false);
     }
@@ -635,8 +642,11 @@ export function SettingsWorkspace() {
           ? `Test email sent to ${payload.data.recipientEmail}. Provider message id: ${payload.data.providerMessageId}.`
           : `Test email sent to ${payload.data.recipientEmail}.`,
       );
+      toast.success(`Test email sent to ${payload.data.recipientEmail}.`);
     } catch (testError) {
-      setError(testError instanceof Error ? testError.message : "Unable to send test email.");
+      const message = testError instanceof Error ? testError.message : "Unable to send test email.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSendingTestEmail(false);
     }
@@ -671,8 +681,11 @@ export function SettingsWorkspace() {
         [setting.key]: payload.data,
       }));
       setSuccessMessage(`${file.name} uploaded. Save the category to persist the asset.`);
+      toast.success(`${file.name} uploaded successfully.`);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : `Unable to upload file for ${setting.label}.`);
+      const message = uploadError instanceof Error ? uploadError.message : `Unable to upload file for ${setting.label}.`;
+      setError(message);
+      toast.error(message);
     } finally {
       setUploadingKey(null);
     }
@@ -731,10 +744,13 @@ export function SettingsWorkspace() {
           ? `Created category ${payload.data.category.name}.`
           : `Updated category ${payload.data.category.name}.`,
       );
+      toast.success(categorySheetMode === "create" ? `Created category ${payload.data.category.name}.` : `Updated category ${payload.data.category.name}.`);
       await loadOverview(payload.data.category.code);
       await loadCategory(payload.data.category.code);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save settings category.");
+      const message = saveError instanceof Error ? saveError.message : "Unable to save settings category.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSavingCategory(false);
     }
@@ -767,12 +783,15 @@ export function SettingsWorkspace() {
       setSelectedCategory(null);
       setFormValues({});
       setSuccessMessage(`Deleted category ${selectedCategory.category.name}.`);
+      toast.success(`Deleted category ${selectedCategory.category.name}.`);
       await loadOverview(fallbackCategoryCode);
       if (fallbackCategoryCode) {
         await loadCategory(fallbackCategoryCode);
       }
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete settings category.");
+      const message = deleteError instanceof Error ? deleteError.message : "Unable to delete settings category.";
+      setError(message);
+      toast.error(message);
     }
   }
 
@@ -843,6 +862,7 @@ export function SettingsWorkspace() {
           ? `Created setting ${definitionForm.label.trim() || definitionForm.key.trim()}.`
           : `Updated setting ${definitionForm.label.trim() || definitionForm.key.trim()}.`,
       );
+      toast.success(definitionSheetMode === "create" ? `Created setting ${definitionForm.label.trim() || definitionForm.key.trim()}.` : `Updated setting ${definitionForm.label.trim() || definitionForm.key.trim()}.`);
 
       if (nextCategoryCode) {
         setSelectedCategoryCode(nextCategoryCode);
@@ -852,7 +872,9 @@ export function SettingsWorkspace() {
         await loadOverview();
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save setting definition.");
+      const message = saveError instanceof Error ? saveError.message : "Unable to save setting definition.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSavingDefinition(false);
     }
@@ -877,13 +899,16 @@ export function SettingsWorkspace() {
       }
 
       setSuccessMessage(`Deleted setting ${setting.label}.`);
+      toast.success(`Deleted setting ${setting.label}.`);
 
       if (selectedCategoryCode) {
         await loadOverview(selectedCategoryCode);
         await loadCategory(selectedCategoryCode);
       }
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete setting definition.");
+      const message = deleteError instanceof Error ? deleteError.message : "Unable to delete setting definition.";
+      setError(message);
+      toast.error(message);
     }
   }
 
