@@ -149,8 +149,8 @@ export function UsersTable({ response, filters }: Props) {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
+                            <Button type="button" variant="ghost" size="icon" className="h-9 w-9">
+                              <MoreHorizontal className="h-5 w-5" />
                               <span className="sr-only">Open actions</span>
                             </Button>
                           </DropdownMenuTrigger>
