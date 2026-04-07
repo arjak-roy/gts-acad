@@ -2,15 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { KeyRound, ShieldCheck, UserCog } from "lucide-react";
+import { KeyRound, ShieldCheck, UserCog, Users } from "lucide-react";
 
 import { AddUserSheet } from "@/components/modules/users/add-user-sheet";
 import { UserDetailSheet } from "@/components/modules/users/user-detail-sheet";
 import { UsersTable } from "@/components/modules/users/users-table";
+import { CandidateUsersTable } from "@/components/modules/users/candidate-users-table";
+import { CandidateUserDetailSheet } from "@/components/modules/users/candidate-user-detail-sheet";
+import { OnboardCandidateSheet } from "@/components/modules/users/onboard-candidate-sheet";
 import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { InternalUsersResponse } from "@/types";
+import type { InternalUsersResponse, CandidateUsersResponse } from "@/types";
 
 const EMPTY_RESPONSE: InternalUsersResponse = {
   items: [],
@@ -20,10 +23,22 @@ const EMPTY_RESPONSE: InternalUsersResponse = {
   pageCount: 1,
 };
 
+const EMPTY_CANDIDATE_RESPONSE: CandidateUsersResponse = {
+  items: [],
+  totalCount: 0,
+  page: 1,
+  pageSize: 10,
+  pageCount: 1,
+};
+
+type UserTab = "internal" | "candidates";
+
 export default function UsersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [tab, setTab] = useState<UserTab>((searchParams.get("tab") as UserTab) || "internal");
   const [response, setResponse] = useState<InternalUsersResponse>(EMPTY_RESPONSE);
+  const [candidateResponse, setCandidateResponse] = useState<CandidateUsersResponse>(EMPTY_CANDIDATE_RESPONSE);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -43,16 +58,22 @@ export default function UsersPage() {
       try {
         const params = new URLSearchParams(searchParamsKey);
         params.delete("id");
+        params.delete("tab");
 
-        const response = await fetch(`/api/users?${params.toString()}`);
-        const payload = (await response.json().catch(() => null)) as { data?: InternalUsersResponse; error?: string } | null;
+        const endpoint = tab === "candidates" ? "/api/users/candidates" : "/api/users";
+        const fetchResponse = await fetch(`${endpoint}?${params.toString()}`);
+        const payload = (await fetchResponse.json().catch(() => null)) as { data?: InternalUsersResponse & CandidateUsersResponse; error?: string } | null;
 
-        if (!response.ok) {
+        if (!fetchResponse.ok) {
           throw new Error(payload?.error || "Unable to load users.");
         }
 
         if (!cancelled) {
-          setResponse(payload?.data ?? EMPTY_RESPONSE);
+          if (tab === "candidates") {
+            setCandidateResponse(payload?.data ?? EMPTY_CANDIDATE_RESPONSE);
+          } else {
+            setResponse(payload?.data ?? EMPTY_RESPONSE);
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -70,7 +91,7 @@ export default function UsersPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchParamsKey, refreshNonce]);
+  }, [searchParamsKey, refreshNonce, tab]);
 
   function refreshUsers() {
     setRefreshNonce((current) => current + 1);
@@ -82,30 +103,68 @@ export default function UsersPage() {
     router.replace(`/users?${params.toString()}`, { scroll: false });
   }
 
-  const activeUsersOnPage = response.items.filter((user) => user.isActive).length;
-  const resetRequiredOnPage = response.items.filter((user) => user.requiresPasswordReset).length;
-  const deliveredOnPage = response.items.filter((user) => user.onboardingStatus === "sent").length;
+  function handleTabChange(nextTab: UserTab) {
+    setTab(nextTab);
+    const params = new URLSearchParams();
+    if (nextTab !== "internal") params.set("tab", nextTab);
+    router.replace(`/users?${params.toString()}`, { scroll: false });
+  }
+
+  const currentItems = tab === "candidates" ? candidateResponse.items : response.items;
+  const currentTotalCount = tab === "candidates" ? candidateResponse.totalCount : response.totalCount;
+  const activeUsersOnPage = currentItems.filter((user) => user.isActive).length;
+  const resetRequiredOnPage = currentItems.filter((user) => user.requiresPasswordReset).length;
+  const deliveredOnPage = currentItems.filter((user) => user.onboardingStatus === "sent").length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">Internal User Management</h1>
-          <p className="mt-2 text-sm font-medium text-slate-500">Create staff accounts, assign roles, and control onboarding from one place.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">User Management</h1>
+          <p className="mt-2 text-sm font-medium text-slate-500">
+            {tab === "candidates"
+              ? "Manage candidate accounts, onboarding, and communications."
+              : "Create staff accounts, assign roles, and control onboarding from one place."}
+          </p>
         </div>
-        <CanAccess permission="staff_users.create">
-          <AddUserSheet onCreated={refreshUsers} />
-        </CanAccess>
+        {tab === "internal" ? (
+          <CanAccess permission="staff_users.create">
+            <AddUserSheet onCreated={refreshUsers} />
+          </CanAccess>
+        ) : (
+          <CanAccess permission="candidate_users.create">
+            <OnboardCandidateSheet onCreated={refreshUsers} />
+          </CanAccess>
+        )}
+      </div>
+
+      <div className="flex gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
+        <button
+          type="button"
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${tab === "internal" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+          onClick={() => handleTabChange("internal")}
+        >
+          <UserCog className="h-4 w-4" />
+          Internal Users
+        </button>
+        <button
+          type="button"
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${tab === "candidates" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+          onClick={() => handleTabChange("candidates")}
+        >
+          <Users className="h-4 w-4" />
+          Candidates
+        </button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Internal Users</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-500">{tab === "candidates" ? "Candidate Users" : "Internal Users"}</CardTitle>
             <UserCog className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{isLoading ? "—" : response.totalCount}</div>
+            <div className="text-2xl font-bold text-slate-900">{isLoading ? "—" : currentTotalCount}</div>
             <p className="text-xs text-slate-500">Total matching the current filter set</p>
           </CardContent>
         </Card>
@@ -135,17 +194,23 @@ export default function UsersPage() {
 
       {isLoading ? (
         <UsersPageSkeleton />
+      ) : tab === "candidates" ? (
+        <CandidateUsersTable
+          response={candidateResponse}
+          filters={{ search, status }}
+        />
       ) : (
         <UsersTable
           response={response}
-          filters={{
-            search,
-            status,
-          }}
+          filters={{ search, status }}
         />
       )}
 
-      <UserDetailSheet userId={selectedUserId} open={Boolean(selectedUserId)} onOpenChange={(open) => !open && handleCloseSheet()} onUpdated={refreshUsers} />
+      {tab === "internal" ? (
+        <UserDetailSheet userId={selectedUserId} open={Boolean(selectedUserId)} onOpenChange={(open) => !open && handleCloseSheet()} onUpdated={refreshUsers} />
+      ) : (
+        <CandidateUserDetailSheet userId={selectedUserId} open={Boolean(selectedUserId)} onOpenChange={(open) => !open && handleCloseSheet()} onUpdated={refreshUsers} />
+      )}
     </div>
   );
 }

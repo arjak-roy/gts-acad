@@ -275,3 +275,33 @@ export type InternalUsersResponse = {
 export type InternalUserDetail = InternalUserListItem & {
   metadata: Record<string, unknown>;
 };
+
+export type CandidateUserListItem = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  roles: InternalUserRoleInfo[];
+  primaryRoleCode: string | null;
+  onboardingStatus: WelcomeEmailStatus;
+  requiresPasswordReset: boolean;
+  learnerCode: string | null;
+  programName: string | null;
+  batchCode: string | null;
+};
+
+export type CandidateUsersResponse = {
+  items: CandidateUserListItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export type CandidateUserDetail = CandidateUserListItem & {
+  metadata: Record<string, unknown>;
+};
