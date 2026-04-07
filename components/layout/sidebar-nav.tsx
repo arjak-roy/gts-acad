@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, Network, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
 import { useRbac } from "@/lib/rbac-context";
 import { routePermissionMap } from "@/lib/rbac-config";
@@ -63,6 +64,54 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+const sidebarLoadingGroups = [
+  { labelWidth: "w-16", itemCount: 4 },
+  { labelWidth: "w-20", itemCount: 5 },
+  { labelWidth: "w-24", itemCount: 4 },
+];
+
+function SidebarNavLoading() {
+  return (
+    <div className="flex h-full flex-col py-4" aria-hidden="true">
+      <div className="flex h-16 items-center justify-between px-4">
+        <div className="flex items-center gap-3 overflow-hidden px-2">
+          <Skeleton className="h-11 w-11 shrink-0 rounded-2xl" />
+          <div className="min-w-0 space-y-2 transition-all group-data-[collapsed=true]/sidebar:hidden">
+            <Skeleton className="h-2.5 w-24 rounded-full" />
+            <Skeleton className="h-4 w-28 rounded-full" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex-1 space-y-6 overflow-y-auto px-3">
+        {sidebarLoadingGroups.map((group, groupIndex) => (
+          <div key={groupIndex}>
+            <Skeleton className={cn("mx-3 h-2.5 rounded-full group-data-[collapsed=true]/sidebar:hidden", group.labelWidth)} />
+            <div className="mt-2 space-y-1">
+              {Array.from({ length: group.itemCount }).map((_, itemIndex) => (
+                <div key={itemIndex} className="flex items-center gap-3 rounded-2xl px-3 py-2.5">
+                  <Skeleton className="h-5 w-5 shrink-0 rounded-lg" />
+                  <Skeleton className="h-4 flex-1 rounded-full transition-all group-data-[collapsed=true]/sidebar:hidden" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-slate-100 px-4 pt-4">
+        <div className="flex items-center gap-3 overflow-hidden rounded-2xl p-2">
+          <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2 transition-all group-data-[collapsed=true]/sidebar:hidden">
+            <Skeleton className="h-4 w-24 rounded-full" />
+            <Skeleton className="h-3 w-20 rounded-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SidebarNav() {
   const pathname = usePathname() ?? "/dashboard";
   const setMobileSidebarOpen = useDashboardUI((state) => state.setMobileSidebarOpen);
@@ -88,6 +137,10 @@ export function SidebarNav() {
     .slice(0, 2)
     .toUpperCase();
 
+  if (isLoading) {
+    return <SidebarNavLoading />;
+  }
+
   return (
     <div className="flex h-full flex-col py-4">
       <div className="flex h-16 items-center justify-between px-4">
@@ -103,9 +156,7 @@ export function SidebarNav() {
 
       <nav className="mt-4 flex-1 space-y-6 overflow-y-auto px-3">
         {navGroups.map((group) => {
-          const visibleItems = isLoading
-            ? group.items
-            : group.items.filter((item) => !item.requiredPermission || can(item.requiredPermission));
+          const visibleItems = group.items.filter((item) => !item.requiredPermission || can(item.requiredPermission));
 
           if (visibleItems.length === 0) {
             return null;
