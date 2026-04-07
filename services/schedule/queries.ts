@@ -52,13 +52,22 @@ export async function listScheduleEventsService(input: ListScheduleEventsQueryIn
             name: true,
           },
         },
+        linkedAssessmentPool: {
+          select: {
+            code: true,
+            title: true,
+          },
+        },
       },
       orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
       skip,
       take: input.pageSize,
     }),
   ]);
-  const mappedItems = items as Array<EventRecord & { batch: { code: string; name: string } }>;
+  const mappedItems = items as Array<EventRecord & {
+    batch: { code: string; name: string };
+    linkedAssessmentPool: { code: string; title: string } | null;
+  }>;
 
   return {
     items: mappedItems.map((item) => mapScheduleEvent(item)),
@@ -83,8 +92,17 @@ export async function getScheduleEventByIdService(eventId: string): Promise<Sche
           name: true,
         },
       },
+      linkedAssessmentPool: {
+        select: {
+          code: true,
+          title: true,
+        },
+      },
     },
-  })) as (EventRecord & { batch: { code: string; name: string } }) | null;
+  })) as (EventRecord & {
+    batch: { code: string; name: string };
+    linkedAssessmentPool: { code: string; title: string } | null;
+  }) | null;
 
   return event ? mapScheduleEvent(event) : null;
 }

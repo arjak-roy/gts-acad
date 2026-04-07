@@ -1,16 +1,36 @@
 import "server-only";
 
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createPrismaClient() {
+  return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
+}
+
+const expectedDelegateKeys = Prisma.dmmf.datamodel.models.map(
+  ({ name }) => `${name.charAt(0).toLowerCase()}${name.slice(1)}`,
+);
+
+function hasCurrentModelDelegates(client: PrismaClient) {
+  const delegateContainer = client as unknown as Record<string, unknown>;
+  return expectedDelegateKeys.every((key) => typeof delegateContainer[key] !== "undefined");
+}
+
+const cachedPrisma = globalForPrisma.prisma;
+const shouldReuseCachedClient = cachedPrisma ? hasCurrentModelDelegates(cachedPrisma) : false;
+
+if (cachedPrisma && !shouldReuseCachedClient) {
+  void cachedPrisma.$disconnect().catch(() => undefined);
+}
+
+export const prisma = shouldReuseCachedClient && cachedPrisma
+  ? cachedPrisma
+  : createPrismaClient();
 
 export const isDatabaseConfigured = Boolean(process.env.DATABASE_URL);
 

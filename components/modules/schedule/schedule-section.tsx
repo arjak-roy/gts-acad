@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,9 @@ type ScheduleEvent = {
   location: string | null;
   meetingUrl: string | null;
   linkedAssessmentId: string | null;
+  linkedAssessmentPoolId: string | null;
+  linkedAssessmentPoolCode: string | null;
+  linkedAssessmentPoolTitle: string | null;
   seriesId: string | null;
   occurrenceIndex: number;
   isRecurring: boolean;
@@ -45,6 +48,44 @@ type BatchOption = {
   id: string;
   code: string;
   name: string;
+};
+
+type AssignedBatchAssessment = {
+  assessmentPoolId: string;
+  assessmentTitle: string;
+  assessmentCode: string;
+  questionType: string;
+  difficultyLevel: string;
+  totalMarks: number;
+  questionCount: number;
+  scheduledAt: string | null;
+};
+
+type AvailableBatchAssessment = {
+  id: string;
+  code: string;
+  title: string;
+  questionType: string;
+  difficultyLevel: string;
+  totalMarks: number;
+  questionCount: number;
+};
+
+type AssessmentOptionsResponse<T> = {
+  data?: T[];
+  error?: string;
+};
+
+type ScheduleAssessmentOption = {
+  id: string;
+  code: string;
+  title: string;
+  questionType: string;
+  difficultyLevel: string;
+  totalMarks: number;
+  questionCount: number;
+  scheduledAt: string | null;
+  source: "assigned" | "available";
 };
 
 type ScheduleResponse = {
@@ -72,6 +113,7 @@ type EventFormState = {
   endsAt: string;
   location: string;
   meetingUrl: string;
+  linkedAssessmentPoolId: string;
   isRecurring: boolean;
   frequency: RecurrenceFrequency;
   interval: number;
@@ -91,6 +133,7 @@ const DEFAULT_FORM: EventFormState = {
   endsAt: "",
   location: "",
   meetingUrl: "",
+  linkedAssessmentPoolId: "",
   isRecurring: false,
   frequency: "WEEKLY",
   interval: 1,
@@ -216,6 +259,7 @@ function buildEventPayload(form: EventFormState) {
     endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : undefined,
     location: form.location,
     meetingUrl: form.meetingUrl,
+    linkedAssessmentPoolId: eventTypeSupportsCourseBuilderAssessment(form.type) ? form.linkedAssessmentPoolId || null : null,
   };
 
   if (form.type === "CLASS") {
@@ -233,6 +277,10 @@ function buildEventPayload(form: EventFormState) {
   }
 
   return payload;
+}
+
+function eventTypeSupportsCourseBuilderAssessment(type: EventType) {
+  return type === "TEST" || type === "QUIZ";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -651,6 +699,12 @@ function DayCalendarView({
                                 Online
                               </span>
                             )}
+                            {event.linkedAssessmentPoolCode || event.linkedAssessmentPoolTitle ? (
+                              <span className="flex items-center gap-1">
+                                <ClipboardList className="h-3 w-3" />
+                                {event.linkedAssessmentPoolCode ?? event.linkedAssessmentPoolTitle}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -686,6 +740,9 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [assessmentOptions, setAssessmentOptions] = useState<ScheduleAssessmentOption[]>([]);
+  const [assessmentOptionsLoading, setAssessmentOptionsLoading] = useState(false);
+  const [assessmentOptionsError, setAssessmentOptionsError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ScheduleEvent | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -697,6 +754,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   }));
 
   const range = useMemo(() => getRangeForView(baseDate, viewMode), [baseDate, viewMode]);
+  const supportsAssessmentPool = eventTypeSupportsCourseBuilderAssessment(form.type);
 
   const loadBatches = async () => {
     try {
@@ -745,6 +803,77 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     }
   };
 
+  const loadAssessmentOptions = async (batchId: string) => {
+    if (!batchId) {
+      setAssessmentOptions([]);
+      setAssessmentOptionsError(null);
+      return;
+    }
+
+    setAssessmentOptionsLoading(true);
+    setAssessmentOptionsError(null);
+
+    try {
+      const [assignedResponse, availableResponse] = await Promise.all([
+        fetch(`/api/batch-content?batchId=${batchId}&type=assessment`, { cache: "no-store" }),
+        fetch(`/api/batch-content?batchId=${batchId}&type=assessment&available=true`, { cache: "no-store" }),
+      ]);
+
+      if (!assignedResponse.ok || !availableResponse.ok) {
+        throw new Error("Failed to load course-builder assessments for the selected batch.");
+      }
+
+      const assignedPayload = (await assignedResponse.json()) as AssessmentOptionsResponse<AssignedBatchAssessment>;
+      const availablePayload = (await availableResponse.json()) as AssessmentOptionsResponse<AvailableBatchAssessment>;
+      const merged = new Map<string, ScheduleAssessmentOption>();
+
+      for (const assessment of assignedPayload.data ?? []) {
+        merged.set(assessment.assessmentPoolId, {
+          id: assessment.assessmentPoolId,
+          code: assessment.assessmentCode,
+          title: assessment.assessmentTitle,
+          questionType: assessment.questionType,
+          difficultyLevel: assessment.difficultyLevel,
+          totalMarks: assessment.totalMarks,
+          questionCount: assessment.questionCount,
+          scheduledAt: assessment.scheduledAt,
+          source: "assigned",
+        });
+      }
+
+      for (const assessment of availablePayload.data ?? []) {
+        if (merged.has(assessment.id)) {
+          continue;
+        }
+
+        merged.set(assessment.id, {
+          id: assessment.id,
+          code: assessment.code,
+          title: assessment.title,
+          questionType: assessment.questionType,
+          difficultyLevel: assessment.difficultyLevel,
+          totalMarks: assessment.totalMarks,
+          questionCount: assessment.questionCount,
+          scheduledAt: null,
+          source: "available",
+        });
+      }
+
+      const nextOptions = Array.from(merged.values()).sort((left, right) => left.title.localeCompare(right.title));
+      setAssessmentOptions(nextOptions);
+      setForm((current) => (
+        current.linkedAssessmentPoolId && !nextOptions.some((option) => option.id === current.linkedAssessmentPoolId)
+          ? { ...current, linkedAssessmentPoolId: "" }
+          : current
+      ));
+    } catch (loadError) {
+      setAssessmentOptions([]);
+      setAssessmentOptionsError(loadError instanceof Error ? loadError.message : "Failed to load course-builder assessments for the selected batch.");
+    } finally {
+      setAssessmentOptionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadBatches();
   }, []);
@@ -752,6 +881,16 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   useEffect(() => {
     void loadEvents();
   }, [range.from.getTime(), range.to.getTime(), batchFilter]);
+
+  useEffect(() => {
+    if (!isCreateOpen || !supportsAssessmentPool || !form.batchId) {
+      setAssessmentOptions([]);
+      setAssessmentOptionsError(null);
+      return;
+    }
+
+    void loadAssessmentOptions(form.batchId);
+  }, [form.batchId, isCreateOpen, supportsAssessmentPool]);
 
   const openCreate = (prefillDate?: Date, prefillHour?: number) => {
     const nextStart = prefillDate
@@ -783,6 +922,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       endsAt: event.endsAt ? toLocalDateTimeInput(new Date(event.endsAt)) : "",
       location: event.location ?? "",
       meetingUrl: event.meetingUrl ?? "",
+      linkedAssessmentPoolId: event.linkedAssessmentPoolId ?? "",
       isRecurring: false,
       frequency: "WEEKLY",
       interval: 1,
@@ -986,6 +1126,11 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                             <div>
                               <p className="font-semibold text-slate-900">{event.title}</p>
                               {event.isRecurring && <p className="text-[10px] text-slate-400">Recurring</p>}
+                                {event.linkedAssessmentPoolCode || event.linkedAssessmentPoolTitle ? (
+                                  <p className="text-[10px] text-slate-500">
+                                    Assessment: {event.linkedAssessmentPoolCode ?? event.linkedAssessmentPoolTitle}
+                                  </p>
+                                ) : null}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -1068,7 +1213,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Batch</label>
               <select
                 value={form.batchId}
-                onChange={(event) => setForm((current) => ({ ...current, batchId: event.target.value }))}
+                onChange={(event) => setForm((current) => ({ ...current, batchId: event.target.value, linkedAssessmentPoolId: "" }))}
                 className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
                 disabled={Boolean(editingEvent)}
               >
@@ -1085,13 +1230,19 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Title</label>
               <Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
             </div>
-
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Type</label>
                 <select
                   value={form.type}
-                  onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as EventType }))}
+                  onChange={(event) => {
+                    const nextType = event.target.value as EventType;
+                    setForm((current) => ({
+                      ...current,
+                      type: nextType,
+                      linkedAssessmentPoolId: eventTypeSupportsCourseBuilderAssessment(nextType) ? current.linkedAssessmentPoolId : "",
+                    }));
+                  }}
                   className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
                 >
                   <option value="CLASS">CLASS</option>
@@ -1128,6 +1279,33 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                   <option value="ONLINE">ONLINE</option>
                   <option value="OFFLINE">OFFLINE</option>
                 </select>
+              </div>
+            ) : null}
+
+            {supportsAssessmentPool ? (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course Builder Assessment</label>
+                <select
+                  value={form.linkedAssessmentPoolId}
+                  onChange={(event) => setForm((current) => ({ ...current, linkedAssessmentPoolId: event.target.value }))}
+                  className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+                  disabled={!form.batchId || assessmentOptionsLoading}
+                >
+                  <option value="">No linked assessment</option>
+                  {assessmentOptions.map((assessment) => (
+                    <option key={assessment.id} value={assessment.id}>
+                      {`${assessment.code} - ${assessment.title}`}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-5 text-slate-500">
+                  Choose a published assessment from Course Builder for this batch. If it is not already assigned, it will be added automatically.
+                </p>
+                {assessmentOptionsLoading ? <p className="text-xs text-slate-500">Loading batch assessment options...</p> : null}
+                {assessmentOptionsError ? <p className="text-xs text-rose-600">{assessmentOptionsError}</p> : null}
+                {!assessmentOptionsLoading && !assessmentOptionsError && form.batchId && assessmentOptions.length === 0 ? (
+                  <p className="text-xs text-slate-500">No published course-builder assessments are available for this batch yet.</p>
+                ) : null}
               </div>
             ) : null}
 

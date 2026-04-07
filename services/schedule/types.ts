@@ -8,6 +8,7 @@ export type EventRecord = {
   id: string;
   batchId: string;
   linkedAssessmentId: string | null;
+  linkedAssessmentPoolId: string | null;
   seriesId: string | null;
   occurrenceIndex: number;
   title: string;
@@ -39,6 +40,9 @@ export type ScheduleEventListItem = {
   location: string | null;
   meetingUrl: string | null;
   linkedAssessmentId: string | null;
+  linkedAssessmentPoolId: string | null;
+  linkedAssessmentPoolCode: string | null;
+  linkedAssessmentPoolTitle: string | null;
   seriesId: string | null;
   occurrenceIndex: number;
   isRecurring: boolean;

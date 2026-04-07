@@ -2,9 +2,11 @@ export { getBrandingAssetSlot, getBrandingCanonicalStoragePath, getBrandingSetti
 export { resolveBrandingAssetResponse } from "@/services/file-upload/branding";
 export {
   areStoredAssetsFromSameLocation,
+  deleteStoredUploadAsset,
   deleteUploadedSettingsAsset,
   publishBrandingSettingsAsset,
   resolveStoredAssetResponse,
+  storeUploadedCourseContentAsset,
   storeUploadedSettingsAsset,
   validateUploadedFileAgainstGlobalSettings,
 } from "@/services/file-upload/service";

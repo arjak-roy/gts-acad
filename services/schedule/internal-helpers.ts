@@ -92,7 +92,10 @@ function resolveAssessmentMode(classMode: BatchMode | null) {
   return AssessmentMode.PAPER_BASED;
 }
 
-export function mapScheduleEvent(item: EventRecord & { batch: { code: string; name: string } }): ScheduleEventListItem {
+export function mapScheduleEvent(item: EventRecord & {
+  batch: { code: string; name: string };
+  linkedAssessmentPool?: { code: string; title: string } | null;
+}): ScheduleEventListItem {
   return {
     id: item.id,
     batchId: item.batchId,
@@ -108,6 +111,9 @@ export function mapScheduleEvent(item: EventRecord & { batch: { code: string; na
     location: item.location,
     meetingUrl: item.meetingUrl,
     linkedAssessmentId: item.linkedAssessmentId,
+    linkedAssessmentPoolId: item.linkedAssessmentPoolId,
+    linkedAssessmentPoolCode: item.linkedAssessmentPool?.code ?? null,
+    linkedAssessmentPoolTitle: item.linkedAssessmentPool?.title ?? null,
     seriesId: item.seriesId,
     occurrenceIndex: item.occurrenceIndex,
     isRecurring: Boolean(item.seriesId),

@@ -31,6 +31,7 @@ export const createScheduleEventSchema = z
     endsAt: z.string().trim().datetime().optional(),
     location: z.string().trim().max(255).optional().default(""),
     meetingUrl: z.string().trim().url().max(1000).optional().or(z.literal("")).default(""),
+    linkedAssessmentPoolId: z.string().trim().min(1).optional().nullable(),
     recurrence: recurrenceRuleSchema.optional(),
   })
   .refine((value) => (value.type === "CLASS" ? Boolean(value.classMode) : true), {
@@ -60,6 +61,7 @@ export const updateScheduleEventSchema = z
     endsAt: z.string().trim().datetime().nullable().optional(),
     location: z.string().trim().max(255).optional(),
     meetingUrl: z.string().trim().url().max(1000).or(z.literal("")).nullable().optional(),
+    linkedAssessmentPoolId: z.string().trim().min(1).nullable().optional(),
     scope: scheduleUpdateScopeSchema.optional().default("SINGLE"),
   })
   .refine((value) => {

@@ -5,6 +5,7 @@ import {
   BatchMode,
   BatchStatus,
   CertificateStatus,
+  CurriculumStatus,
   EnrollmentStatus,
   EvaluationStatus,
   InterviewType,
@@ -75,6 +76,58 @@ const PROGRAMS = [
   { slug: "clinical-data-coordinator", name: "Clinical Data Coordinator", type: ProgramType.TECHNICAL, category: "Technical", durationWeeks: 13 },
 ];
 
+const CURRICULUM_SEEDS = [
+  {
+    courseName: "Clinical Career Track",
+    title: "Clinical Career Track Curriculum",
+    description: "Structured stage-based progression for clinical deployment readiness across communication, safety, exam prep, and transition readiness.",
+    moduleTitle: "Clinical Progression Roadmap",
+    moduleDescription: "Single delivery module covering the full seeded clinical career journey from onboarding through final transition readiness.",
+    stages: [
+      {
+        title: "Stage 1 · Onboarding and Goal Setting",
+        description: "Introduce the pathway, baseline expectations, and personal deployment goals for the learner cohort.",
+      },
+      {
+        title: "Stage 2 · Clinical Communication Foundations",
+        description: "Focus on nurse-patient communication, escalation language, and workplace professionalism.",
+      },
+      {
+        title: "Stage 3 · Medical Terminology and Documentation",
+        description: "Reinforce documentation discipline, charting conventions, and critical medical vocabulary.",
+      },
+      {
+        title: "Stage 4 · Patient Safety and Infection Control",
+        description: "Cover patient-safety practices, hand hygiene, PPE protocols, and reporting responsibilities.",
+      },
+      {
+        title: "Stage 5 · Core Nursing Skills Refresh",
+        description: "Refresh essential bedside skills, observation routines, and clinical procedures used in deployment settings.",
+      },
+      {
+        title: "Stage 6 · Clinical Case Review and Critical Thinking",
+        description: "Build clinical reasoning through case reviews, prioritization, and decision-making drills.",
+      },
+      {
+        title: "Stage 7 · NCLEX Strategy and Test Readiness",
+        description: "Prepare learners for NCLEX-style questioning, pacing, and exam performance habits.",
+      },
+      {
+        title: "Stage 8 · OSCE Simulation and Skill Validation",
+        description: "Run OSCE-style scenarios to validate applied skills, communication, and clinical execution.",
+      },
+      {
+        title: "Stage 9 · Interview and Deployment Readiness",
+        description: "Train for interviews, employer expectations, handoff communication, and relocation readiness.",
+      },
+      {
+        title: "Stage 10 · Final Evaluation and Transition Plan",
+        description: "Close the pathway with readiness review, final checkpoints, and an individualized transition plan.",
+      },
+    ],
+  },
+];
+
 const TRAINERS = [
   { name: "Dr. Markus Stein", email: "markus.trainer@gts-academy.test", phone: "+91-9000000002", specialization: "German Language", rating: 4.8 },
   { name: "Ms. Leena Pillai", email: "leena.trainer@gts-academy.test", phone: "+91-9000000003", specialization: "Clinical Communication", rating: 4.6 },
@@ -121,6 +174,10 @@ const PERMISSION_DEFINITIONS = [
   { module: "staff_users", action: "create", key: "staff_users.create", description: "Create internal users" },
   { module: "staff_users", action: "edit", key: "staff_users.edit", description: "Edit internal users" },
   { module: "staff_users", action: "delete", key: "staff_users.delete", description: "Deactivate internal users" },
+  { module: "candidate_users", action: "view", key: "candidate_users.view", description: "View candidate users" },
+  { module: "candidate_users", action: "create", key: "candidate_users.create", description: "Onboard candidate users" },
+  { module: "candidate_users", action: "edit", key: "candidate_users.edit", description: "Edit candidate users" },
+  { module: "candidate_users", action: "delete", key: "candidate_users.delete", description: "Deactivate candidate users" },
   { module: "auth", action: "login", key: "auth.login", description: "Sign in to the academy admin portal" },
   { module: "auth", action: "manage", key: "auth.manage", description: "Manage authentication and account recovery" },
   { module: "sessions", action: "view", key: "sessions.view", description: "View active sessions" },
@@ -184,6 +241,27 @@ const PERMISSION_DEFINITIONS = [
   { module: "roles", action: "create", key: "roles.create", description: "Create roles" },
   { module: "roles", action: "edit", key: "roles.edit", description: "Edit roles and permission assignments" },
   { module: "roles", action: "delete", key: "roles.delete", description: "Delete roles" },
+  { module: "course_content", action: "view", key: "course_content.view", description: "View course content" },
+  { module: "course_content", action: "create", key: "course_content.create", description: "Upload course content" },
+  { module: "course_content", action: "edit", key: "course_content.edit", description: "Edit course content" },
+  { module: "course_content", action: "delete", key: "course_content.delete", description: "Delete course content" },
+  { module: "course_content_folder", action: "view", key: "course_content_folder.view", description: "View course content folders" },
+  { module: "course_content_folder", action: "create", key: "course_content_folder.create", description: "Create course content folders" },
+  { module: "course_content_folder", action: "edit", key: "course_content_folder.edit", description: "Edit course content folders" },
+  { module: "course_content_folder", action: "delete", key: "course_content_folder.delete", description: "Delete course content folders" },
+  { module: "assessment_pool", action: "view", key: "assessment_pool.view", description: "View assessment pool" },
+  { module: "assessment_pool", action: "create", key: "assessment_pool.create", description: "Create assessments in pool" },
+  { module: "assessment_pool", action: "edit", key: "assessment_pool.edit", description: "Edit assessment pool items" },
+  { module: "assessment_pool", action: "delete", key: "assessment_pool.delete", description: "Delete assessment pool items" },
+  { module: "assessment_pool", action: "publish", key: "assessment_pool.publish", description: "Publish assessment pool items" },
+  { module: "batch_content", action: "view", key: "batch_content.view", description: "View batch content mappings" },
+  { module: "batch_content", action: "assign", key: "batch_content.assign", description: "Assign content to batches" },
+  { module: "batch_content", action: "remove", key: "batch_content.remove", description: "Remove content from batches" },
+  { module: "curriculum", action: "view", key: "curriculum.view", description: "View curricula" },
+  { module: "curriculum", action: "create", key: "curriculum.create", description: "Create curricula" },
+  { module: "curriculum", action: "edit", key: "curriculum.edit", description: "Edit curricula" },
+  { module: "curriculum", action: "delete", key: "curriculum.delete", description: "Delete curricula" },
+  { module: "curriculum", action: "publish", key: "curriculum.publish", description: "Publish curricula" },
 ];
 
 // SUPER_ADMIN gets implicit bypass in code — no explicit permissions needed.
@@ -195,6 +273,7 @@ const ROLE_PERMISSION_MAP = {
     "sessions.view", "sessions.manage",
     "users.view", "users.create", "users.edit", "users.delete",
     "staff_users.view", "staff_users.create", "staff_users.edit", "staff_users.delete",
+    "candidate_users.view", "candidate_users.create", "candidate_users.edit", "candidate_users.delete",
     "courses.view", "courses.create", "courses.edit", "courses.delete",
     "programs.view", "programs.create", "programs.edit", "programs.delete",
     "batches.view", "batches.create", "batches.edit", "batches.delete",
@@ -211,6 +290,11 @@ const ROLE_PERMISSION_MAP = {
     "logs.view",
     "settings.view", "settings.edit", "settings.manage",
     "email_templates.view", "email_templates.edit",
+    "course_content.view", "course_content.create", "course_content.edit", "course_content.delete",
+    "course_content_folder.view", "course_content_folder.create", "course_content_folder.edit", "course_content_folder.delete",
+    "assessment_pool.view", "assessment_pool.create", "assessment_pool.edit", "assessment_pool.delete", "assessment_pool.publish",
+    "batch_content.view", "batch_content.assign", "batch_content.remove",
+    "curriculum.view", "curriculum.create", "curriculum.edit", "curriculum.delete", "curriculum.publish",
   ],
   TRAINER: [
     "dashboard.view",
@@ -227,6 +311,11 @@ const ROLE_PERMISSION_MAP = {
     "readiness.view",
     "lms.view",
     "quizzes.view", "quizzes.create", "quizzes.edit",
+    "course_content.view",
+    "course_content_folder.view",
+    "assessment_pool.view",
+    "batch_content.view", "batch_content.assign", "batch_content.remove",
+    "curriculum.view",
   ],
   CONTENT_MANAGER: [
     "dashboard.view",
@@ -238,6 +327,11 @@ const ROLE_PERMISSION_MAP = {
     "lms.view", "lms.create", "lms.edit", "lms.manage",
     "quizzes.view", "quizzes.create", "quizzes.edit", "quizzes.delete", "quizzes.publish",
     "email_templates.view", "email_templates.create", "email_templates.edit", "email_templates.delete",
+    "course_content.view", "course_content.create", "course_content.edit", "course_content.delete",
+    "course_content_folder.view", "course_content_folder.create", "course_content_folder.edit", "course_content_folder.delete",
+    "assessment_pool.view", "assessment_pool.create", "assessment_pool.edit", "assessment_pool.delete", "assessment_pool.publish",
+    "batch_content.view", "batch_content.assign", "batch_content.remove",
+    "curriculum.view", "curriculum.create", "curriculum.edit", "curriculum.delete", "curriculum.publish",
   ],
   SUPPORT_USER: [
     "dashboard.view",
@@ -496,6 +590,80 @@ async function seed() {
   }
 
   const courseByType = new Map(courseRecords.map((course, index) => [COURSES[index].type, course]));
+
+  const seededCurricula = [];
+  for (const curriculumSeed of CURRICULUM_SEEDS) {
+    const seededCourse = courseRecords.find((course) => course.name === curriculumSeed.courseName);
+
+    if (!seededCourse) {
+      throw new Error(`Missing seeded course for curriculum ${curriculumSeed.title}.`);
+    }
+
+    const curriculum = await prisma.curriculum.upsert({
+      where: { courseId: seededCourse.id },
+      update: {
+        title: curriculumSeed.title,
+        description: curriculumSeed.description,
+        status: CurriculumStatus.DRAFT,
+        createdById: adminUser.id,
+      },
+      create: {
+        courseId: seededCourse.id,
+        title: curriculumSeed.title,
+        description: curriculumSeed.description,
+        status: CurriculumStatus.DRAFT,
+        createdById: adminUser.id,
+      },
+    });
+
+    const moduleRecord = await prisma.curriculumModule.upsert({
+      where: {
+        curriculumId_title: {
+          curriculumId: curriculum.id,
+          title: curriculumSeed.moduleTitle,
+        },
+      },
+      update: {
+        description: curriculumSeed.moduleDescription,
+        sortOrder: 0,
+      },
+      create: {
+        curriculumId: curriculum.id,
+        title: curriculumSeed.moduleTitle,
+        description: curriculumSeed.moduleDescription,
+        sortOrder: 0,
+      },
+    });
+
+    for (let stageIndex = 0; stageIndex < curriculumSeed.stages.length; stageIndex += 1) {
+      const stageSeed = curriculumSeed.stages[stageIndex];
+
+      await prisma.curriculumStage.upsert({
+        where: {
+          moduleId_title: {
+            moduleId: moduleRecord.id,
+            title: stageSeed.title,
+          },
+        },
+        update: {
+          description: stageSeed.description,
+          sortOrder: stageIndex,
+        },
+        create: {
+          moduleId: moduleRecord.id,
+          title: stageSeed.title,
+          description: stageSeed.description,
+          sortOrder: stageIndex,
+        },
+      });
+    }
+
+    seededCurricula.push({
+      courseName: curriculumSeed.courseName,
+      curriculumId: curriculum.id,
+      stageCount: curriculumSeed.stages.length,
+    });
+  }
 
   const programRecords = [];
   for (const program of PROGRAMS) {
@@ -953,6 +1121,8 @@ async function seed() {
   console.log("Seed complete", {
     roles: Object.keys(roleRecords).length,
     permissions: Object.keys(permissionRecords).length,
+    curricula: seededCurricula.length,
+    curriculumStagesSeeded: seededCurricula.reduce((total, item) => total + item.stageCount, 0),
     programs: programRecords.length,
     trainers: trainerRecords.length,
     learners: learnerRecords.length,

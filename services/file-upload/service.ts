@@ -11,18 +11,35 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 
-import { SETTINGS_UPLOAD_DIRECTORY_SEGMENTS } from "@/lib/settings/constants";
 import { isStoredSettingsAsset } from "@/lib/settings/validation";
 import { getBrandingAssetSlot, getBrandingCanonicalStoragePath, getFileUploadServiceConfig } from "@/services/file-upload/config";
-import { buildLocalSettingsStoragePath, buildS3TemporaryStoragePath, getNormalizedFileExtension } from "@/services/file-upload/naming";
+import {
+  buildCourseContentStorageScope,
+  buildLocalCourseContentStoragePath,
+  buildLocalSettingsStoragePath,
+  buildS3CourseContentStoragePath,
+  buildS3TemporaryStoragePath,
+  getNormalizedFileExtension,
+} from "@/services/file-upload/naming";
 import type { FileUploadStorageProvider } from "@/services/file-upload/types";
 import type { SettingsAssetValue } from "@/services/settings/types";
 
-const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/"];
+type StoredUploadAsset = {
+  url: string;
+  storagePath: string;
+  storageProvider: FileUploadStorageProvider;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+};
+
+const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/"];
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
-function getSettingsUploadDirectory() {
-  return path.join(process.cwd(), ...SETTINGS_UPLOAD_DIRECTORY_SEGMENTS);
+function getPublicUploadDirectory() {
+  return path.join(process.cwd(), "public", "uploads");
 }
 
 function normalizeStorageProvider(value: unknown): FileUploadStorageProvider {
@@ -92,11 +109,10 @@ function buildStoredAssetUrl(storageProvider: FileUploadStorageProvider, storage
   return `/api/settings/assets?${params.toString()}`;
 }
 
-function buildStoredAssetValue(file: File, storageProvider: FileUploadStorageProvider, storagePath: string): SettingsAssetValue {
+function buildStoredUploadValue(file: File, storageProvider: FileUploadStorageProvider, storagePath: string): StoredUploadAsset {
   const normalizedStoragePath = normalizeStoragePath(storagePath);
 
   return {
-    kind: "settings-asset",
     url: buildStoredAssetUrl(storageProvider, normalizedStoragePath),
     storagePath: normalizedStoragePath,
     storageProvider,
@@ -105,6 +121,13 @@ function buildStoredAssetValue(file: File, storageProvider: FileUploadStoragePro
     mimeType: file.type || inferContentType(file.name),
     size: file.size,
     uploadedAt: new Date().toISOString(),
+  };
+}
+
+function toSettingsAssetValue(asset: StoredUploadAsset): SettingsAssetValue {
+  return {
+    kind: "settings-asset",
+    ...asset,
   };
 }
 
@@ -154,7 +177,13 @@ export async function validateUploadedFileAgainstGlobalSettings(file: File) {
   return config;
 }
 
-export async function storeUploadedSettingsAsset(file: File, options: { settingKey?: string } = {}): Promise<SettingsAssetValue> {
+async function storeUploadedFile(
+  file: File,
+  options: {
+    buildLocalStoragePath: () => string;
+    buildS3StoragePath: (config: Awaited<ReturnType<typeof getFileUploadServiceConfig>>) => string;
+  },
+): Promise<StoredUploadAsset> {
   const config = await getFileUploadServiceConfig();
 
   if (config.globalSettings.storageLocation === "S3") {
@@ -163,8 +192,7 @@ export async function storeUploadedSettingsAsset(file: File, options: { settingK
     }
 
     const client = getS3Client(config.s3);
-    const brandingSlot = options.settingKey ? getBrandingAssetSlot(options.settingKey) : null;
-    const storagePath = buildS3TemporaryStoragePath(file.name, config.s3.namingStrategy, brandingSlot);
+    const storagePath = options.buildS3StoragePath(config);
     const body = Buffer.from(await file.arrayBuffer());
 
     await client.send(new PutObjectCommand({
@@ -175,18 +203,41 @@ export async function storeUploadedSettingsAsset(file: File, options: { settingK
       CacheControl: IMMUTABLE_CACHE_CONTROL,
     }));
 
-    return buildStoredAssetValue(file, "S3", storagePath);
+    return buildStoredUploadValue(file, "S3", storagePath);
   }
 
-  await mkdir(getSettingsUploadDirectory(), { recursive: true });
-
-  const storagePath = buildLocalSettingsStoragePath(file.name);
+  const storagePath = options.buildLocalStoragePath();
   const absoluteStoragePath = getLocalAbsoluteStoragePath(storagePath);
   const body = Buffer.from(await file.arrayBuffer());
 
+  await mkdir(path.dirname(absoluteStoragePath), { recursive: true });
   await writeFile(absoluteStoragePath, body);
 
-  return buildStoredAssetValue(file, "LOCAL_PUBLIC", storagePath);
+  return buildStoredUploadValue(file, "LOCAL_PUBLIC", storagePath);
+}
+
+export async function storeUploadedSettingsAsset(file: File, options: { settingKey?: string } = {}): Promise<SettingsAssetValue> {
+  const asset = await storeUploadedFile(file, {
+    buildLocalStoragePath: () => buildLocalSettingsStoragePath(file.name),
+    buildS3StoragePath: (config) => {
+      const brandingSlot = options.settingKey ? getBrandingAssetSlot(options.settingKey) : null;
+      return buildS3TemporaryStoragePath(file.name, config.s3.namingStrategy, brandingSlot);
+    },
+  });
+
+  return toSettingsAssetValue(asset);
+}
+
+export async function storeUploadedCourseContentAsset(
+  file: File,
+  course: { courseCode: string; courseName: string },
+): Promise<StoredUploadAsset> {
+  const courseScope = buildCourseContentStorageScope(course.courseCode, course.courseName);
+
+  return storeUploadedFile(file, {
+    buildLocalStoragePath: () => buildLocalCourseContentStoragePath(file.name, courseScope),
+    buildS3StoragePath: (config) => buildS3CourseContentStoragePath(file.name, config.s3.namingStrategy, courseScope),
+  });
 }
 
 export function areStoredAssetsFromSameLocation(left: unknown, right: unknown) {
@@ -259,6 +310,10 @@ export async function deleteUploadedSettingsAsset(value: unknown) {
     return;
   }
 
+  await deleteStoredUploadAsset(value);
+}
+
+export async function deleteStoredUploadAsset(value: { storageProvider?: unknown; storagePath: string }) {
   try {
     const storageProvider = normalizeStorageProvider(value.storageProvider);
 
@@ -277,13 +332,13 @@ export async function deleteUploadedSettingsAsset(value: unknown) {
     }
 
     const absoluteStoragePath = getLocalAbsoluteStoragePath(value.storagePath);
-    if (!isWithinDirectory(absoluteStoragePath, getSettingsUploadDirectory())) {
+    if (!isWithinDirectory(absoluteStoragePath, getPublicUploadDirectory())) {
       return;
     }
 
     await rm(absoluteStoragePath, { force: true });
   } catch (error) {
-    console.warn("Settings asset cleanup failed", error);
+    console.warn("Uploaded asset cleanup failed", error);
   }
 }
 
@@ -324,7 +379,7 @@ export async function resolveStoredAssetResponse(input: { storageProvider?: unkn
   }
 
   const absoluteStoragePath = getLocalAbsoluteStoragePath(storagePath);
-  if (!isWithinDirectory(absoluteStoragePath, getSettingsUploadDirectory())) {
+  if (!isWithinDirectory(absoluteStoragePath, getPublicUploadDirectory())) {
     return null;
   }
 

@@ -1,4 +1,4 @@
-import { AuditActionType, AuditEntityType, EvaluationStatus } from "@prisma/client";
+import { AuditActionType, AuditEntityType, EvaluationStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma-client";
 import { CancelScheduleEventInput, CreateScheduleEventInput, UpdateScheduleEventInput } from "@/lib/validation-schemas/schedule";
@@ -16,6 +16,60 @@ import {
 } from "@/services/schedule/internal-helpers";
 import { EventRecord } from "@/services/schedule/types";
 
+async function syncLinkedAssessmentPoolForBatch(
+  tx: Prisma.TransactionClient,
+  options: {
+    batchId: string;
+    courseId: string;
+    linkedAssessmentPoolId: string | null | undefined;
+    scheduledAt: Date;
+    actorUserId?: string | null;
+  },
+) {
+  const linkedAssessmentPoolId = options.linkedAssessmentPoolId?.trim() || null;
+
+  if (!linkedAssessmentPoolId) {
+    return null;
+  }
+
+  const pool = await tx.assessmentPool.findFirst({
+    where: {
+      id: linkedAssessmentPoolId,
+      status: "PUBLISHED",
+      OR: [
+        { courseId: options.courseId },
+        { courseAssessmentLinks: { some: { courseId: options.courseId } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (!pool) {
+    throw new Error("Selected course-builder assessment is not available for this batch.");
+  }
+
+  await tx.batchAssessmentMapping.upsert({
+    where: {
+      batchId_assessmentPoolId: {
+        batchId: options.batchId,
+        assessmentPoolId: linkedAssessmentPoolId,
+      },
+    },
+    update: {
+      scheduledAt: options.scheduledAt,
+      ...(options.actorUserId !== undefined ? { assignedById: options.actorUserId } : {}),
+    },
+    create: {
+      batchId: options.batchId,
+      assessmentPoolId: linkedAssessmentPoolId,
+      scheduledAt: options.scheduledAt,
+      assignedById: options.actorUserId ?? null,
+    },
+  });
+
+  return pool.id;
+}
+
 export async function createScheduleEventService(input: CreateScheduleEventInput, actorUserId?: string | null) {
   ensureScheduleWritesAvailable();
 
@@ -26,6 +80,11 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
       code: true,
       name: true,
       programId: true,
+      program: {
+        select: {
+          courseId: true,
+        },
+      },
     },
   });
 
@@ -59,11 +118,21 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
             })
           ).id
         : null;
+      const linkedAssessmentPoolId = shouldLinkAssessment(input.type)
+        ? await syncLinkedAssessmentPoolForBatch(tx, {
+            batchId: batch.id,
+            courseId: batch.program.courseId,
+            linkedAssessmentPoolId: input.linkedAssessmentPoolId ?? null,
+            scheduledAt: occurrence.startsAt,
+            actorUserId,
+          })
+        : null;
 
       const event = (await scheduleEvents.create({
         data: {
           batchId: batch.id,
           linkedAssessmentId,
+          linkedAssessmentPoolId,
           seriesId: occurrence.seriesId,
           occurrenceIndex: occurrence.occurrenceIndex,
           title,
@@ -120,6 +189,7 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
       seriesId: event.seriesId,
       occurrenceIndex: event.occurrenceIndex,
       linkedAssessmentId: event.linkedAssessmentId,
+      linkedAssessmentPoolId: event.linkedAssessmentPoolId,
     })),
   };
 }
@@ -135,10 +205,15 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
           id: true,
           code: true,
           programId: true,
+          program: {
+            select: {
+              courseId: true,
+            },
+          },
         },
       },
     },
-  })) as (EventRecord & { batch: { id: string; code: string; programId: string } }) | null;
+  })) as (EventRecord & { batch: { id: string; code: string; programId: string; program: { courseId: string } } }) | null;
 
   if (!target) {
     throw new Error("Schedule event not found.");
@@ -155,11 +230,16 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
       batch: {
         select: {
           programId: true,
+          program: {
+            select: {
+              courseId: true,
+            },
+          },
         },
       },
     },
     orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
-  })) as Array<EventRecord & { batch: { programId: string } }>;
+  })) as Array<EventRecord & { batch: { programId: string; program: { courseId: string } } }>;
 
   if (eventsToUpdate.length === 0) {
     throw new Error("No schedule events matched this update scope.");
@@ -194,6 +274,15 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
       const nextLocation = input.location === undefined ? event.location : toNullableText(input.location);
       const nextMeetingUrl = input.meetingUrl === undefined ? event.meetingUrl : toNullableText(input.meetingUrl ?? "");
       const nextStatus = input.status ?? event.status;
+      const nextLinkedAssessmentPoolId = shouldLinkAssessment(nextType)
+        ? await syncLinkedAssessmentPoolForBatch(tx, {
+            batchId: event.batchId,
+            courseId: event.batch.program.courseId,
+            linkedAssessmentPoolId: input.linkedAssessmentPoolId === undefined ? event.linkedAssessmentPoolId : input.linkedAssessmentPoolId,
+            scheduledAt: nextStartsAt,
+            actorUserId,
+          })
+        : null;
 
       const linkedAssessmentId = await syncAssessmentForEvent(tx, event, {
         title: nextTitle,
@@ -218,6 +307,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
           location: nextLocation,
           meetingUrl: nextMeetingUrl,
           linkedAssessmentId,
+          linkedAssessmentPoolId: nextLinkedAssessmentPoolId,
         },
       })) as EventRecord;
 
@@ -248,6 +338,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
         endsAt: input.endsAt,
         location: input.location,
         meetingUrl: input.meetingUrl,
+        linkedAssessmentPoolId: input.linkedAssessmentPoolId,
       },
     },
   });
@@ -262,6 +353,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
       type: item.type,
       classMode: item.classMode,
       linkedAssessmentId: item.linkedAssessmentId,
+      linkedAssessmentPoolId: item.linkedAssessmentPoolId,
     })),
   };
 }
