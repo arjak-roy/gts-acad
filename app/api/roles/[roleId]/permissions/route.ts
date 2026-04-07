@@ -13,10 +13,10 @@ type RouteContext = {
 
 export async function PUT(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "roles.edit");
+    const session = await requirePermission(request, "roles.edit");
     const body = await request.json();
     const { permissionIds } = setRolePermissionsSchema.parse(body);
-    await setRolePermissions(params.roleId, permissionIds);
+    await setRolePermissions(params.roleId, permissionIds, { actorUserId: session.userId });
     return apiSuccess({ updated: true });
   } catch (error) {
     return apiError(error);

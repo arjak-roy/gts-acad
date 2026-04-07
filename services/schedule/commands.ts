@@ -91,11 +91,16 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
     entityId: batch.id,
     action: AuditActionType.CREATED,
     actorUserId: actorUserId ?? null,
-    message: `Created ${createdEvents.length} schedule event(s) for batch ${batch.code}.`,
+    message: `Schedule created for batch ${batch.code}: ${title} (${createdEvents.length} event${createdEvents.length === 1 ? "" : "s"}).`,
     metadata: {
+      batchCode: batch.code,
+      batchName: batch.name,
+      title,
       eventType: input.type,
+      status,
       recurring: Boolean(input.recurrence),
       count: createdEvents.length,
+      eventIds: createdEvents.map((event) => event.id),
     },
   });
 
@@ -226,11 +231,22 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
     entityId: target.batchId,
     action: AuditActionType.UPDATED,
     actorUserId: actorUserId ?? null,
-    message: `Updated ${updated.length} schedule event(s) for batch ${target.batch.code}.`,
+    message: `Schedule updated for batch ${target.batch.code}: ${updated.length} event${updated.length === 1 ? "" : "s"} changed.`,
     metadata: {
+      batchCode: target.batch.code,
       scope: input.scope,
       eventId: target.id,
       updatedCount: updated.length,
+      updates: {
+        title: input.title?.trim(),
+        type: input.type,
+        classMode: input.classMode,
+        status: input.status,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        location: input.location,
+        meetingUrl: input.meetingUrl,
+      },
     },
   });
 
@@ -318,11 +334,13 @@ export async function cancelScheduleEventService(input: CancelScheduleEventInput
     entityId: target.batchId,
     action: AuditActionType.UPDATED,
     actorUserId: actorUserId ?? null,
-    message: `Cancelled ${affected.length} schedule event(s) for batch ${target.batch.code}.`,
+    message: `Schedule cancelled for batch ${target.batch.code}: ${affected.length} event${affected.length === 1 ? "" : "s"} marked cancelled.`,
     metadata: {
+      batchCode: target.batch.code,
       scope: input.scope,
       eventId: target.id,
       cancelledCount: affected.length,
+      cancelledEventIds: affected.map((event: { id: string }) => event.id),
     },
   });
 

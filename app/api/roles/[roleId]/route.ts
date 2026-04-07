@@ -23,10 +23,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "roles.edit");
+    const session = await requirePermission(request, "roles.edit");
     const body = await request.json();
     const input = updateRoleSchema.parse(body);
-    const role = await updateRole(params.roleId, input);
+    const role = await updateRole(params.roleId, input, { actorUserId: session.userId });
     return apiSuccess(role);
   } catch (error) {
     return apiError(error);
@@ -35,8 +35,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "roles.delete");
-    await deleteRole(params.roleId);
+    const session = await requirePermission(request, "roles.delete");
+    await deleteRole(params.roleId, { actorUserId: session.userId });
     return apiSuccess({ deleted: true });
   } catch (error) {
     return apiError(error);

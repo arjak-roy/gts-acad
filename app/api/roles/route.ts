@@ -17,10 +17,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requirePermission(request, "roles.create");
+    const session = await requirePermission(request, "roles.create");
     const body = await request.json();
     const input = createRoleSchema.parse(body);
-    const role = await createRole(input);
+    const role = await createRole(input, { actorUserId: session.userId });
     return apiSuccess(role, { status: 201 });
   } catch (error) {
     return apiError(error);

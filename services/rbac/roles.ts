@@ -1,7 +1,33 @@
-import { Prisma } from "@prisma/client";
+import { AuditActionType, AuditEntityType, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma-client";
+import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { invalidateAllPermissionCaches } from "@/services/rbac/permissions";
+
+type RoleMutationInput = {
+  actorUserId?: string | null;
+};
+
+async function getPermissionKeysByIds(permissionIds: string[]) {
+  if (permissionIds.length === 0) {
+    return [];
+  }
+
+  const permissions = await prisma.permission.findMany({
+    where: {
+      id: {
+        in: permissionIds,
+      },
+    },
+    select: {
+      id: true,
+      key: true,
+    },
+  });
+
+  const permissionKeyMap = new Map(permissions.map((permission) => [permission.id, permission.key]));
+  return permissionIds.map((permissionId) => permissionKeyMap.get(permissionId)).filter((value): value is string => Boolean(value));
+}
 
 export async function getUserRoles(userId: string) {
   return prisma.$queryRaw<Array<{ id: string; name: string; code: string; isSystemRole: boolean }>>(
@@ -94,13 +120,15 @@ export async function getRoleById(roleId: string) {
   };
 }
 
-export async function createRole(input: { name: string; code: string; description?: string; permissionIds?: string[] }) {
+export async function createRole(input: { name: string; code: string; description?: string; permissionIds?: string[] }, options: RoleMutationInput = {}) {
   const existingRole = await prisma.role.findUnique({ where: { code: input.code } });
   if (existingRole) {
     throw new Error("A role with this code already exists.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const normalizedPermissionIds = input.permissionIds ?? [];
+
+  const role = await prisma.$transaction(async (tx) => {
     const role = await tx.role.create({
       data: {
         name: input.name,
@@ -123,9 +151,27 @@ export async function createRole(input: { name: string; code: string; descriptio
 
     return role;
   });
+
+  const permissionKeys = await getPermissionKeysByIds(normalizedPermissionIds);
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.SYSTEM,
+    entityId: role.id,
+    action: AuditActionType.CREATED,
+    actorUserId: options.actorUserId ?? null,
+    message: `Role ${role.code} created.`,
+    metadata: {
+      roleName: role.name,
+      roleCode: role.code,
+      isActive: role.isActive,
+      permissionKeys,
+    },
+  });
+
+  return role;
 }
 
-export async function updateRole(roleId: string, input: { name?: string; code?: string; description?: string; isActive?: boolean }) {
+export async function updateRole(roleId: string, input: { name?: string; code?: string; description?: string; isActive?: boolean }, options: RoleMutationInput = {}) {
   const role = await prisma.role.findUnique({ where: { id: roleId } });
   if (!role) {
     throw new Error("Role not found.");
@@ -153,10 +199,33 @@ export async function updateRole(roleId: string, input: { name?: string; code?: 
   });
 
   invalidateAllPermissionCaches();
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.SYSTEM,
+    entityId: updated.id,
+    action: AuditActionType.UPDATED,
+    actorUserId: options.actorUserId ?? null,
+    message: `Role ${updated.code} updated.`,
+    metadata: {
+      before: {
+        name: role.name,
+        code: role.code,
+        description: role.description,
+        isActive: role.isActive,
+      },
+      after: {
+        name: updated.name,
+        code: updated.code,
+        description: updated.description,
+        isActive: updated.isActive,
+      },
+    },
+  });
+
   return updated;
 }
 
-export async function deleteRole(roleId: string) {
+export async function deleteRole(roleId: string, options: RoleMutationInput = {}) {
   const role = await prisma.role.findUnique({ where: { id: roleId } });
   if (!role) {
     throw new Error("Role not found.");
@@ -168,13 +237,42 @@ export async function deleteRole(roleId: string) {
 
   await prisma.role.delete({ where: { id: roleId } });
   invalidateAllPermissionCaches();
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.SYSTEM,
+    entityId: role.id,
+    action: AuditActionType.UPDATED,
+    actorUserId: options.actorUserId ?? null,
+    message: `Role ${role.code} deleted.`,
+    metadata: {
+      roleName: role.name,
+      roleCode: role.code,
+      isActive: role.isActive,
+      deleted: true,
+    },
+  });
 }
 
-export async function setRolePermissions(roleId: string, permissionIds: string[]) {
-  const role = await prisma.role.findUnique({ where: { id: roleId } });
+export async function setRolePermissions(roleId: string, permissionIds: string[], options: RoleMutationInput = {}) {
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    include: {
+      permissions: {
+        include: {
+          permission: {
+            select: {
+              key: true,
+            },
+          },
+        },
+      },
+    },
+  });
   if (!role) {
     throw new Error("Role not found.");
   }
+
+  const previousPermissionKeys = role.permissions.map((record) => record.permission.key).sort();
 
   await prisma.$transaction(async (tx) => {
     await tx.rolePermission.deleteMany({ where: { roleId } });
@@ -191,4 +289,22 @@ export async function setRolePermissions(roleId: string, permissionIds: string[]
   });
 
   invalidateAllPermissionCaches();
+
+  const nextPermissionKeys = (await getPermissionKeysByIds(permissionIds)).sort();
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.SYSTEM,
+    entityId: role.id,
+    action: AuditActionType.UPDATED,
+    actorUserId: options.actorUserId ?? null,
+    message: `Permissions updated for role ${role.code}.`,
+    metadata: {
+      roleName: role.name,
+      roleCode: role.code,
+      previousPermissionKeys,
+      nextPermissionKeys,
+      addedPermissionKeys: nextPermissionKeys.filter((key) => !previousPermissionKeys.includes(key)),
+      removedPermissionKeys: previousPermissionKeys.filter((key) => !nextPermissionKeys.includes(key)),
+    },
+  });
 }
