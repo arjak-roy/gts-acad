@@ -14,6 +14,12 @@ type FolderResponse = {
   error?: string;
 };
 
+type EditableFolder = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
 type FolderForm = {
   name: string;
   description: string;
@@ -28,21 +34,35 @@ export function AddContentFolderSheet({
   open,
   onOpenChange,
   courseId,
-  onCreated,
+  folder,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseId: string;
-  onCreated: (folderId: string) => void | Promise<void>;
+  folder?: EditableFolder | null;
+  onSaved: (folderId: string) => void | Promise<void>;
 }) {
   const [form, setForm] = useState<FolderForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isEditing = Boolean(folder?.id);
 
   useEffect(() => {
     if (!open) {
       setForm(initialForm);
+      return;
     }
-  }, [open]);
+
+    if (folder) {
+      setForm({
+        name: folder.name,
+        description: folder.description ?? "",
+      });
+      return;
+    }
+
+    setForm(initialForm);
+  }, [folder, open]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -54,11 +74,11 @@ export function AddContentFolderSheet({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/course-content-folders", {
-        method: "POST",
+      const response = await fetch(isEditing && folder ? `/api/course-content-folders/${folder.id}` : "/api/course-content-folders", {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          courseId,
+          ...(isEditing ? {} : { courseId }),
           name: form.name,
           description: form.description,
         }),
@@ -67,14 +87,14 @@ export function AddContentFolderSheet({
       const payload = (await response.json()) as FolderResponse;
 
       if (!response.ok || !payload.data?.id) {
-        throw new Error(payload.error || "Failed to create folder.");
+        throw new Error(payload.error || `Failed to ${isEditing ? "update" : "create"} folder.`);
       }
 
-      toast.success("Folder created.");
-      await onCreated(payload.data.id);
+      toast.success(isEditing ? "Folder updated." : "Folder created.");
+      await onSaved(payload.data.id);
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create folder.");
+      toast.error(error instanceof Error ? error.message : `Failed to ${isEditing ? "update" : "create"} folder.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -84,9 +104,11 @@ export function AddContentFolderSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-lg">
         <SheetHeader>
-          <SheetTitle>Create Folder</SheetTitle>
+          <SheetTitle>{isEditing ? "Rename Folder" : "New Folder"}</SheetTitle>
           <SheetDescription>
-            Add a course-specific folder so content can be organized before it is used in the curriculum builder.
+            {isEditing
+              ? "Update the folder name and notes so the explorer stays clear and searchable."
+              : "Create a folder in the content explorer so uploads can be routed with consistent library structure."}
           </SheetDescription>
         </SheetHeader>
 
@@ -117,7 +139,7 @@ export function AddContentFolderSheet({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating…" : "Create Folder"}
+              {isSubmitting ? (isEditing ? "Saving..." : "Creating...") : (isEditing ? "Save Changes" : "Create Folder")}
             </Button>
           </SheetFooter>
         </form>

@@ -1,15 +1,18 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, FileText, Link2, Loader2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { type AuthoredContentDocument, emptyAuthoredContentDocument } from "@/lib/authored-content";
+import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const CONTENT_TYPES = [
+  { value: "ARTICLE", label: "Authored Lesson", comingSoon: false },
   { value: "PDF", label: "PDF", comingSoon: false },
   { value: "DOCUMENT", label: "Document", comingSoon: false },
   { value: "VIDEO", label: "Video", comingSoon: false },
@@ -26,6 +29,8 @@ type AddContentForm = {
   description: string;
   contentType: string;
   fileUrl: string;
+  bodyJson: AuthoredContentDocument;
+  estimatedReadingMinutes: string;
   status: string;
   uploadMode: UploadMode;
 };
@@ -71,14 +76,119 @@ type UploadSession = {
   totalBytes: number;
 };
 
-const initialForm: AddContentForm = {
-  title: "",
-  description: "",
-  contentType: "PDF",
-  fileUrl: "",
-  status: "DRAFT",
-  uploadMode: "FILES",
+type UploadTemplate = {
+  id: string;
+  label: string;
+  description: string;
+  contentType: string;
+  status: string;
+  defaultDescription: string;
 };
+
+function createInitialForm(): AddContentForm {
+  return {
+    title: "",
+    description: "",
+    contentType: "PDF",
+    fileUrl: "",
+    bodyJson: emptyAuthoredContentDocument(),
+    estimatedReadingMinutes: "",
+    status: "DRAFT",
+    uploadMode: "FILES",
+  };
+}
+
+const UPLOAD_TEMPLATES: UploadTemplate[] = [
+  {
+    id: "AUTHORED_LESSON",
+    label: "Authored Lesson",
+    description: "Create a structured lesson with native text and image blocks.",
+    contentType: "ARTICLE",
+    status: "DRAFT",
+    defaultDescription: "Authored lesson content prepared for learner-facing delivery.",
+  },
+  {
+    id: "PREWORK",
+    label: "Prework Pack",
+    description: "Foundational readings and orientation documents.",
+    contentType: "DOCUMENT",
+    status: "PUBLISHED",
+    defaultDescription: "Prework content aligned for learner onboarding and initial preparation.",
+  },
+  {
+    id: "SESSION_RESOURCE",
+    label: "Session Resource",
+    description: "In-class handouts and facilitation assets.",
+    contentType: "PDF",
+    status: "PUBLISHED",
+    defaultDescription: "Session-ready material intended for live trainer delivery.",
+  },
+  {
+    id: "ASSESSMENT_REFERENCE",
+    label: "Assessment Reference",
+    description: "Rubrics, answer keys, and assessment support material.",
+    contentType: "DOCUMENT",
+    status: "DRAFT",
+    defaultDescription: "Reference content supporting assessment authoring and moderation.",
+  },
+  {
+    id: "MEDIA_LAB",
+    label: "Media Lab",
+    description: "Video and experiential content for blended learning.",
+    contentType: "VIDEO",
+    status: "DRAFT",
+    defaultDescription: "Media asset prepared for blended and language-lab consumption.",
+  },
+];
+
+function inferContentTypeFromFile(file: File): string {
+  const name = file.name.toLowerCase();
+  const mime = (file.type || "").toLowerCase();
+
+  if (name.endsWith(".pdf") || mime.includes("pdf")) {
+    return "PDF";
+  }
+
+  if (
+    name.endsWith(".doc")
+    || name.endsWith(".docx")
+    || name.endsWith(".ppt")
+    || name.endsWith(".pptx")
+    || name.endsWith(".xls")
+    || name.endsWith(".xlsx")
+    || mime.includes("word")
+    || mime.includes("presentation")
+    || mime.includes("spreadsheet")
+  ) {
+    return "DOCUMENT";
+  }
+
+  if (
+    name.endsWith(".mp4")
+    || name.endsWith(".mov")
+    || name.endsWith(".webm")
+    || mime.startsWith("video/")
+  ) {
+    return "VIDEO";
+  }
+
+  return "OTHER";
+}
+
+function inferSuggestedContentType(queue: PendingUploadFile[]): string | null {
+  if (queue.length === 0) {
+    return null;
+  }
+
+  const counters = queue.reduce<Record<string, number>>((acc, item) => {
+    const inferred = inferContentTypeFromFile(item.file);
+    acc[inferred] = (acc[inferred] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const ranked = Object.entries(counters).sort((a, b) => b[1] - a[1]);
+  return ranked[0]?.[0] ?? null;
+}
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) {
@@ -231,7 +341,7 @@ export function AddContentSheet({
   defaultFolderId?: string;
   onCreated: () => void;
 }) {
-  const [form, setForm] = useState<AddContentForm>(initialForm);
+  const [form, setForm] = useState<AddContentForm>(createInitialForm);
   const [selectedFiles, setSelectedFiles] = useState<PendingUploadFile[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState(defaultFolderId ?? "");
   const [uploadConfig, setUploadConfig] = useState<UploadConfig | null>(null);
@@ -239,18 +349,31 @@ export function AddContentSheet({
   const [isDragging, setIsDragging] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [suggestedContentType, setSuggestedContentType] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isArticleContent = form.contentType === "ARTICLE";
   const isLinkContent = form.contentType === "LINK";
   const isScormContent = form.contentType === "SCORM";
-  const isFileUploadMode = !isLinkContent && !isScormContent && form.uploadMode === "FILES";
+  const isFileUploadMode = !isArticleContent && !isLinkContent && !isScormContent && form.uploadMode === "FILES";
   const uploadableFiles = selectedFiles.filter((item) => item.status !== "complete");
+  const failedUploadCount = useMemo(
+    () => selectedFiles.filter((item) => item.status === "failed").length,
+    [selectedFiles],
+  );
+  const completedUploadCount = useMemo(
+    () => selectedFiles.filter((item) => item.status === "complete").length,
+    [selectedFiles],
+  );
   const hasInvalidFileTitles = uploadableFiles.some((item) => !item.title.trim());
   const canSubmit = isScormContent
     ? false
-    : isFileUploadMode
-      ? uploadableFiles.length > 0 && !hasInvalidFileTitles
-      : Boolean(form.title.trim() && form.fileUrl.trim());
+    : isArticleContent
+      ? Boolean(form.title.trim() && form.bodyJson.blocks.length > 0)
+      : isFileUploadMode
+        ? uploadableFiles.length > 0 && !hasInvalidFileTitles
+        : Boolean(form.title.trim() && form.fileUrl.trim());
 
   useEffect(() => {
     if (open) {
@@ -260,11 +383,13 @@ export function AddContentSheet({
 
   useEffect(() => {
     if (!open) {
-      setForm(initialForm);
+      setForm(createInitialForm());
       setSelectedFiles([]);
       setSelectedFolderId(defaultFolderId ?? "");
       setUploadSession(null);
       setIsDragging(false);
+      setSelectedTemplateId("");
+      setSuggestedContentType(null);
       return;
     }
 
@@ -306,6 +431,21 @@ export function AddContentSheet({
     };
   }, [defaultFolderId, isLoadingConfig, open, uploadConfig]);
 
+  useEffect(() => {
+    if (!isFileUploadMode || selectedFiles.length === 0) {
+      setSuggestedContentType(null);
+      return;
+    }
+
+    const inferred = inferSuggestedContentType(selectedFiles);
+    if (!inferred || inferred === form.contentType) {
+      setSuggestedContentType(null);
+      return;
+    }
+
+    setSuggestedContentType(inferred);
+  }, [form.contentType, isFileUploadMode, selectedFiles]);
+
   function handleSheetOpenChange(nextOpen: boolean) {
     if (isSubmitting) {
       return;
@@ -321,13 +461,42 @@ export function AddContentSheet({
       uploadMode: nextContentType === "LINK" ? "URL" : prev.contentType === "LINK" ? "FILES" : prev.uploadMode,
     }));
 
-    if (nextContentType === "LINK" || nextContentType === "SCORM") {
+    if (nextContentType === "LINK" || nextContentType === "SCORM" || nextContentType === "ARTICLE") {
       setIsDragging(false);
+    }
+
+    if (nextContentType === "ARTICLE") {
+      setSelectedFiles([]);
     }
   }
 
+  function applyUploadTemplate(templateId: string) {
+    const template = UPLOAD_TEMPLATES.find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+
+    setSelectedTemplateId(template.id);
+    setForm((prev) => ({
+      ...prev,
+      contentType: template.contentType,
+      status: template.status,
+      uploadMode: template.contentType === "LINK" ? "URL" : "FILES",
+      description: prev.description.trim().length > 0 ? prev.description : template.defaultDescription,
+    }));
+  }
+
+  function applySuggestedContentType() {
+    if (!suggestedContentType) {
+      return;
+    }
+
+    updateContentType(suggestedContentType);
+    setSuggestedContentType(null);
+  }
+
   function appendFiles(files: File[]) {
-    if (files.length === 0 || isLinkContent || isScormContent) {
+    if (files.length === 0 || isArticleContent || isLinkContent || isScormContent) {
       return;
     }
 
@@ -362,6 +531,26 @@ export function AddContentSheet({
     setSelectedFiles((prev) => prev.filter((item) => item.id !== fileId));
   }
 
+  function retryFailedUploads() {
+    if (isSubmitting) {
+      return;
+    }
+
+    setSelectedFiles((prev) => prev.map((item) => (
+      item.status === "failed"
+        ? { ...item, status: "queued", progress: 0, error: null }
+        : item
+    )));
+  }
+
+  function clearCompletedUploads() {
+    if (isSubmitting) {
+      return;
+    }
+
+    setSelectedFiles((prev) => prev.filter((item) => item.status !== "complete"));
+  }
+
   async function submitExternalContent() {
     const response = await fetch("/api/course-content", {
       method: "POST",
@@ -385,6 +574,33 @@ export function AddContentSheet({
     }
 
     toast.success("Content item created.");
+    onCreated();
+    onOpenChange(false);
+  }
+
+  async function submitAuthoredContent() {
+    const response = await fetch("/api/course-content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        courseId,
+        folderId: selectedFolderId || null,
+        title: form.title,
+        description: form.description,
+        contentType: form.contentType,
+        bodyJson: form.bodyJson,
+        estimatedReadingMinutes: form.estimatedReadingMinutes.trim().length > 0 ? Number(form.estimatedReadingMinutes) : undefined,
+        status: form.status,
+        isScorm: false,
+      }),
+    });
+
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error || "Failed to create authored lesson.");
+    }
+
+    toast.success("Authored lesson created.");
     onCreated();
     onOpenChange(false);
   }
@@ -527,7 +743,9 @@ export function AddContentSheet({
     setIsSubmitting(true);
 
     try {
-      if (isFileUploadMode) {
+      if (isArticleContent) {
+        await submitAuthoredContent();
+      } else if (isFileUploadMode) {
         await submitUploadedFiles();
       } else {
         await submitExternalContent();
@@ -541,15 +759,70 @@ export function AddContentSheet({
 
   return (
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-2xl">
+      <SheetContent className="overflow-y-auto sm:max-w-3xl">
         <SheetHeader>
-          <SheetTitle>Upload Content</SheetTitle>
+          <SheetTitle>Content Upload Studio</SheetTitle>
           <SheetDescription>
-            Upload one or more files for this course, edit titles before submit, or register an external URL when the asset is hosted elsewhere.
+            Orchestrate upload-ready assets with templates, smart suggestions, and a managed retry queue designed for high-volume LMS operations.
           </SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5 px-1 py-4">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Template</p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">{selectedTemplateId ? "Applied" : "Optional"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Source</p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">
+                {isArticleContent
+                  ? `${form.bodyJson.blocks.length} block${form.bodyJson.blocks.length === 1 ? "" : "s"}`
+                  : isFileUploadMode
+                  ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}`
+                  : form.fileUrl.trim().length > 0
+                    ? "External URL"
+                    : "Pending"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Routing</p>
+              <p className="mt-1 truncate text-xs font-semibold text-slate-900">{selectedFolderId ? "Folder selected" : "Library root"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Publish</p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">{form.status}</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Advanced LMS Templates</p>
+                <p className="mt-1 text-xs text-slate-500">Apply a preset to prefill content type, publishing status, and governance-ready descriptions.</p>
+              </div>
+              <Badge variant="accent">Preset</Badge>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {UPLOAD_TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => applyUploadTemplate(template.id)}
+                  className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                    selectedTemplateId === template.id
+                      ? "border-primary bg-primary/5"
+                      : "border-[#dde1e6] bg-white hover:border-primary/40"
+                  }`}
+                >
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-700">{template.label}</p>
+                  <p className="mt-1 text-xs text-slate-500">{template.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Content Type</label>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -573,6 +846,14 @@ export function AddContentSheet({
                 </button>
               ))}
             </div>
+            {suggestedContentType ? (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                <span>Auto-categorization suggests <strong>{suggestedContentType}</strong> based on selected files.</span>
+                <Button type="button" size="sm" variant="secondary" onClick={applySuggestedContentType}>
+                  Apply suggestion
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -601,6 +882,36 @@ export function AddContentSheet({
                 SCORM 1.2 and 2004 packages will be supported for interactive content delivery.
               </p>
             </div>
+          ) : isArticleContent ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-sm font-medium">Title</label>
+                  <Input
+                    placeholder="e.g., Module 1: Introducing the pathway"
+                    value={form.title}
+                    onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2 sm:max-w-[220px]">
+                  <label className="text-sm font-medium">Reading time (minutes)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="Optional"
+                    value={form.estimatedReadingMinutes}
+                    onChange={(event) => setForm((prev) => ({ ...prev, estimatedReadingMinutes: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <AuthoredContentEditor
+                value={form.bodyJson}
+                onChange={(nextBodyJson) => setForm((prev) => ({ ...prev, bodyJson: nextBodyJson }))}
+                disabled={isSubmitting}
+              />
+            </>
           ) : (
             <>
               {!isLinkContent ? (
@@ -756,7 +1067,32 @@ export function AddContentSheet({
                     <div className="space-y-2 rounded-xl border bg-background p-3">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold">Selected files</p>
-                        <Badge variant="info">{selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="info">{selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"}</Badge>
+                          {failedUploadCount > 0 ? <Badge variant="danger">{failedUploadCount} failed</Badge> : null}
+                          {completedUploadCount > 0 ? <Badge variant="success">{completedUploadCount} complete</Badge> : null}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={retryFailedUploads}
+                          disabled={isSubmitting || failedUploadCount === 0}
+                        >
+                          Retry failed
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={clearCompletedUploads}
+                          disabled={isSubmitting || completedUploadCount === 0}
+                        >
+                          Clear completed
+                        </Button>
                       </div>
 
                       <div className="space-y-3">
@@ -827,8 +1163,10 @@ export function AddContentSheet({
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Description</label>
-                <Input
-                  placeholder="Brief description of this content"
+                <textarea
+                  rows={3}
+                  className="flex w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]"
+                  placeholder="Add delivery context, learning objective, and facilitator notes for this upload batch."
                   value={form.description}
                   onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 />
@@ -862,12 +1200,16 @@ export function AddContentSheet({
             </Button>
             <Button type="submit" disabled={isSubmitting || !canSubmit}>
               {isSubmitting
-                ? "Uploading…"
+                ? isArticleContent
+                  ? "Creating..."
+                  : "Uploading..."
                 : isFileUploadMode
                   ? uploadableFiles.some((item) => item.status === "failed")
                     ? "Retry Uploads"
                     : `Upload ${uploadableFiles.length > 1 ? `${uploadableFiles.length} Files` : "Content"}`
-                  : "Create Content"}
+                  : isArticleContent
+                    ? "Create Lesson"
+                    : "Create Content"}
             </Button>
           </SheetFooter>
         </form>

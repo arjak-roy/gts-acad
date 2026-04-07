@@ -240,6 +240,7 @@ enum AuditLogLevel {
 }
 
 enum ContentType {
+  ARTICLE  @map("article")
   PDF      @map("pdf")
   DOCUMENT @map("document")
   VIDEO    @map("video")
@@ -1057,7 +1058,11 @@ model CourseContent {
   folderId             String?               @db.Uuid @map("folder_id")
   title                String                @db.VarChar(255)
   description          String?
+  excerpt              String?               @db.VarChar(500)
   contentType          ContentType           @map("content_type")
+  bodyJson             Json?                 @map("body_json")
+  renderedHtml         String?               @map("rendered_html")
+  estimatedReadingMinutes Int?               @map("estimated_reading_minutes")
   fileUrl              String?               @map("file_url")
   fileName             String?               @map("file_name") @db.VarChar(255)
   fileSize             Int?                  @map("file_size")
@@ -1068,6 +1073,8 @@ model CourseContent {
   status               ContentStatus         @default(DRAFT)
   isScorm              Boolean               @default(false) @map("is_scorm")
   scormMetadata        Json?                 @map("scorm_metadata")
+  isAiGenerated        Boolean               @default(false) @map("is_ai_generated")
+  aiGenerationMetadata Json?                 @map("ai_generation_metadata")
   createdById          String?               @db.Uuid @map("created_by_user_id")
   createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

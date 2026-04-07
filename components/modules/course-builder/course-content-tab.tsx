@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Eye, MoreHorizontal, PencilLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type ContentItem = {
+export type CourseContentItem = {
   id: string;
   courseId: string;
   courseName: string;
@@ -15,16 +18,23 @@ type ContentItem = {
   folderName: string | null;
   title: string;
   description: string | null;
+  excerpt: string | null;
   contentType: string;
+  estimatedReadingMinutes: number | null;
   fileUrl: string | null;
   fileName: string | null;
   fileSize: number | null;
+  mimeType: string | null;
+  storagePath: string | null;
+  storageProvider: string | null;
+  sortOrder: number;
   status: string;
   isScorm: boolean;
   createdAt: string;
 };
 
 const contentTypeLabels: Record<string, string> = {
+  ARTICLE: "Authored Lesson",
   PDF: "PDF",
   DOCUMENT: "Document",
   VIDEO: "Video",
@@ -51,15 +61,19 @@ export function CourseContentTab({
   folderId,
   folderName,
   onAddContent,
-  onSelectContent,
+  onViewContent,
+  onEditContent,
+  onDeleteContent,
 }: {
   courseId: string;
   folderId?: string;
   folderName?: string | null;
   onAddContent: () => void;
-  onSelectContent: (contentId: string) => void;
+  onViewContent: (contentId: string) => void;
+  onEditContent: (contentId: string) => void;
+  onDeleteContent: (content: CourseContentItem) => void;
 }) {
-  const [contents, setContents] = useState<ContentItem[]>([]);
+  const [contents, setContents] = useState<CourseContentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchContents = useCallback(async () => {
@@ -76,7 +90,7 @@ export function CourseContentTab({
       const url = params.size > 0 ? `/api/course-content?${params.toString()}` : "/api/course-content";
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error("Failed to load content.");
-      const result = (await response.json()) as { data?: ContentItem[] };
+      const result = (await response.json()) as { data?: CourseContentItem[] };
       setContents(result.data ?? []);
     } catch {
       toast.error("Failed to load course content.");
@@ -138,7 +152,7 @@ export function CourseContentTab({
               <button
                 type="button"
                 className="min-w-0 flex-1 text-left"
-                onClick={() => onSelectContent(content.id)}
+                onClick={() => onViewContent(content.id)}
               >
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">{content.title}</span>
@@ -155,24 +169,44 @@ export function CourseContentTab({
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{contentTypeLabels[content.contentType] ?? content.contentType}</span>
+                  {content.estimatedReadingMinutes ? <span>· {content.estimatedReadingMinutes} min read</span> : null}
                   {content.fileName && <span>· {content.fileName}</span>}
                   {content.fileSize && <span>· {formatFileSize(content.fileSize)}</span>}
                 </div>
+                <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                  {content.excerpt || content.description || "No description yet."}
+                </p>
               </button>
               <div className="flex items-center gap-2">
-                {content.fileUrl ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => window.open(content.fileUrl ?? "", "_blank", "noopener,noreferrer")}
-                  >
-                    View
-                  </Button>
-                ) : null}
                 <Badge variant={statusVariant[content.status] ?? "info"} className="shrink-0">
                   {content.status}
                 </Badge>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9">
+                      <MoreHorizontal className="h-4 w-4" />
+                      <span className="sr-only">Open content actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <CanAccess permission="course_content.edit">
+                      <DropdownMenuItem onSelect={() => onEditContent(content.id)}>
+                        <PencilLine className="mr-2 h-4 w-4" />
+                        Edit
+                      </DropdownMenuItem>
+                    </CanAccess>
+                    <DropdownMenuItem onSelect={() => onViewContent(content.id)}>
+                      <Eye className="mr-2 h-4 w-4" />
+                      View
+                    </DropdownMenuItem>
+                    <CanAccess permission="course_content.delete">
+                      <DropdownMenuItem className="text-rose-700 focus:bg-rose-50 focus:text-rose-700" onSelect={() => onDeleteContent(content)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </CanAccess>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           ))}

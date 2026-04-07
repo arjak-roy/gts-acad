@@ -1,5 +1,7 @@
 import { ContentStatus, ContentType, UploadStorageProvider } from "@prisma/client";
 
+import type { AuthoredContentDocument } from "@/lib/authored-content";
+
 export type ContentListItem = {
   id: string;
   courseId: string;
@@ -8,7 +10,9 @@ export type ContentListItem = {
   folderName: string | null;
   title: string;
   description: string | null;
+  excerpt: string | null;
   contentType: ContentType;
+  estimatedReadingMinutes: number | null;
   fileUrl: string | null;
   fileName: string | null;
   fileSize: number | null;
@@ -22,10 +26,29 @@ export type ContentListItem = {
 };
 
 export type ContentDetail = ContentListItem & {
+  bodyJson: AuthoredContentDocument | null;
+  renderedHtml: string | null;
   scormMetadata: unknown;
+  isAiGenerated: boolean;
+  aiGenerationMetadata: unknown;
   createdByName: string | null;
   updatedAt: Date;
   batchCount: number;
+};
+
+export type CandidateContentDetail = {
+  id: string;
+  title: string;
+  description: string | null;
+  excerpt: string | null;
+  contentType: ContentType;
+  estimatedReadingMinutes: number | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  renderedHtml: string | null;
+  bodyJson: AuthoredContentDocument | null;
+  updatedAt: Date;
 };
 
 export type ContentCreateResult = {

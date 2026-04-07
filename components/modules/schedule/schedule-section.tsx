@@ -820,7 +820,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       ]);
 
       if (!assignedResponse.ok || !availableResponse.ok) {
-        throw new Error("Failed to load course-builder assessments for the selected batch.");
+        throw new Error("Failed to load assessments for the selected batch.");
       }
 
       const assignedPayload = (await assignedResponse.json()) as AssessmentOptionsResponse<AssignedBatchAssessment>;
@@ -868,7 +868,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       ));
     } catch (loadError) {
       setAssessmentOptions([]);
-      setAssessmentOptionsError(loadError instanceof Error ? loadError.message : "Failed to load course-builder assessments for the selected batch.");
+      setAssessmentOptionsError(loadError instanceof Error ? loadError.message : "Failed to load assessments for the selected batch.");
     } finally {
       setAssessmentOptionsLoading(false);
     }
@@ -1284,7 +1284,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
             {supportsAssessmentPool ? (
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Course Builder Assessment</label>
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Linked Assessment</label>
                 <select
                   value={form.linkedAssessmentPoolId}
                   onChange={(event) => setForm((current) => ({ ...current, linkedAssessmentPoolId: event.target.value }))}
@@ -1299,12 +1299,12 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                   ))}
                 </select>
                 <p className="text-xs leading-5 text-slate-500">
-                  Choose a published assessment from Course Builder for this batch. If it is not already assigned, it will be added automatically.
+                  Choose a published assessment for this batch. If it is not already assigned, it will be added automatically.
                 </p>
                 {assessmentOptionsLoading ? <p className="text-xs text-slate-500">Loading batch assessment options...</p> : null}
                 {assessmentOptionsError ? <p className="text-xs text-rose-600">{assessmentOptionsError}</p> : null}
                 {!assessmentOptionsLoading && !assessmentOptionsError && form.batchId && assessmentOptions.length === 0 ? (
-                  <p className="text-xs text-slate-500">No published course-builder assessments are available for this batch yet.</p>
+                  <p className="text-xs text-slate-500">No published assessments are available for this batch yet.</p>
                 ) : null}
               </div>
             ) : null}

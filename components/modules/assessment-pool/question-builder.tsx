@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -274,10 +275,12 @@ function MultiInputFields({
 export function QuestionBuilder({
   poolId,
   defaultType,
+  questionCount,
   onQuestionAdded,
 }: {
   poolId: string;
   defaultType: string;
+  questionCount?: number;
   onQuestionAdded: () => void;
 }) {
   const [form, setForm] = useState<QuestionForm>({
@@ -302,6 +305,7 @@ export function QuestionBuilder({
   const [twoPartA, setTwoPartA] = useState("");
   const [twoPartB, setTwoPartB] = useState("");
   const [multiFields, setMultiFields] = useState<{ label: string; expectedAnswer: string }[]>([{ label: "", expectedAnswer: "" }]);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const buildPayload = () => {
     let options: unknown = null;
@@ -334,11 +338,78 @@ export function QuestionBuilder({
     return { options, correctAnswer };
   };
 
+  const validateQuestionBeforeSubmit = (): string | null => {
+    if (form.questionText.trim().length < 5) {
+      return "Question text must be at least 5 characters.";
+    }
+
+    if (!Number.isFinite(form.marks) || form.marks < 1) {
+      return "Marks must be at least 1.";
+    }
+
+    if (form.questionType === "MCQ") {
+      const usableOptions = mcqOptions.filter((option) => option.text.trim().length > 0);
+      if (usableOptions.length < 2) {
+        return "MCQ requires at least two non-empty options.";
+      }
+
+      const selectedOption = mcqOptions.find((option) => option.label === mcqCorrect);
+      if (!selectedOption || selectedOption.text.trim().length === 0) {
+        return "Select a valid correct option for this MCQ.";
+      }
+    }
+
+    if (form.questionType === "NUMERIC") {
+      const parsedValue = Number(numericValue);
+      const parsedTolerance = Number(numericTolerance);
+      if (!Number.isFinite(parsedValue)) {
+        return "Enter a valid numeric answer.";
+      }
+
+      if (!Number.isFinite(parsedTolerance) || parsedTolerance < 0) {
+        return "Numeric tolerance cannot be negative.";
+      }
+    }
+
+    if (form.questionType === "FILL_IN_THE_BLANK") {
+      const answers = fillAnswers.map((answer) => answer.trim()).filter(Boolean);
+      if (answers.length < 1) {
+        return "Add at least one accepted answer for fill-in-the-blank.";
+      }
+    }
+
+    if (form.questionType === "TWO_PART_ANALYSIS") {
+      const options = twoPartOptions.map((option) => option.trim()).filter(Boolean);
+      if (options.length < 2) {
+        return "Two-part analysis needs at least two shared options.";
+      }
+
+      if (!twoPartA || !twoPartB) {
+        return "Select both Part A and Part B correct answers.";
+      }
+    }
+
+    if (form.questionType === "MULTI_INPUT_REASONING") {
+      const validFields = multiFields.filter((field) => field.label.trim() && field.expectedAnswer.trim());
+      if (validFields.length < 1) {
+        return "Add at least one complete input field and expected answer.";
+      }
+    }
+
+    return null;
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.questionText.trim()) return;
+
+    const nextValidationError = validateQuestionBeforeSubmit();
+    if (nextValidationError) {
+      setValidationError(nextValidationError);
+      return;
+    }
 
     const { options, correctAnswer } = buildPayload();
+    setValidationError(null);
 
     setIsSubmitting(true);
     try {
@@ -362,6 +433,7 @@ export function QuestionBuilder({
 
       toast.success("Question added.");
       setForm((prev) => ({ ...prev, questionText: "", explanation: "" }));
+      setValidationError(null);
       onQuestionAdded();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add question.");
@@ -372,8 +444,21 @@ export function QuestionBuilder({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="space-y-1">
+          <h4 className="text-sm font-medium">Add Question</h4>
+          <p className="text-xs text-muted-foreground">
+            {questionCount && questionCount > 0
+              ? `${questionCount} question${questionCount === 1 ? "" : "s"} already in this assessment.`
+              : "Add your first question to unlock publishing."}
+          </p>
+        </div>
+        <Badge variant={questionCount && questionCount > 0 ? "success" : "warning"}>
+          {questionCount && questionCount > 0 ? "Publish Ready" : "Needs Questions"}
+        </Badge>
+      </div>
+
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium">Add Question</h4>
         <div className="flex gap-1">
           {QUESTION_TYPES.map((type) => (
             <button
@@ -384,13 +469,22 @@ export function QuestionBuilder({
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
               }`}
-              onClick={() => setForm((prev) => ({ ...prev, questionType: type.value }))}
+              onClick={() => {
+                setValidationError(null);
+                setForm((prev) => ({ ...prev, questionType: type.value }));
+              }}
             >
               {type.label}
             </button>
           ))}
         </div>
       </div>
+
+      {validationError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {validationError}
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Question Text</label>
@@ -475,7 +569,7 @@ export function QuestionBuilder({
 
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={isSubmitting || !form.questionText.trim()}>
-          {isSubmitting ? "Adding…" : "Add Question"}
+          {isSubmitting ? "Adding..." : "Add Question"}
         </Button>
       </div>
     </form>

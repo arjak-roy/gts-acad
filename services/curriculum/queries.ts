@@ -63,7 +63,7 @@ type CurriculumDetailRecord = {
         content: {
           title: string;
           description: string | null;
-          contentType: "PDF" | "DOCUMENT" | "VIDEO" | "SCORM" | "LINK" | "OTHER";
+          contentType: "ARTICLE" | "PDF" | "DOCUMENT" | "VIDEO" | "SCORM" | "LINK" | "OTHER";
           status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
           folder: { name: string } | null;
           course: { name: string };

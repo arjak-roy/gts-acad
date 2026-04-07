@@ -4,13 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BookOpen, Boxes, GripVertical, Plus, Save, Trash2, Workflow } from "lucide-react";
+import { BookOpen, Boxes, Eye, GripVertical, Plus, Save, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
 
+import { CurriculumHierarchyView } from "@/components/modules/curriculum-builder/curriculum-hierarchy-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRbac } from "@/lib/rbac-context";
@@ -132,6 +134,8 @@ type CurriculumBatchMapping = {
   assignedAt: string | null;
   assignedByName: string | null;
 };
+
+type WorkspacePopupView = "SEQUENCE" | "REFERENCES" | "BATCHES";
 
 const selectClassName = "block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
 const textareaClassName = "flex min-h-[96px] w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
@@ -1020,6 +1024,35 @@ function CurriculumBatchMappingCard({
   );
 }
 
+function WorkspaceScreenPopup({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col overflow-hidden p-0 sm:h-[calc(100vh-3rem)] sm:w-[calc(100vw-3rem)]">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {children}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function CurriculumBuilderPage() {
   const { can } = useRbac();
   const canCreateCurriculum = can("curriculum.create");
@@ -1046,6 +1079,7 @@ export default function CurriculumBuilderPage() {
   const [showAddModuleForm, setShowAddModuleForm] = useState(false);
   const [newModuleTitle, setNewModuleTitle] = useState("");
   const [newModuleDescription, setNewModuleDescription] = useState("");
+  const [activeWorkspacePopup, setActiveWorkspacePopup] = useState<WorkspacePopupView | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const selectedCourse = courses.find((course) => course.id === selectedCourseId) ?? null;
@@ -1239,6 +1273,16 @@ export default function CurriculumBuilderPage() {
     void loadCurriculumDetail(selectedCurriculumId);
     void loadCurriculumBatches(selectedCurriculumId);
   }, [loadCurriculumBatches, loadCurriculumDetail, selectedCurriculumId]);
+
+  useEffect(() => {
+    if (!selectedCurriculumId) {
+      setActiveWorkspacePopup((current) => (
+        current === "SEQUENCE" || current === "BATCHES"
+          ? null
+          : current
+      ));
+    }
+  }, [selectedCurriculumId]);
 
   useEffect(() => {
     if (!curriculum) {
@@ -1641,91 +1685,120 @@ export default function CurriculumBuilderPage() {
   const currentStageCount = curriculum?.stageCount ?? selectedCurriculumSummary?.stageCount ?? 0;
   const currentItemCount = curriculum?.itemCount ?? selectedCurriculumSummary?.itemCount ?? 0;
   const currentBatchCount = curriculum?.batchCount ?? selectedCurriculumSummary?.batchCount ?? 0;
+  const mappedBatchCount = curriculumBatches.filter((batch) => batch.isMapped).length;
+  const availableBatchCount = curriculumBatches.length - mappedBatchCount;
+  const activeSequenceTitle = selectedCurriculumId ? currentCurriculumTitle : "Select a curriculum variant";
+  const activeSequenceSummary = !selectedCurriculumId
+    ? "Choose a curriculum from the left to edit order, structure, and batch rollout."
+    : isLoadingCurriculum && !curriculum
+      ? "Loading the selected curriculum sequence..."
+      : `${currentModuleCount} modules · ${currentStageCount} stages · ${currentItemCount} items · ${currentBatchCount} mapped batches`;
+  const activeSequenceDescription = curriculum?.description
+    || selectedCurriculumSummary?.description
+    || "Use the details card below to define the intent, audience, and rollout status for this curriculum variant.";
+  const canPreviewSequence = Boolean(curriculum) && !isLoadingCurriculum;
+
+  function toggleWorkspacePopup(nextPopup: WorkspacePopupView) {
+    setActiveWorkspacePopup((current) => current === nextPopup ? null : nextPopup);
+  }
 
   return (
     <div className="space-y-6">
-      <Card className="overflow-hidden border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fbff_50%,_#edf4ff_100%)]">
-        <CardContent className="pt-6">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="space-y-5">
-              <div className="space-y-3">
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Curriculum Builder</p>
-                <div className="flex items-start gap-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-white text-primary shadow-sm">
-                    <Workflow className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Curriculum Workspace</h1>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                      Build multiple curriculum variants per course, shape delivery order with drag-and-drop, and keep batch mapping visible alongside the structure being edited.
-                    </p>
-                  </div>
+      <Card className="overflow-hidden border-slate-200 bg-white/95">
+        <CardContent className="py-3">
+          <div className="grid gap-2 xl:grid-cols-[minmax(0,220px)_minmax(230px,280px)_minmax(0,1fr)_auto] xl:items-center">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-primary shadow-sm">
+                  <Workflow className="h-4 w-4" />
                 </div>
+                <h1 className="text-lg font-semibold tracking-tight text-slate-950">Curriculum Builder</h1>
+                <Badge variant="info" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">
+                  Sequence-first
+                </Badge>
               </div>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                Shape sequence, references, and rollout from one compact workspace.
+              </p>
+            </div>
 
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Course</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{selectedCourse?.name ?? "Select a course"}</p>
-                </div>
-                <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Curricula</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{isLoadingCurricula ? "…" : curricula.length}</p>
-                </div>
-                <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Content Sources</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{isLoadingReferences ? "…" : contentOptions.length}</p>
-                </div>
-                <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Assessments</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{isLoadingReferences ? "…" : assessmentOptions.length}</p>
-                </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Course Scope</label>
+              <select
+                value={selectedCourseId}
+                onChange={(event) => {
+                  setSelectedCourseId(event.target.value);
+                  setCurricula([]);
+                  setSelectedCurriculumId("");
+                  setCurriculum(null);
+                  setCurriculumBatches([]);
+                  setActiveWorkspacePopup(null);
+                  setShowAddCurriculumForm(false);
+                  setShowAddModuleForm(false);
+                  setNewModuleTitle("");
+                  setNewModuleDescription("");
+                }}
+                className={selectClassName}
+                disabled={isLoadingCourses || isMutating}
+              >
+                <option value="">Select a course...</option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>{course.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Active Sequence</p>
+                {selectedCurriculumId && currentCurriculumStatus ? (
+                  <Badge variant={statusVariant[currentCurriculumStatus] ?? "info"}>{currentCurriculumStatus}</Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{activeSequenceTitle}</p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">{activeSequenceSummary}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Scope: {selectedCourse?.name ?? "Select a course"}</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Curricula: {isLoadingCurricula ? "..." : curricula.length}</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Content: {isLoadingReferences ? "..." : contentOptions.length}</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Assessments: {isLoadingReferences ? "..." : assessmentOptions.length}</span>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">Builder Context</p>
-              <div className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Course</label>
-                  <select
-                    value={selectedCourseId}
-                    onChange={(event) => {
-                      setSelectedCourseId(event.target.value);
-                      setCurricula([]);
-                      setSelectedCurriculumId("");
-                      setCurriculum(null);
-                      setCurriculumBatches([]);
-                      setShowAddCurriculumForm(false);
-                      setShowAddModuleForm(false);
-                      setNewModuleTitle("");
-                      setNewModuleDescription("");
-                    }}
-                    className={selectClassName}
-                    disabled={isLoadingCourses || isMutating}
-                  >
-                    <option value="">Select a course...</option>
-                    {courses.map((course) => (
-                      <option key={course.id} value={course.id}>{course.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">Current workspace</p>
-                  <p className="mt-1">{currentCurriculumTitle}</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    Select a curriculum variant on the left to edit its structure. Batch mappings stay course-constrained automatically.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">Recommended flow</p>
-                  <p className="mt-2 leading-6">
-                    Create the curriculum variant, define modules and stages, add content and assessments, then map the finished sequence to eligible batches.
-                  </p>
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 rounded-xl"
+                variant={activeWorkspacePopup === "SEQUENCE" ? "default" : "secondary"}
+                onClick={() => toggleWorkspacePopup("SEQUENCE")}
+                disabled={!canPreviewSequence}
+              >
+                <Eye className="h-4 w-4" />
+                View Sequence
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 rounded-xl"
+                variant={activeWorkspacePopup === "REFERENCES" ? "default" : "secondary"}
+                onClick={() => toggleWorkspacePopup("REFERENCES")}
+                disabled={!selectedCourseId}
+              >
+                <BookOpen className="h-4 w-4" />
+                Reference Inventory
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 rounded-xl"
+                variant={activeWorkspacePopup === "BATCHES" ? "default" : "secondary"}
+                onClick={() => toggleWorkspacePopup("BATCHES")}
+                disabled={!selectedCurriculumId}
+              >
+                <Boxes className="h-4 w-4" />
+                Batch Mapping
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -1736,25 +1809,32 @@ export default function CurriculumBuilderPage() {
           Select a course to begin building its curriculum workspace.
         </div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
           <Card className="h-fit xl:sticky xl:top-6">
-            <CardHeader>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <CardTitle>Curriculum Variants</CardTitle>
-                  <CardDescription>Select a course-specific variant or create a new one.</CardDescription>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <CardTitle className="text-base">Curriculum Variants</CardTitle>
+                  <CardDescription>Choose or create a course-specific variant.</CardDescription>
                 </div>
                 {canCreateCurriculum && !showAddCurriculumForm ? (
-                  <Button type="button" size="sm" variant="secondary" disabled={isMutating} onClick={() => setShowAddCurriculumForm(true)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 shrink-0 rounded-xl"
+                    disabled={isMutating}
+                    onClick={() => setShowAddCurriculumForm(true)}
+                  >
                     <Plus className="h-4 w-4" />
                     New Curriculum
                   </Button>
                 ) : null}
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 pt-0">
               {canCreateCurriculum && showAddCurriculumForm ? (
-                <div className="space-y-3 rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/70 p-4">
+                <div className="space-y-2.5 rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/70 p-3">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Curriculum title</label>
                     <Input
@@ -1774,10 +1854,11 @@ export default function CurriculumBuilderPage() {
                       placeholder="Optional notes about who this curriculum is for or how it differs."
                     />
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <Button
                       type="button"
                       variant="secondary"
+                      className="h-9 rounded-xl"
                       disabled={isCreatingCurriculum || isMutating}
                       onClick={() => {
                         setNewCurriculumTitle("");
@@ -1787,7 +1868,12 @@ export default function CurriculumBuilderPage() {
                     >
                       Cancel
                     </Button>
-                    <Button type="button" disabled={isCreatingCurriculum || isMutating || !newCurriculumTitle.trim()} onClick={() => void handleCreateCurriculum()}>
+                    <Button
+                      type="button"
+                      className="h-9 rounded-xl"
+                      disabled={isCreatingCurriculum || isMutating || !newCurriculumTitle.trim()}
+                      onClick={() => void handleCreateCurriculum()}
+                    >
                       {isCreatingCurriculum ? "Creating…" : "Create Curriculum"}
                     </Button>
                   </div>
@@ -1811,23 +1897,28 @@ export default function CurriculumBuilderPage() {
                       key={item.id}
                       type="button"
                       className={cn(
-                        "w-full rounded-2xl border p-4 text-left transition-colors",
+                        "w-full rounded-xl border px-3 py-3 text-left transition-colors",
                         selectedCurriculumId === item.id
                           ? "border-primary bg-primary/5 shadow-sm"
                           : "border-[#dde1e6] bg-white hover:border-primary/40",
                       )}
                       onClick={() => setSelectedCurriculumId(item.id)}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                        <Badge variant={statusVariant[item.status] ?? "info"}>{item.status}</Badge>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
+                          <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                            {item.description || "No description yet."}
+                          </p>
+                        </div>
+                        <Badge variant={statusVariant[item.status] ?? "info"} className="shrink-0">{item.status}</Badge>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-xs text-slate-500">
-                        {item.description || "No description yet."}
-                      </p>
-                      <p className="mt-3 text-xs text-slate-500">
-                        {item.moduleCount} modules · {item.stageCount} stages · {item.itemCount} items · {item.batchCount} mapped batches
-                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.moduleCount} modules</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.stageCount} stages</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.itemCount} items</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.batchCount} mapped</span>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1864,36 +1955,22 @@ export default function CurriculumBuilderPage() {
               </div>
             ) : curriculum ? (
               <div className="space-y-6">
-                <Card className="overflow-hidden border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f7fbff_55%,_#edf4ff_100%)]">
-                  <CardContent className="pt-6">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="space-y-2">
+                <Card className="overflow-hidden border-slate-200 bg-white/95">
+                  <CardContent className="py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-xl font-semibold text-slate-950">{currentCurriculumTitle}</p>
+                          <p className="text-lg font-semibold text-slate-950">{currentCurriculumTitle}</p>
                           {currentCurriculumStatus ? <Badge variant={statusVariant[currentCurriculumStatus] ?? "info"}>{currentCurriculumStatus}</Badge> : null}
                         </div>
-                        <p className="max-w-3xl text-sm leading-6 text-slate-600">
-                          {curriculum.description || "Use the details card below to define the intent, audience, and rollout status for this curriculum variant."}
-                        </p>
+                        <p className="max-w-3xl text-sm leading-6 text-slate-600">{activeSequenceDescription}</p>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-4">
-                        <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Modules</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{currentModuleCount}</p>
-                        </div>
-                        <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Stages</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{currentStageCount}</p>
-                        </div>
-                        <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Items</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{currentItemCount}</p>
-                        </div>
-                        <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm">
-                          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mapped Batches</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{currentBatchCount}</p>
-                        </div>
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        <Badge variant="info">Modules: {currentModuleCount}</Badge>
+                        <Badge variant="info">Stages: {currentStageCount}</Badge>
+                        <Badge variant="info">Items: {currentItemCount}</Badge>
+                        <Badge variant="info">Mapped Batches: {currentBatchCount}</Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -2003,60 +2080,176 @@ export default function CurriculumBuilderPage() {
               </Card>
             )}
           </div>
+        </div>
+      )}
 
-          <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+      <WorkspaceScreenPopup
+        open={activeWorkspacePopup === "SEQUENCE"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "SEQUENCE" : null)}
+        title="Curriculum Sequence Preview"
+        description="Review the current module, stage, and item ordering in a read-only sequence view."
+      >
+        {curriculum ? (
+          <CurriculumHierarchyView curriculum={curriculum} />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
+            Select a curriculum variant to preview its sequence.
+          </div>
+        )}
+      </WorkspaceScreenPopup>
+
+      <WorkspaceScreenPopup
+        open={activeWorkspacePopup === "REFERENCES"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "REFERENCES" : null)}
+        title="Reference Inventory"
+        description="Review the course-scoped content and assessment references available for curriculum composition."
+      >
+        <div className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="border-slate-200 bg-slate-50/70">
+              <CardContent className="py-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Content Library</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{isLoadingReferences ? "..." : contentOptions.length}</p>
+                <p className="mt-1 text-sm text-slate-500">Active content items available to map into stages.</p>
+              </CardContent>
+            </Card>
+            <Card className="border-slate-200 bg-slate-50/70">
+              <CardContent className="py-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Assessment Pool</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{isLoadingReferences ? "..." : assessmentOptions.length}</p>
+                <p className="mt-1 text-sm text-slate-500">Reusable assessments available for this course.</p>
+              </CardContent>
+            </Card>
+            <Card className="border-slate-200 bg-slate-50/70">
+              <CardContent className="py-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Mapping Readiness</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{selectedCurriculumId ? currentBatchCount : "-"}</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {selectedCurriculumId
+                    ? "Batches currently linked to the active curriculum."
+                    : "Select a curriculum variant to review rollout readiness."}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Reference Inventory</CardTitle>
-                <CardDescription>These reusable assets are available for the selected course when composing stages.</CardDescription>
+                <CardTitle>Content Library Items</CardTitle>
+                <CardDescription>Course-ready content that can be attached to stages in the sequence.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <BookOpen className="h-4 w-4 text-primary" />
-                    Content library
+              <CardContent>
+                {isLoadingReferences ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    <Skeleton className="h-16 w-full rounded-xl" />
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">{isLoadingReferences ? "Loading references..." : `${contentOptions.length} active content item${contentOptions.length === 1 ? "" : "s"}`}</p>
-                </div>
-                <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Boxes className="h-4 w-4 text-primary" />
-                    Assessment pool
+                ) : contentOptions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    No active content references are available for this course yet.
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">{isLoadingReferences ? "Loading references..." : `${assessmentOptions.length} reusable assessment${assessmentOptions.length === 1 ? "" : "s"}`}</p>
-                </div>
-                <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Workflow className="h-4 w-4 text-primary" />
-                    Mapping readiness
+                ) : (
+                  <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1">
+                    {contentOptions.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-[#dde1e6] bg-white p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                          <Badge variant="info">{item.contentType}</Badge>
+                          <Badge variant={statusVariant[item.status] ?? "info"}>{item.status}</Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">{item.folderName ? `Folder: ${item.folderName}` : "Library root"}</p>
+                      </div>
+                    ))}
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {selectedCurriculumId
-                      ? `${currentBatchCount} batch mapping${currentBatchCount === 1 ? "" : "s"} currently reference this curriculum.`
-                      : "Select a curriculum variant to review its batch rollout readiness."}
-                  </p>
-                </div>
+                )}
               </CardContent>
             </Card>
 
-            {selectedCurriculumId ? (
-              <CurriculumBatchMappingCard
-                batches={curriculumBatches}
-                isLoading={isLoadingCurriculumBatches}
-                disabled={isMutating}
-                canEdit={canEditCurriculum}
-                onToggle={handleToggleBatchMapping}
-              />
-            ) : (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-slate-500">
-                  Select a curriculum variant to review which batches can receive it.
-                </CardContent>
-              </Card>
-            )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Assessment References</CardTitle>
+                <CardDescription>Published or draft assessments available to sequence into stages.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingReferences ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                  </div>
+                ) : assessmentOptions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    No reusable assessments are available for this course yet.
+                  </div>
+                ) : (
+                  <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1">
+                    {assessmentOptions.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-[#dde1e6] bg-white p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                          <Badge variant="info">{item.questionType}</Badge>
+                          <Badge variant="info">{item.difficultyLevel}</Badge>
+                          <Badge variant={statusVariant[item.status] ?? "info"}>{item.status}</Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">Code: {item.code}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
-      )}
+      </WorkspaceScreenPopup>
+
+      <WorkspaceScreenPopup
+        open={activeWorkspacePopup === "BATCHES"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "BATCHES" : null)}
+        title="Batch Mapping"
+        description="Assign or remove the active curriculum for eligible batches without compressing the sequence editor."
+      >
+        {selectedCurriculumId ? (
+          <div className="space-y-6">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card className="border-slate-200 bg-slate-50/70">
+                <CardContent className="py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Active Curriculum</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">{currentCurriculumTitle}</p>
+                  <p className="mt-1 text-sm text-slate-500">Current status: {currentCurriculumStatus ?? "Not selected"}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-slate-200 bg-slate-50/70">
+                <CardContent className="py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Mapped Batches</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{isLoadingCurriculumBatches ? "..." : mappedBatchCount}</p>
+                  <p className="mt-1 text-sm text-slate-500">Batches currently assigned to this curriculum.</p>
+                </CardContent>
+              </Card>
+              <Card className="border-slate-200 bg-slate-50/70">
+                <CardContent className="py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Available Batches</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{isLoadingCurriculumBatches ? "..." : availableBatchCount}</p>
+                  <p className="mt-1 text-sm text-slate-500">Eligible batches that can still receive this curriculum.</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <CurriculumBatchMappingCard
+              batches={curriculumBatches}
+              isLoading={isLoadingCurriculumBatches}
+              disabled={isMutating}
+              canEdit={canEditCurriculum}
+              onToggle={handleToggleBatchMapping}
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
+            Select a curriculum variant to review which batches can receive it.
+          </div>
+        )}
+      </WorkspaceScreenPopup>
     </div>
   );
 }

@@ -97,10 +97,13 @@ export function AssessmentPoolTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {pools.length} assessment{pools.length !== 1 ? "s" : ""} · {published} published
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            {pools.length} assessment{pools.length !== 1 ? "s" : ""} · {published} published
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Guided create opens the new assessment directly in question builder after save.</p>
+        </div>
         <div className="flex gap-2">
           <CanAccess permission="assessment_pool.create">
             <Button size="sm" variant="secondary" onClick={onAiGenerate} className="gap-1.5">

@@ -1,7 +1,9 @@
 import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import type { ContentDetail, ContentListItem } from "@/services/course-content/types";
+import { parseAuthoredContentDocument } from "@/lib/authored-content";
+import { getCandidateProfileByUserIdService } from "@/services/learners-service";
+import type { CandidateContentDetail, ContentDetail, ContentListItem } from "@/services/course-content/types";
 
 export async function listCourseContentService(courseId?: string, folderId?: string): Promise<ContentListItem[]> {
   if (!isDatabaseConfigured) {
@@ -30,7 +32,9 @@ export async function listCourseContentService(courseId?: string, folderId?: str
       folderId: true,
       title: true,
       description: true,
+      excerpt: true,
       contentType: true,
+      estimatedReadingMinutes: true,
       fileUrl: true,
       fileName: true,
       fileSize: true,
@@ -54,7 +58,9 @@ export async function listCourseContentService(courseId?: string, folderId?: str
     folderName: c.folder?.name ?? null,
     title: c.title,
     description: c.description,
+    excerpt: c.excerpt,
     contentType: c.contentType,
+    estimatedReadingMinutes: c.estimatedReadingMinutes,
     fileUrl: c.fileUrl,
     fileName: c.fileName,
     fileSize: c.fileSize,
@@ -81,7 +87,11 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
       folderId: true,
       title: true,
       description: true,
+      excerpt: true,
       contentType: true,
+      bodyJson: true,
+      renderedHtml: true,
+      estimatedReadingMinutes: true,
       fileUrl: true,
       fileName: true,
       fileSize: true,
@@ -92,6 +102,8 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
       status: true,
       isScorm: true,
       scormMetadata: true,
+      isAiGenerated: true,
+      aiGenerationMetadata: true,
       createdAt: true,
       updatedAt: true,
       folder: { select: { name: true } },
@@ -111,7 +123,11 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
     folderName: content.folder?.name ?? null,
     title: content.title,
     description: content.description,
+    excerpt: content.excerpt,
     contentType: content.contentType,
+    bodyJson: parseAuthoredContentDocument(content.bodyJson),
+    renderedHtml: content.renderedHtml,
+    estimatedReadingMinutes: content.estimatedReadingMinutes,
     fileUrl: content.fileUrl,
     fileName: content.fileName,
     fileSize: content.fileSize,
@@ -122,9 +138,90 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
     status: content.status,
     isScorm: content.isScorm,
     scormMetadata: content.scormMetadata,
+    isAiGenerated: content.isAiGenerated,
+    aiGenerationMetadata: content.aiGenerationMetadata,
     createdByName: content.createdBy?.name ?? null,
     createdAt: content.createdAt,
     updatedAt: content.updatedAt,
     batchCount: content._count.batchContentMappings,
+  };
+}
+
+export async function getCandidateAccessibleContentByIdService(
+  userId: string,
+  contentId: string,
+): Promise<CandidateContentDetail | null> {
+  const profile = await getCandidateProfileByUserIdService(userId);
+  const batchIds = Array.from(new Set(profile?.activeEnrollments.map((enrollment) => enrollment.batchId) ?? []));
+
+  if (!isDatabaseConfigured || batchIds.length === 0) {
+    return null;
+  }
+
+  const content = await prisma.courseContent.findFirst({
+    where: {
+      id: contentId,
+      status: "PUBLISHED",
+      OR: [
+        {
+          batchContentMappings: {
+            some: {
+              batchId: { in: batchIds },
+            },
+          },
+        },
+        {
+          curriculumStageItems: {
+            some: {
+              stage: {
+                module: {
+                  curriculum: {
+                    status: "PUBLISHED",
+                    batchMappings: {
+                      some: {
+                        batchId: { in: batchIds },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      excerpt: true,
+      contentType: true,
+      estimatedReadingMinutes: true,
+      fileUrl: true,
+      fileName: true,
+      mimeType: true,
+      renderedHtml: true,
+      bodyJson: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!content) {
+    return null;
+  }
+
+  return {
+    id: content.id,
+    title: content.title,
+    description: content.description,
+    excerpt: content.excerpt,
+    contentType: content.contentType,
+    estimatedReadingMinutes: content.estimatedReadingMinutes,
+    fileUrl: content.fileUrl,
+    fileName: content.fileName,
+    mimeType: content.mimeType,
+    renderedHtml: content.renderedHtml,
+    bodyJson: parseAuthoredContentDocument(content.bodyJson),
+    updatedAt: content.updatedAt,
   };
 }

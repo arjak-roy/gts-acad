@@ -680,7 +680,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                           <div className="mt-3 space-y-3 text-sm text-slate-600">
                             <p>
                               {assignedAssessmentCount === 0
-                                ? "No course-builder assessments are mapped to this batch yet."
+                                ? "No assessments are mapped to this batch yet."
                                 : `${assignedAssessmentCount} assessment mapping${assignedAssessmentCount === 1 ? "" : "s"} ready for batch delivery.`}
                             </p>
                             <p>
@@ -850,7 +850,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                             <div>
                               <p className="text-lg font-semibold text-slate-950">Assessment Workspace</p>
                               <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Review the Course Builder assessments assigned to this batch and manage which published pools stay available for schedules and delivery.
+                                Review the published assessments assigned to this batch and manage which pools stay available for schedules and delivery.
                               </p>
                             </div>
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-primary">
@@ -898,7 +898,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                   ))}
                                 </select>
                                 <p className="text-xs leading-5 text-slate-500">
-                                  Only published Course Builder assessments from this batch&apos;s course are available here.
+                                  Only published assessments from this batch&apos;s course are available here.
                                 </p>
                               </div>
                               <Button
@@ -915,9 +915,9 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                           )}
 
                           <Button asChild variant="secondary" size="sm">
-                            <Link href="/course-builder/assessments">
+                            <Link href="/assessments">
                               <ExternalLink className="h-4 w-4" />
-                              Open Assessment Builder
+                              Open Assessments
                             </Link>
                           </Button>
                         </CardContent>
@@ -989,7 +989,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                       <div className="rounded-3xl border border-dashed bg-white p-8 text-center shadow-sm">
                         <p className="text-base font-semibold text-slate-900">No assessments mapped yet</p>
                         <p className="mt-2 text-sm leading-6 text-slate-500">
-                          Assign published Course Builder assessments here so schedule events can attach them without leaving the batch workflow.
+                          Assign published assessments here so schedule events can attach them without leaving the batch workflow.
                         </p>
                       </div>
                     )}

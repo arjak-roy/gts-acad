@@ -153,9 +153,9 @@ export function AppHeader() {
                 </DropdownMenuItem>
               </CanAccess>
               <DropdownMenuSeparator />
-              <CanAccess permission="assessments.create">
+              <CanAccess permission="assessment_pool.view">
                 <DropdownMenuItem asChild>
-                  <Link href="/assessments">Schedule Assessment</Link>
+                  <Link href="/assessments">Assessment Builder</Link>
                 </DropdownMenuItem>
               </CanAccess>
               <CanAccess permission="certifications.create">

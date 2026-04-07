@@ -90,6 +90,18 @@ npm run db:seed
 
 That auth sync now applies the email 2FA, session registry, activation token, and login lockout schema changes.
 
+If you already have an existing database and need the authored lesson course-content fields added without a full push, run:
+
+```bash
+npm run db:sync:authored-content
+```
+
+For the test database:
+
+```bash
+npm run db:test:sync:authored-content
+```
+
 For the test database:
 
 ```bash

@@ -313,7 +313,10 @@ export async function deleteUploadedSettingsAsset(value: unknown) {
   await deleteStoredUploadAsset(value);
 }
 
-export async function deleteStoredUploadAsset(value: { storageProvider?: unknown; storagePath: string }) {
+export async function deleteStoredUploadAsset(
+  value: { storageProvider?: unknown; storagePath: string },
+  options?: { throwOnError?: boolean },
+) {
   try {
     const storageProvider = normalizeStorageProvider(value.storageProvider);
 
@@ -339,6 +342,9 @@ export async function deleteStoredUploadAsset(value: { storageProvider?: unknown
     await rm(absoluteStoragePath, { force: true });
   } catch (error) {
     console.warn("Uploaded asset cleanup failed", error);
+    if (options?.throwOnError) {
+      throw error;
+    }
   }
 }
 

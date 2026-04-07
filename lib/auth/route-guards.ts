@@ -7,6 +7,15 @@ import { hasPermission, hasAnyPermission, getUserPermissions } from "@/services/
 
 const candidateRoleCodes = new Set(["CANDIDATE"]);
 
+export async function assertCandidateRole(userId: string) {
+  const { roleCodes } = await getUserPermissions(userId);
+  const isCandidateRole = roleCodes.some((code) => candidateRoleCodes.has(code));
+
+  if (!isCandidateRole) {
+    throw new Error("Forbidden: candidate role is required.");
+  }
+}
+
 /**
  * Middleware-style auth guard for API route handlers.
  * Throws standardized errors so apiError can map HTTP status codes.
@@ -35,14 +44,7 @@ export async function requireAuthenticatedSession(request: NextRequest): Promise
  */
 export async function requireCandidateSession(request: NextRequest): Promise<AuthSessionClaims> {
   const session = await requireAuthenticatedSession(request);
-
-  const { roleCodes } = await getUserPermissions(session.userId);
-  const isCandidateRole = roleCodes.some((code) => candidateRoleCodes.has(code));
-
-  if (!isCandidateRole) {
-    throw new Error("Forbidden: candidate role is required.");
-  }
-
+  await assertCandidateRole(session.userId);
   return session;
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, BookOpen, CalendarCheck, ClipboardList, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, Network, PenTool, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
+import { Award, BookOpen, CalendarCheck, ClipboardList, FolderKanban, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, Network, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,7 +42,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Academics",
     items: [
-      { href: "/course-builder", label: "Course Builder", icon: PenTool, requiredPermission: routePermissionMap["/course-builder"] },
+      { href: "/course-builder", label: "Content Manager", icon: FolderKanban, requiredPermission: routePermissionMap["/course-builder"] },
       { href: "/curriculum-builder", label: "Curriculum Builder", icon: Layers, requiredPermission: routePermissionMap["/curriculum-builder"] },
       { href: "/schedule", label: "Schedule", icon: CalendarCheck, requiredPermission: routePermissionMap["/schedule"] },
       { href: "/attendance", label: "Attendance", icon: CalendarCheck, requiredPermission: routePermissionMap["/attendance"] },

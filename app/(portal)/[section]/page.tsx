@@ -118,23 +118,6 @@ const sectionConfig = {
     primaryAction: "Mark Attendance",
     secondaryAction: "View History",
   },
-  assessments: {
-    title: "Assessment Bank",
-    description: "Managing diagnostic tests, module rubrics, and final evaluations.",
-    accent: "Assessment orchestration",
-    summary: "Test instruments and evaluation criteria.",
-    metrics: [],
-    highlights: [],
-    tableTitle: "Assessments",
-    tableDescription: "Available evaluation tools.",
-    tableColumns: [
-      { key: "name", header: "Assessment Name" },
-      { key: "type", header: "Type" },
-    ],
-    tableRows: [],
-    primaryAction: "Configure",
-    secondaryAction: "Review Results",
-  },
   certifications: {
     title: "Certifications",
     description: "Issuing verified program milestones and certificate records.",

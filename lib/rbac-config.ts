@@ -10,7 +10,7 @@ export const routePermissionMap: Record<string, string> = {
   "/trainers": "trainers.view",
   "/schedule": "schedule.view",
   "/attendance": "attendance.view",
-  "/assessments": "assessments.view",
+  "/assessments": "assessment_pool.view",
   "/certifications": "certifications.view",
   "/readiness": "readiness.view",
   "/language-lab": "lms.view",

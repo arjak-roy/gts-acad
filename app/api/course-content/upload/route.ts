@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
             folderId: input.folderId || null,
             title: requestedTitle || buildTitleFromFileName(file.name),
             description: input.description,
+            excerpt: "",
             contentType: input.contentType,
             fileUrl: asset.url,
             fileName: file.name.slice(0, 255),

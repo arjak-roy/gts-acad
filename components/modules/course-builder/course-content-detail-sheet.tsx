@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, FileText, ImageIcon, Link2, Loader2, Video } from "lucide-react";
+import { ExternalLink, FileText, ImageIcon, Link2, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,10 @@ type ContentDetail = {
   courseName: string;
   title: string;
   description: string | null;
+  excerpt: string | null;
   contentType: string;
+  renderedHtml: string | null;
+  estimatedReadingMinutes: number | null;
   fileUrl: string | null;
   fileName: string | null;
   fileSize: number | null;
@@ -35,6 +38,7 @@ type UploadConfig = {
 };
 
 const contentTypeLabels: Record<string, string> = {
+  ARTICLE: "Authored Lesson",
   PDF: "PDF",
   DOCUMENT: "Document",
   VIDEO: "Video",
@@ -71,6 +75,21 @@ function formatDate(value: string) {
 }
 
 function PreviewBlock({ detail, previewEnabled }: { detail: ContentDetail; previewEnabled: boolean }) {
+  if (detail.contentType === "ARTICLE") {
+    return detail.renderedHtml ? (
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
+        <div
+          className="prose prose-slate max-w-none prose-headings:font-semibold prose-img:rounded-xl prose-li:marker:text-slate-500"
+          dangerouslySetInnerHTML={{ __html: detail.renderedHtml }}
+        />
+      </div>
+    ) : (
+      <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+        No authored lesson content has been added yet.
+      </div>
+    );
+  }
+
   if (!detail.fileUrl) {
     return (
       <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
@@ -129,10 +148,12 @@ export function CourseContentDetailSheet({
   open,
   onOpenChange,
   contentId,
+  refreshToken = 0,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contentId: string | null;
+  refreshToken?: number;
 }) {
   const [detail, setDetail] = useState<ContentDetail | null>(null);
   const [previewEnabled, setPreviewEnabled] = useState(true);
@@ -182,7 +203,7 @@ export function CourseContentDetailSheet({
     return () => {
       cancelled = true;
     };
-  }, [contentId, onOpenChange, open]);
+  }, [contentId, onOpenChange, open, refreshToken]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -215,10 +236,12 @@ export function CourseContentDetailSheet({
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-slate-900">{detail.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {detail.fileName ?? "No file name"} · {formatFileSize(detail.fileSize)}
+                      {detail.contentType === "ARTICLE"
+                        ? `${detail.estimatedReadingMinutes ? `${detail.estimatedReadingMinutes} min read` : "Authored lesson"}${detail.excerpt ? " · Ready for learner rendering" : ""}`
+                        : `${detail.fileName ?? "No file name"} · ${formatFileSize(detail.fileSize)}`}
                     </p>
                   </div>
-                  {detail.fileUrl ? (
+                  {detail.fileUrl && detail.contentType !== "ARTICLE" ? (
                     <Button asChild size="sm" variant="secondary">
                       <a href={detail.fileUrl} target="_blank" rel="noreferrer">
                         <ExternalLink className="h-4 w-4" />
@@ -232,6 +255,12 @@ export function CourseContentDetailSheet({
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">No description provided.</p>
                 )}
+                {detail.excerpt ? (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Excerpt</p>
+                    <p className="mt-1 text-sm text-slate-700">{detail.excerpt}</p>
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -242,6 +271,12 @@ export function CourseContentDetailSheet({
                 <div className="rounded-xl border p-4">
                   <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Assigned Batches</p>
                   <p className="mt-2 text-sm font-semibold text-slate-900">{detail.batchCount}</p>
+                </div>
+                <div className="rounded-xl border p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Reading Time</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {detail.estimatedReadingMinutes ? `${detail.estimatedReadingMinutes} min` : "—"}
+                  </p>
                 </div>
                 <div className="rounded-xl border p-4">
                   <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Created</p>
@@ -259,6 +294,8 @@ export function CourseContentDetailSheet({
                     <ImageIcon className="h-4 w-4 text-primary" />
                   ) : detail.mimeType?.startsWith("video/") ? (
                     <Video className="h-4 w-4 text-primary" />
+                  ) : detail.contentType === "ARTICLE" ? (
+                    <FileText className="h-4 w-4 text-primary" />
                   ) : detail.contentType === "LINK" ? (
                     <Link2 className="h-4 w-4 text-primary" />
                   ) : (
