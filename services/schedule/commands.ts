@@ -90,6 +90,7 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
     entityType: AuditEntityType.BATCH,
     entityId: batch.id,
     action: AuditActionType.CREATED,
+    status: "SCHEDULE",
     actorUserId: actorUserId ?? null,
     message: `Schedule created for batch ${batch.code}: ${title} (${createdEvents.length} event${createdEvents.length === 1 ? "" : "s"}).`,
     metadata: {
@@ -230,6 +231,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
     entityType: AuditEntityType.BATCH,
     entityId: target.batchId,
     action: AuditActionType.UPDATED,
+    status: "SCHEDULE",
     actorUserId: actorUserId ?? null,
     message: `Schedule updated for batch ${target.batch.code}: ${updated.length} event${updated.length === 1 ? "" : "s"} changed.`,
     metadata: {
@@ -333,6 +335,7 @@ export async function cancelScheduleEventService(input: CancelScheduleEventInput
     entityType: AuditEntityType.BATCH,
     entityId: target.batchId,
     action: AuditActionType.UPDATED,
+    status: "SCHEDULE",
     actorUserId: actorUserId ?? null,
     message: `Schedule cancelled for batch ${target.batch.code}: ${affected.length} event${affected.length === 1 ? "" : "s"} marked cancelled.`,
     metadata: {

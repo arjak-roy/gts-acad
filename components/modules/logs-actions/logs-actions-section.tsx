@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-type LogsModule = "email" | "batch" | "candidate" | "course" | "program";
+type LogsModule = "email" | "batch" | "candidate" | "course" | "program" | "schedule" | "roles";
 
 type EmailStatus = "ALL" | "PENDING" | "SENT" | "FAILED" | "RETRYING";
 type EmailCategory = "ALL" | "CANDIDATE_WELCOME" | "TWO_FACTOR" | "SYSTEM";
@@ -48,6 +48,12 @@ type AuditLogItem = {
   level: "INFO" | "WARN" | "ERROR";
   status: string | null;
   message: string;
+  metadata: unknown;
+  actorUser: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
   createdAt: string;
 };
 
@@ -70,6 +76,8 @@ const MODULE_CONFIG: Array<{ key: LogsModule; label: string }> = [
   { key: "candidate", label: "Candidate Logs" },
   { key: "course", label: "Course Logs" },
   { key: "program", label: "Program Logs" },
+  { key: "schedule", label: "Schedule Logs" },
+  { key: "roles", label: "Roles & Permissions" },
 ];
 
 function resolveAuditScope(module: LogsModule): { entityType: "BATCH" | "CANDIDATE" | "COURSE" | "SYSTEM"; status?: string } {
@@ -89,7 +97,101 @@ function resolveAuditScope(module: LogsModule): { entityType: "BATCH" | "CANDIDA
     return { entityType: "SYSTEM", status: "PROGRAM" };
   }
 
+  if (module === "schedule") {
+    return { entityType: "BATCH", status: "SCHEDULE" };
+  }
+
+  if (module === "roles") {
+    return { entityType: "SYSTEM", status: "ROLE" };
+  }
+
   return { entityType: "SYSTEM" };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPrimitive(value: unknown): value is string | number | boolean | null {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
+}
+
+function formatAuditFieldLabel(value: string) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatAuditValue(value: unknown) {
+  if (isPrimitive(value)) {
+    if (value === null) {
+      return "null";
+    }
+
+    return String(value);
+  }
+
+  if (Array.isArray(value) && value.every((item) => isPrimitive(item))) {
+    return value.length > 0 ? value.map((item) => String(item)).join(", ") : "[]";
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function getMetadataEntries(metadata: unknown) {
+  if (!isRecord(metadata)) {
+    return [] as Array<[string, unknown]>;
+  }
+
+  return Object.entries(metadata).filter(([, value]) => {
+    if (value === null || value === undefined) {
+      return false;
+    }
+
+    if (typeof value === "string") {
+      return value.trim().length > 0;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    return true;
+  });
+}
+
+function getPermissionChangeSummary(metadata: unknown) {
+  if (!isRecord(metadata)) {
+    return { added: [] as string[], removed: [] as string[] };
+  }
+
+  const added = Array.isArray(metadata.addedPermissionKeys)
+    ? metadata.addedPermissionKeys.filter((value): value is string => typeof value === "string")
+    : [];
+  const removed = Array.isArray(metadata.removedPermissionKeys)
+    ? metadata.removedPermissionKeys.filter((value): value is string => typeof value === "string")
+    : [];
+
+  return { added, removed };
+}
+
+function getAuditStatusPlaceholder(module: LogsModule) {
+  if (module === "program") {
+    return "Status (default PROGRAM)";
+  }
+
+  if (module === "schedule") {
+    return "Status (default SCHEDULE)";
+  }
+
+  if (module === "roles") {
+    return "Status (default ROLE)";
+  }
+
+  return "Filter by status";
 }
 
 function formatDateTime(value: string | null) {
@@ -272,6 +374,8 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
     setSelectedEmailIds((previous) => (previous.includes(id) ? previous.filter((value) => value !== id) : [...previous, id]));
   };
 
+  const activeModuleLabel = MODULE_CONFIG.find((module) => module.key === activeModule)?.label ?? "Logs";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -373,7 +477,7 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
                   setAuditStatus(event.target.value);
                   setAuditPage(1);
                 }}
-                placeholder={activeModule === "program" ? "Status (default PROGRAM)" : "Filter by status"}
+                placeholder={getAuditStatusPlaceholder(activeModule)}
                 className="w-52"
               />
             </>
@@ -519,7 +623,7 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{activeModule[0].toUpperCase() + activeModule.slice(1)} Logs</CardTitle>
+            <CardTitle>{activeModuleLabel}</CardTitle>
             <CardDescription>Operational activity for this module from the unified audit stream.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -536,22 +640,74 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
                     <TableHead>Level</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Entity</TableHead>
-                    <TableHead>Message</TableHead>
+                    <TableHead>Message & Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(auditData?.items ?? []).map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{formatDateTime(item.createdAt)}</TableCell>
-                      <TableCell>{item.action}</TableCell>
-                      <TableCell>
-                        <Badge variant={statusBadgeVariant(item.level)}>{item.level}</Badge>
-                      </TableCell>
-                      <TableCell>{item.status ?? "-"}</TableCell>
-                      <TableCell>{item.entityId ?? "-"}</TableCell>
-                      <TableCell className="max-w-xl font-medium text-slate-700">{item.message}</TableCell>
-                    </TableRow>
-                  ))}
+                  {(auditData?.items ?? []).map((item) => {
+                    const metadataEntries = getMetadataEntries(item.metadata);
+                    const permissionChanges = getPermissionChangeSummary(item.metadata);
+
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell>{formatDateTime(item.createdAt)}</TableCell>
+                        <TableCell>{item.action}</TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadgeVariant(item.level)}>{item.level}</Badge>
+                        </TableCell>
+                        <TableCell>{item.status ?? "-"}</TableCell>
+                        <TableCell>{item.entityId ?? "-"}</TableCell>
+                        <TableCell className="max-w-xl align-top">
+                          <div className="space-y-2">
+                            <p className="font-medium text-slate-700">{item.message}</p>
+
+                            {item.actorUser ? (
+                              <p className="text-xs font-medium text-slate-500">
+                                Actor: {item.actorUser.name?.trim() || item.actorUser.email}
+                              </p>
+                            ) : null}
+
+                            {permissionChanges.added.length > 0 || permissionChanges.removed.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {permissionChanges.added.map((permissionKey) => (
+                                  <Badge key={`added-${permissionKey}`} variant="success">
+                                    + {permissionKey}
+                                  </Badge>
+                                ))}
+                                {permissionChanges.removed.map((permissionKey) => (
+                                  <Badge key={`removed-${permissionKey}`} variant="danger">
+                                    - {permissionKey}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+
+                            {metadataEntries.length > 0 ? (
+                              <details className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+                                <summary className="cursor-pointer text-xs font-semibold text-slate-600">View metadata</summary>
+                                <div className="mt-3 space-y-3 text-xs text-slate-600">
+                                  {metadataEntries.map(([key, value]) => {
+                                    const shouldRenderJson = isRecord(value) || (Array.isArray(value) && value.some((item) => !isPrimitive(item)));
+
+                                    return (
+                                      <div key={key}>
+                                        <p className="font-semibold text-slate-700">{formatAuditFieldLabel(key)}</p>
+                                        {shouldRenderJson ? (
+                                          <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-lg bg-white p-2 text-[11px] text-slate-700">{formatAuditValue(value)}</pre>
+                                        ) : (
+                                          <p className="mt-1 break-words text-slate-600">{formatAuditValue(value)}</p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </details>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

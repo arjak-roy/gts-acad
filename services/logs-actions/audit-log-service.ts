@@ -93,6 +93,14 @@ export async function listAuditLogsService(input: ListAuditLogsInput): Promise<A
         level: true,
         status: true,
         message: true,
+        metadata: true,
+        actorUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         createdAt: true,
       },
     }),

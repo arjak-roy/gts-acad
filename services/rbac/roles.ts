@@ -158,6 +158,7 @@ export async function createRole(input: { name: string; code: string; descriptio
     entityType: AuditEntityType.SYSTEM,
     entityId: role.id,
     action: AuditActionType.CREATED,
+    status: "ROLE",
     actorUserId: options.actorUserId ?? null,
     message: `Role ${role.code} created.`,
     metadata: {
@@ -204,6 +205,7 @@ export async function updateRole(roleId: string, input: { name?: string; code?: 
     entityType: AuditEntityType.SYSTEM,
     entityId: updated.id,
     action: AuditActionType.UPDATED,
+    status: "ROLE",
     actorUserId: options.actorUserId ?? null,
     message: `Role ${updated.code} updated.`,
     metadata: {
@@ -242,6 +244,7 @@ export async function deleteRole(roleId: string, options: RoleMutationInput = {}
     entityType: AuditEntityType.SYSTEM,
     entityId: role.id,
     action: AuditActionType.UPDATED,
+    status: "ROLE",
     actorUserId: options.actorUserId ?? null,
     message: `Role ${role.code} deleted.`,
     metadata: {
@@ -296,6 +299,7 @@ export async function setRolePermissions(roleId: string, permissionIds: string[]
     entityType: AuditEntityType.SYSTEM,
     entityId: role.id,
     action: AuditActionType.UPDATED,
+    status: "ROLE",
     actorUserId: options.actorUserId ?? null,
     message: `Permissions updated for role ${role.code}.`,
     metadata: {

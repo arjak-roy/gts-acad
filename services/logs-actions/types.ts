@@ -51,6 +51,12 @@ export type AuditLogListItem = {
   level: AuditLogLevel;
   status: string | null;
   message: string;
+  metadata: Prisma.JsonValue;
+  actorUser: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
   createdAt: string;
 };
 
@@ -121,5 +127,11 @@ export type AuditLogRow = {
   level: AuditLogLevel;
   status: string | null;
   message: string;
+  metadata: Prisma.JsonValue;
+  actorUser: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
   createdAt: Date;
 };

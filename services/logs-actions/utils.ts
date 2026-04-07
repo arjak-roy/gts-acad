@@ -36,6 +36,8 @@ export function mapAuditLog(item: AuditLogRow): AuditLogListItem {
     level: item.level,
     status: item.status,
     message: item.message,
+    metadata: item.metadata,
+    actorUser: item.actorUser,
     createdAt: item.createdAt.toISOString(),
   };
 }
