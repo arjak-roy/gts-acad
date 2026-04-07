@@ -60,7 +60,7 @@ const server = http.createServer((req, res) => {
     </head>
     <body>
       <div class="container">
-        <h1>GTS Academy Admin test 1</h1>
+        <h1>GTS Academy Admin</h1>
         <p>Deployment Successful!</p>
         <div class="status-badge">Service Healthy</div>
       </div>
