@@ -40,6 +40,36 @@ function shouldUseSecureCookie(request: NextRequest) {
   return request.nextUrl.protocol === "https:";
 }
 
+function isCrossOriginBrowserRequest(request: NextRequest) {
+  const requestOrigin = request.headers.get("origin")?.trim();
+
+  if (!requestOrigin) {
+    return false;
+  }
+
+  try {
+    return new URL(requestOrigin).origin !== request.nextUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
+function getAuthSessionCookiePolicy(request: NextRequest) {
+  if (isCrossOriginBrowserRequest(request)) {
+    // Cross-origin candidate web requests need SameSite=None or the pending
+    // two-factor session cookie will not round-trip back to verification calls.
+    return {
+      sameSite: "none" as const,
+      secure: true,
+    };
+  }
+
+  return {
+    sameSite: "lax" as const,
+    secure: shouldUseSecureCookie(request),
+  };
+}
+
 export async function createAuthSessionToken(claims: AuthSessionClaims, maxAgeSeconds: number) {
   const { issuedAt: _issuedAt, ...tokenClaims } = claims;
 
@@ -89,24 +119,28 @@ export async function getAuthSession(request: NextRequest) {
 }
 
 export function buildAuthSessionCookie(request: NextRequest, token: string, maxAgeSeconds: number): ResponseCookie {
+  const policy = getAuthSessionCookiePolicy(request);
+
   return {
     name: AUTH_SESSION_COOKIE,
     value: token,
     httpOnly: true,
-    sameSite: "lax",
-    secure: shouldUseSecureCookie(request),
+    sameSite: policy.sameSite,
+    secure: policy.secure,
     path: "/",
     maxAge: maxAgeSeconds,
   };
 }
 
 export function buildClearedAuthSessionCookie(request: NextRequest): ResponseCookie {
+  const policy = getAuthSessionCookiePolicy(request);
+
   return {
     name: AUTH_SESSION_COOKIE,
     value: "",
     httpOnly: true,
-    sameSite: "lax",
-    secure: shouldUseSecureCookie(request),
+    sameSite: policy.sameSite,
+    secure: policy.secure,
     path: "/",
     maxAge: 0,
   };
