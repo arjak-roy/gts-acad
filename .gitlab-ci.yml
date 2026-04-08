@@ -1,0 +1,116 @@
+include:
+  # Using the centralized template from ci-templates project
+  - project: '2c-devops/ci-templates'
+    ref: main
+    file: '/ecs-oidc-deploy.yml'
+
+variables:
+  # =====================================================================
+  # PROJECT CONFIGURATION
+  # =====================================================================
+  SERVICE_NAME: gts_academy_admin
+  ECR_REPOSITORY_NAME: dev-gts_academy_admin
+
+  
+  # =====================================================================
+  # AWS CONFIGURATION (Overrides for this project)
+  # =====================================================================
+  AWS_REGION: ap-south-1
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  IMAGE_NAME: $ECR_REPOSITORY_NAME
+  IMAGE_TAG: "latest"
+
+  DEV_ECR: $DEV_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  UAT_ECR: $UAT_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  PROD_ECR: $PROD_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+# =====================================================================
+# PIPELINE DEFINITION
+# =====================================================================
+stages:
+  - build
+  - deploy_dev
+  - promote_uat
+  - deploy_uat
+  - promote_prod
+  - deploy_prod
+
+build_image:
+  extends: .build_image_base
+  stage: build
+  variables:
+    AWS_ROLE_ARN: $DEV_DEPLOY_ROLE
+    TARGET_ECR: $DEV_ECR
+
+deploy_dev:
+  extends: .ecs_deploy_base
+  stage: deploy_dev
+  needs: [build_image]
+  environment:
+    name: dev
+    url: $DEV_APP_URL
+  variables:
+    AWS_ROLE_ARN: $DEV_DEPLOY_ROLE
+    CLUSTER: "dev-ecs-cluster"
+    SERVICE: $DEV_ECS_SERVICE
+
+promote_to_uat:
+  extends: .ecr_promote_base
+  stage: promote_uat
+  needs: [deploy_dev]
+  when: manual
+  variables:
+    AWS_ROLE_ARN: $UAT_DEPLOY_ROLE
+    SOURCE_ECR: $DEV_ECR
+    TARGET_ECR: $UAT_ECR
+
+deploy_uat:
+  extends: .ecs_deploy_base
+  stage: deploy_uat
+  needs: [promote_to_uat]
+  when: manual
+  environment:
+    name: uat
+    url: $UAT_APP_URL
+  variables:
+    AWS_ROLE_ARN: $UAT_DEPLOY_ROLE
+    CLUSTER: "uat-ecs-cluster"
+    SERVICE: $UAT_ECS_SERVICE
+
+promote_to_prod:
+  extends: .ecr_promote_base
+  stage: promote_prod
+  needs: [deploy_uat]
+  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - when: never
+  variables:
+    AWS_ROLE_ARN: $PROD_DEPLOY_ROLE
+    SOURCE_ECR: $UAT_ECR
+    TARGET_ECR: $PROD_ECR
+
+deploy_prod:
+  extends: .ecs_deploy_base
+  stage: deploy_prod
+  needs: [promote_to_prod]
+  when: manual
+  timeout: 30m
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  environment:
+    name: production
+    url: $PROD_APP_URL
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - when: never
+  variables:
+    AWS_ROLE_ARN: $PROD_DEPLOY_ROLE
+    CLUSTER: "prod-ecs-cluster"
+    SERVICE: $PROD_ECS_SERVICE
