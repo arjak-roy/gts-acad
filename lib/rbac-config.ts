@@ -7,6 +7,7 @@ export const routePermissionMap: Record<string, string> = {
   "/courses": "courses.view",
   "/programs": "programs.view",
   "/batches": "batches.view",
+  "/centers": "centers.view",
   "/trainers": "trainers.view",
   "/schedule": "schedule.view",
   "/attendance": "attendance.view",

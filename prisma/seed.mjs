@@ -139,6 +139,42 @@ const TRAINERS = [
   { name: "Ms. Priya Nair", email: "priya.trainer@gts-academy.test", phone: "+91-9000000009", specialization: "Interview Readiness", rating: 4.6 },
 ];
 
+const TRAINING_CENTRES = [
+  {
+    id: makeUuid(9001),
+    name: "GTS Main Campus",
+    addressLine1: "Infopark Phase 1",
+    addressLine2: "Kakkanad",
+    landmark: "Near Phase 1 Bus Stop",
+    postalCode: "682042",
+    totalCapacity: 300,
+    currentUtilization: 180,
+    complianceStatus: "compliant",
+  },
+  {
+    id: makeUuid(9002),
+    name: "GTS North Campus",
+    addressLine1: "Civil Line Road",
+    addressLine2: "Palarivattom",
+    landmark: "Opposite Metro Pillar 512",
+    postalCode: "682025",
+    totalCapacity: 180,
+    currentUtilization: 96,
+    complianceStatus: "pending",
+  },
+  {
+    id: makeUuid(9003),
+    name: "GTS Skills Annex",
+    addressLine1: "Seaport Airport Road",
+    addressLine2: "Thrikkakara",
+    landmark: "Near Collectorate Junction",
+    postalCode: "682021",
+    totalCapacity: 120,
+    currentUtilization: 54,
+    complianceStatus: "compliant",
+  },
+];
+
 const FIRST_NAMES = [
   "Aditya", "Meera", "Arjun", "Neha", "Rahul", "Priya", "Asha", "Kiran", "Vikram", "Anita",
   "Rohan", "Nisha", "Sandeep", "Divya", "Manoj", "Kavya", "Ravi", "Pooja", "Amit", "Sneha",
@@ -194,6 +230,10 @@ const PERMISSION_DEFINITIONS = [
   { module: "batches", action: "create", key: "batches.create", description: "Create batches" },
   { module: "batches", action: "edit", key: "batches.edit", description: "Edit batches" },
   { module: "batches", action: "delete", key: "batches.delete", description: "Delete batches" },
+  { module: "centers", action: "view", key: "centers.view", description: "View physical centers" },
+  { module: "centers", action: "create", key: "centers.create", description: "Create physical centers" },
+  { module: "centers", action: "edit", key: "centers.edit", description: "Edit physical centers" },
+  { module: "centers", action: "delete", key: "centers.delete", description: "Archive physical centers" },
   { module: "trainers", action: "view", key: "trainers.view", description: "View trainers" },
   { module: "trainers", action: "create", key: "trainers.create", description: "Create trainers" },
   { module: "trainers", action: "edit", key: "trainers.edit", description: "Edit trainers" },
@@ -277,6 +317,7 @@ const ROLE_PERMISSION_MAP = {
     "courses.view", "courses.create", "courses.edit", "courses.delete",
     "programs.view", "programs.create", "programs.edit", "programs.delete",
     "batches.view", "batches.create", "batches.edit", "batches.delete",
+    "centers.view", "centers.create", "centers.edit", "centers.delete",
     "trainers.view", "trainers.create", "trainers.edit", "trainers.delete", "trainers.manage",
     "schedule.view", "schedule.create", "schedule.edit", "schedule.delete",
     "attendance.view", "attendance.manage",
@@ -545,28 +586,41 @@ async function seed() {
     create: { id: 1, name: "Kochi", stateId: kerala.id },
   });
 
-  const centre = await prisma.trainingCentre.upsert({
-    where: { id: makeUuid(9001) },
-    update: {
-      name: "GTS Main Campus",
-      locationId: kochi.id,
-      totalCapacity: 300,
-      currentUtilization: 180,
-      complianceStatus: "compliant",
-      infrastructure: { labs: 6, classrooms: 12 },
-      isActive: true,
-    },
-    create: {
-      id: makeUuid(9001),
-      name: "GTS Main Campus",
-      locationId: kochi.id,
-      totalCapacity: 300,
-      currentUtilization: 180,
-      complianceStatus: "compliant",
-      infrastructure: { labs: 6, classrooms: 12 },
-      isActive: true,
-    },
-  });
+  const centreRecords = [];
+  for (const centreDef of TRAINING_CENTRES) {
+    const centre = await prisma.trainingCentre.upsert({
+      where: { id: centreDef.id },
+      update: {
+        name: centreDef.name,
+        addressLine1: centreDef.addressLine1,
+        addressLine2: centreDef.addressLine2,
+        landmark: centreDef.landmark,
+        postalCode: centreDef.postalCode,
+        locationId: kochi.id,
+        totalCapacity: centreDef.totalCapacity,
+        currentUtilization: centreDef.currentUtilization,
+        complianceStatus: centreDef.complianceStatus,
+        infrastructure: { labs: 4, classrooms: 8 },
+        isActive: true,
+      },
+      create: {
+        id: centreDef.id,
+        name: centreDef.name,
+        addressLine1: centreDef.addressLine1,
+        addressLine2: centreDef.addressLine2,
+        landmark: centreDef.landmark,
+        postalCode: centreDef.postalCode,
+        locationId: kochi.id,
+        totalCapacity: centreDef.totalCapacity,
+        currentUtilization: centreDef.currentUtilization,
+        complianceStatus: centreDef.complianceStatus,
+        infrastructure: { labs: 4, classrooms: 8 },
+        isActive: true,
+      },
+    });
+
+    centreRecords.push(centre);
+  }
 
   const courseRecords = [];
   for (const course of COURSES) {
@@ -742,6 +796,7 @@ async function seed() {
   const batchRecords = [];
   for (let i = 0; i < programRecords.length; i += 1) {
     const program = programRecords[i];
+    const centre = centreRecords[i % centreRecords.length];
     const eligibleTrainers = trainerRecords.filter((trainer) =>
       Array.isArray(trainer.programs) && trainer.programs.includes(program.name)
     );
@@ -750,19 +805,22 @@ async function seed() {
     const connectedTrainers = eligibleTrainers.length > 0 ? eligibleTrainers.slice(0, 2) : [primaryTrainer];
     const prefix = program.name.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
     const code = `B-${prefix}-${String(i + 1).padStart(3, "0")}`;
+    const mode = i % 3 === 0 ? BatchMode.ONLINE : BatchMode.OFFLINE;
+    const batchCentreId = mode === BatchMode.OFFLINE ? centre.id : null;
+    const batchCampus = mode === BatchMode.OFFLINE ? centre.name : null;
 
     const batch = await prisma.batch.upsert({
       where: { code },
       update: {
         name: `${program.name} Cohort ${i + 1}`,
         programId: program.id,
-        centreId: centre.id,
+        centreId: batchCentreId,
         trainerId: primaryTrainer.id,
         trainers: { set: connectedTrainers.map((trainer) => ({ id: trainer.id })) },
-        campus: i % 2 === 0 ? "Main Campus" : "North Wing",
+        campus: batchCampus,
         startDate: new Date(Date.UTC(2026, i % 6, 1 + (i % 4))),
         endDate: new Date(Date.UTC(2026, (i % 6) + 4, 15)),
-        mode: i % 3 === 0 ? BatchMode.ONLINE : BatchMode.OFFLINE,
+        mode,
         status: i % 4 === 0 ? BatchStatus.PLANNED : BatchStatus.IN_SESSION,
         capacity: 25 + (i % 5) * 5,
         schedule: ["MON", "WED", "FRI"],
@@ -771,13 +829,13 @@ async function seed() {
         code,
         name: `${program.name} Cohort ${i + 1}`,
         programId: program.id,
-        centreId: centre.id,
+        centreId: batchCentreId,
         trainerId: primaryTrainer.id,
         trainers: { connect: connectedTrainers.map((trainer) => ({ id: trainer.id })) },
-        campus: i % 2 === 0 ? "Main Campus" : "North Wing",
+        campus: batchCampus,
         startDate: new Date(Date.UTC(2026, i % 6, 1 + (i % 4))),
         endDate: new Date(Date.UTC(2026, (i % 6) + 4, 15)),
-        mode: i % 3 === 0 ? BatchMode.ONLINE : BatchMode.OFFLINE,
+        mode,
         status: i % 4 === 0 ? BatchStatus.PLANNED : BatchStatus.IN_SESSION,
         capacity: 25 + (i % 5) * 5,
         schedule: ["MON", "WED", "FRI"],

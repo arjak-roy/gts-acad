@@ -10,6 +10,23 @@ export type BatchRecord = {
   code: string;
   name: string;
   campus: string | null;
+  centre: {
+    id: string;
+    name: string;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    landmark: string | null;
+    postalCode: string | null;
+    location: {
+      name: string;
+      state: {
+        name: string;
+        country: {
+          name: string;
+        };
+      };
+    } | null;
+  } | null;
   status: BatchStatus;
   startDate: Date;
   endDate: Date | null;
@@ -26,7 +43,9 @@ export type BatchOption = {
   code: string;
   name: string;
   programName: string;
+  centreId: string | null;
   campus: string | null;
+  centreAddress: string | null;
   status: BatchStatus;
   trainerIds: string[];
   trainerNames: string[];
@@ -42,7 +61,9 @@ export type BatchCreateResult = {
   code: string;
   name: string;
   programName: string;
+  centreId: string | null;
   campus: string | null;
+  centreAddress: string | null;
   startDate: string;
   endDate: string | null;
   capacity: number;

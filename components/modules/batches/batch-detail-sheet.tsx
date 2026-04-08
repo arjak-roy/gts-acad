@@ -23,6 +23,8 @@ type BatchDetail = {
   code: string;
   name: string;
   programName: string;
+  centreId?: string | null;
+  centreAddress?: string | null;
   campus: string | null;
   status: BatchStatus;
   mode: BatchMode;
@@ -636,6 +638,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                             <div>
                               <p className="font-semibold text-slate-900">Campus</p>
                               <p>{batch.campus ?? "Not specified"}</p>
+                              {batch.centreAddress ? <p className="mt-1 text-xs text-slate-500">{batch.centreAddress}</p> : null}
                             </div>
                           </div>
                           <div className="flex items-start gap-3">

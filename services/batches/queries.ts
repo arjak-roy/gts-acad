@@ -17,6 +17,31 @@ const BATCH_SEARCH_SELECT = {
   code: true,
   name: true,
   campus: true,
+  centre: {
+    select: {
+      id: true,
+      name: true,
+      addressLine1: true,
+      addressLine2: true,
+      landmark: true,
+      postalCode: true,
+      location: {
+        select: {
+          name: true,
+          state: {
+            select: {
+              name: true,
+              country: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   status: true,
   startDate: true,
   endDate: true,
@@ -56,6 +81,7 @@ export async function listBatchesService(programName?: string): Promise<BatchOpt
           code: true,
           name: true,
           campus: true,
+          centre: BATCH_SEARCH_SELECT.centre,
           status: true,
           startDate: true,
           endDate: true,
@@ -120,6 +146,7 @@ export async function searchBatchesService(query: string, limit: number): Promis
             { code: { contains: query, mode: "insensitive" } },
             { name: { contains: query, mode: "insensitive" } },
             { campus: { contains: query, mode: "insensitive" } },
+            { centre: { name: { contains: query, mode: "insensitive" } } },
             { program: { name: { contains: query, mode: "insensitive" } } },
             { trainer: { user: { name: { contains: query, mode: "insensitive" } } } },
             { trainers: { some: { user: { name: { contains: query, mode: "insensitive" } } } } },
@@ -153,6 +180,7 @@ export async function getBatchByIdService(batchId: string): Promise<BatchOption 
       where: { id: batchId },
       include: {
         program: { select: { name: true } },
+        centre: BATCH_SEARCH_SELECT.centre,
         trainer: {
           select: {
             id: true,
@@ -195,6 +223,31 @@ export async function getBatchesForProgramService(programName: string): Promise<
     where: { programId: program.id },
     include: {
       program: { select: { name: true } },
+      centre: {
+        select: {
+          id: true,
+          name: true,
+          addressLine1: true,
+          addressLine2: true,
+          landmark: true,
+          postalCode: true,
+          location: {
+            select: {
+              name: true,
+              state: {
+                select: {
+                  name: true,
+                  country: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       trainer: { select: { id: true, user: { select: { name: true } } } },
       trainers: { select: { id: true, user: { select: { name: true } } } },
     },

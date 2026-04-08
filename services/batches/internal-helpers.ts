@@ -20,15 +20,38 @@ function normalizeTrainerSummaries(trainers: TrainerSummary[]) {
   return Array.from(unique.values()).sort((left, right) => left.fullName.localeCompare(right.fullName));
 }
 
+function formatCentreAddress(batch: BatchRecord) {
+  if (!batch.centre) {
+    return null;
+  }
+
+  const parts = [
+    batch.centre.addressLine1,
+    batch.centre.addressLine2,
+    batch.centre.landmark,
+    batch.centre.location?.name,
+    batch.centre.location?.state.name,
+    batch.centre.location?.state.country.name,
+    batch.centre.postalCode,
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 export function mapBatchRecord(batch: BatchRecord): BatchOption {
   const trainerSummaries = normalizeTrainerSummaries(batch.trainers.map((trainer) => ({ id: trainer.id, fullName: trainer.user.name })));
+  const centreName = batch.centre?.name ?? batch.campus;
 
   return {
     id: batch.id,
     code: batch.code,
     name: batch.name,
     programName: batch.program.name,
-    campus: batch.campus,
+    centreId: batch.centre?.id ?? null,
+    campus: centreName,
+    centreAddress: formatCentreAddress(batch),
     status: batch.status,
     trainerIds: trainerSummaries.map((trainer) => trainer.id),
     trainerNames: trainerSummaries.map((trainer) => trainer.fullName),

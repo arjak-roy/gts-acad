@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { SectionPageSkeleton } from "@/components/modules/page-skeletons";
 import { SectionPageContent } from "@/components/modules/portal/section-page-content";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { listCentersService } from "@/services/centers-service";
 import { listEmailTemplatesService } from "@/services/email-templates";
 import { PortalSectionContent } from "@/types";
 
@@ -61,6 +62,27 @@ const sectionConfig = {
     ],
     tableRows: [],
     primaryAction: "Manage Batch",
+    secondaryAction: "View Details",
+  },
+  centers: {
+    title: "Physical Centers",
+    description: "Manage the academy's physical campuses and the address records used by offline batch operations.",
+    accent: "Campus operations",
+    summary: "Physical centers, capacity, and address management.",
+    metrics: [],
+    highlights: [],
+    tableTitle: "Centers",
+    tableDescription: "Physical training and campus locations used in batch planning.",
+    tableColumns: [
+      { key: "center", header: "Center" },
+      { key: "city", header: "City" },
+      { key: "state", header: "State" },
+      { key: "capacity", header: "Capacity", align: "right" },
+      { key: "status", header: "Status" },
+      { key: "batches", header: "Batches", align: "right" },
+    ],
+    tableRows: [],
+    primaryAction: "Add Center",
     secondaryAction: "View Details",
   },
   schedule: {
@@ -283,6 +305,41 @@ async function resolveSectionContent(section: SectionKey): Promise<PortalSection
         variables: template.variables.length > 0 ? template.variables.join(", ") : "None",
         updated: new Date(template.updatedAt).toLocaleDateString("en-IN"),
         status: template.isActive ? "ACTIVE" : "INACTIVE",
+      })),
+    };
+  }
+
+  if (section === "centers") {
+    const centers = await listCentersService();
+    const activeCenters = centers.filter((center) => center.isActive).length;
+    const totalCapacity = centers.reduce((sum, center) => sum + center.totalCapacity, 0);
+    const utilizationRate = totalCapacity > 0
+      ? Math.round((centers.reduce((sum, center) => sum + center.currentUtilization, 0) / totalCapacity) * 100)
+      : 0;
+
+    return {
+      ...base,
+      accent: `${activeCenters} active centers`,
+      metrics: [
+        { label: "Centers", value: String(centers.length), helper: "Physical campuses available to operations" },
+        { label: "Active", value: String(activeCenters), helper: "Centers currently selectable for offline batches" },
+        { label: "Capacity", value: String(totalCapacity), helper: "Total learner capacity across all centers" },
+      ],
+      highlights: [
+        {
+          label: "Utilization",
+          value: `${utilizationRate}% current utilization across active centers`,
+          tone: "info",
+        },
+      ],
+      tableRows: centers.map((center) => ({
+        id: center.id,
+        center: center.name,
+        city: center.cityName ?? "Not set",
+        state: center.stateName ?? "Not set",
+        capacity: `${center.currentUtilization}/${center.totalCapacity}`,
+        status: center.isActive ? "ACTIVE" : "INACTIVE",
+        batches: String(center.batchCount),
       })),
     };
   }
