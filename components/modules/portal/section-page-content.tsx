@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { BatchDetailSheet } from "@/components/modules/batches/batch-detail-sheet";
 import { BatchEnrollmentSheet } from "@/components/modules/batches/batch-enrollment-sheet";
 import { EditBatchSheet } from "@/components/modules/batches/edit-batch-sheet";
+import { AddCenterSheet } from "@/components/modules/centers/add-center-sheet";
+import { CenterDetailSheet } from "@/components/modules/centers/center-detail-sheet";
+import { EditCenterSheet } from "@/components/modules/centers/edit-center-sheet";
 import { AddCourseSheet } from "@/components/modules/courses/add-course-sheet";
 import { CourseDetailSheet } from "@/components/modules/courses/course-detail-sheet";
 import { EditCourseSheet } from "@/components/modules/courses/edit-course-sheet";
@@ -50,11 +53,13 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [sorting, setSorting] = useState<SortingState>([]);
   const [viewingCourseId, setViewingCourseId] = useState<string | null>(null);
   const [viewingBatchId, setViewingBatchId] = useState<string | null>(null);
+  const [viewingCenterId, setViewingCenterId] = useState<string | null>(null);
   const [viewingProgramId, setViewingProgramId] = useState<string | null>(null);
   const [viewingTrainerId, setViewingTrainerId] = useState<string | null>(null);
   const [viewingEmailTemplateId, setViewingEmailTemplateId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [editingCenterId, setEditingCenterId] = useState<string | null>(null);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [editingTrainerId, setEditingTrainerId] = useState<string | null>(null);
   const [editingEmailTemplateId, setEditingEmailTemplateId] = useState<string | null>(null);
@@ -64,11 +69,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const viewMode: ViewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
   const isEmailTemplatesSection = sectionKey === "settings" || sectionKey === "email-templates";
-  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "programs" || sectionKey === "trainers" || isEmailTemplatesSection;
+  const hasDetailActions = sectionKey === "courses" || sectionKey === "batches" || sectionKey === "centers" || sectionKey === "programs" || sectionKey === "trainers" || isEmailTemplatesSection;
 
   const editPermForSection =
     sectionKey === "courses" ? "courses.edit" :
     sectionKey === "batches" ? "batches.edit" :
+    sectionKey === "centers" ? "centers.edit" :
     sectionKey === "programs" ? "programs.edit" :
     sectionKey === "trainers" ? "trainers.edit" :
     isEmailTemplatesSection ? "email_templates.edit" :
@@ -77,6 +83,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const createPermForSection =
     sectionKey === "courses" ? "courses.create" :
     sectionKey === "batches" ? "batches.create" :
+    sectionKey === "centers" ? "centers.create" :
     sectionKey === "programs" ? "programs.create" :
     sectionKey === "trainers" ? "trainers.create" :
     isEmailTemplatesSection ? "email_templates.create" :
@@ -113,11 +120,13 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     // Reset all viewer/editor states first
     setViewingCourseId(null);
     setViewingBatchId(null);
+    setViewingCenterId(null);
     setViewingProgramId(null);
     setViewingTrainerId(null);
     setViewingEmailTemplateId(null);
     setEditingCourseId(null);
     setEditingBatchId(null);
+    setEditingCenterId(null);
     setEditingProgramId(null);
     setEditingTrainerId(null);
     setEditingEmailTemplateId(null);
@@ -127,6 +136,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         setViewingCourseId(viewId);
       } else if (sectionKey === "batches") {
         setViewingBatchId(viewId);
+      } else if (sectionKey === "centers") {
+        setViewingCenterId(viewId);
       } else if (sectionKey === "programs") {
         setViewingProgramId(viewId);
       } else if (sectionKey === "trainers") {
@@ -143,6 +154,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         setEditingCourseId(editId);
       } else if (sectionKey === "batches") {
         setEditingBatchId(editId);
+      } else if (sectionKey === "centers") {
+        setEditingCenterId(editId);
       } else if (sectionKey === "programs") {
         setEditingProgramId(editId);
       } else if (sectionKey === "trainers") {
@@ -353,6 +366,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
               <AddProgramSheet />
             ) : sectionKey === "batches" ? (
               <CreateBatchSheet />
+            ) : sectionKey === "centers" ? (
+              <AddCenterSheet />
             ) : sectionKey === "trainers" ? (
               <AddTrainerSheet />
             ) : isEmailTemplatesSection ? (
@@ -511,6 +526,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         onOpenChange={(nextOpen) => !nextOpen && closePanel()}
         onEdit={(id) => openEditor(id)}
       />
+      <CenterDetailSheet
+        centerId={viewingCenterId}
+        open={Boolean(viewingCenterId)}
+        onOpenChange={(nextOpen) => !nextOpen && closePanel()}
+        onEdit={(id) => openEditor(id)}
+      />
       <ProgramDetailSheet
         programId={viewingProgramId}
         open={Boolean(viewingProgramId)}
@@ -531,6 +552,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
       />
       <EditCourseSheet courseId={editingCourseId} open={Boolean(editingCourseId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditBatchSheet batchId={editingBatchId} open={Boolean(editingBatchId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
+      <EditCenterSheet centerId={editingCenterId} open={Boolean(editingCenterId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditProgramSheet programId={editingProgramId} open={Boolean(editingProgramId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditTrainerSheet trainerId={editingTrainerId} open={Boolean(editingTrainerId)} onOpenChange={(nextOpen) => !nextOpen && closeEditor()} />
       <EditEmailTemplateSheet

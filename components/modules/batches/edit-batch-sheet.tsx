@@ -28,6 +28,13 @@ type TrainerOption = {
   programs: string[];
 };
 
+type CenterOption = {
+  id: string;
+  name: string;
+  addressSummary: string;
+  isActive: boolean;
+};
+
 type BatchStatusValue = "DRAFT" | "PLANNED" | "IN_SESSION" | "COMPLETED" | "ARCHIVED" | "CANCELLED";
 type BatchModeValue = "ONLINE" | "OFFLINE";
 
@@ -36,6 +43,8 @@ type BatchDetail = {
   code: string;
   name: string;
   programName: string;
+  centreId?: string | null;
+  centreAddress?: string | null;
   trainerIds?: string[];
   trainerNames?: string[];
   campus?: string | null;
@@ -52,7 +61,7 @@ type EditBatchForm = {
   name: string;
   programName: string;
   trainerIds: string[];
-  campus: string;
+  centreId: string;
   startDate: string;
   endDate: string;
   capacity: string;
@@ -66,7 +75,7 @@ const emptyForm: EditBatchForm = {
   name: "",
   programName: "",
   trainerIds: [],
-  campus: "",
+  centreId: "",
   startDate: "",
   endDate: "",
   capacity: "25",
@@ -93,6 +102,7 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
+  const [centers, setCenters] = useState<CenterOption[]>([]);
   const [form, setForm] = useState<EditBatchForm>(emptyForm);
   const [trainerSearchTerm, setTrainerSearchTerm] = useState("");
 
@@ -108,38 +118,46 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
       setError(null);
 
       try {
-        const [batchResponse, programsResponse, trainersResponse] = await Promise.all([
+        const [batchResponse, programsResponse, trainersResponse, centersResponse] = await Promise.all([
           fetch(`/api/batches/${batchId}`, { cache: "no-store" }),
           fetch("/api/programs", { cache: "no-store" }),
           fetch("/api/trainers", { cache: "no-store" }),
+          fetch("/api/centers/options", { cache: "no-store" }),
         ]);
 
-        if (!batchResponse.ok || !programsResponse.ok || !trainersResponse.ok) {
+        if (!batchResponse.ok || !programsResponse.ok || !trainersResponse.ok || !centersResponse.ok) {
           throw new Error("Failed to load batch details.");
         }
 
         const batchPayload = (await batchResponse.json()) as { data?: BatchDetail };
         const programsPayload = (await programsResponse.json()) as { data?: ProgramOption[] };
         const trainersPayload = (await trainersResponse.json()) as { data?: TrainerOption[] };
+        const centersPayload = (await centersResponse.json()) as { data?: CenterOption[] };
 
         if (!isActive || !batchPayload.data) {
           return;
         }
 
+        const batchData = batchPayload.data;
         setPrograms((programsPayload.data ?? []).filter((program) => program.isActive));
         setTrainers((trainersPayload.data ?? []).filter((trainer) => trainer.isActive));
+        const availableCenters = (centersPayload.data ?? []).filter((center) => center.isActive);
+        setCenters(availableCenters);
+        const fallbackCenterId = batchData.centreId
+          ?? availableCenters.find((center) => center.name.toLowerCase() === (batchData.campus ?? "").toLowerCase())?.id
+          ?? "";
         setForm({
-          code: batchPayload.data.code,
-          name: batchPayload.data.name,
-          programName: batchPayload.data.programName,
-          trainerIds: batchPayload.data.trainerIds ?? [],
-          campus: batchPayload.data.campus ?? "",
-          startDate: batchPayload.data.startDate?.slice(0, 10) ?? "",
-          endDate: batchPayload.data.endDate?.slice(0, 10) ?? "",
-          capacity: String(batchPayload.data.capacity ?? 25),
-          mode: batchPayload.data.mode ?? "OFFLINE",
-          status: batchPayload.data.status ?? "PLANNED",
-          schedule: (batchPayload.data.schedule ?? []).join(", "),
+          code: batchData.code,
+          name: batchData.name,
+          programName: batchData.programName,
+          trainerIds: batchData.trainerIds ?? [],
+          centreId: fallbackCenterId,
+          startDate: batchData.startDate?.slice(0, 10) ?? "",
+          endDate: batchData.endDate?.slice(0, 10) ?? "",
+          capacity: String(batchData.capacity ?? 25),
+          mode: batchData.mode ?? "OFFLINE",
+          status: batchData.status ?? "PLANNED",
+          schedule: (batchData.schedule ?? []).join(", "),
         });
       } catch (loadError) {
         if (!isActive) {
@@ -205,6 +223,11 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
     );
   }, [trainerSearchTerm, trainers, form.trainerIds, form.programName]);
 
+  const selectedCenter = useMemo(
+    () => centers.find((center) => center.id === form.centreId) ?? null,
+    [centers, form.centreId],
+  );
+
   const resetState = () => {
     setStep("form");
     setError(null);
@@ -237,6 +260,11 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
       return;
     }
 
+    if (form.mode === "OFFLINE" && !form.centreId) {
+      setError("Select a physical center for offline batches.");
+      return;
+    }
+
     setError(null);
     setStep("confirm");
   };
@@ -260,7 +288,7 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
           name: form.name,
           programName: form.programName,
           trainerIds: form.trainerIds,
-          campus: form.campus,
+          centreId: form.centreId,
           startDate: form.startDate,
           endDate: form.endDate,
           capacity: Number(form.capacity),
@@ -473,11 +501,24 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Campus</label>
-                <Input value={form.campus} onChange={(event) => setForm((prev) => ({ ...prev, campus: event.target.value }))} />
+                <select
+                  className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
+                  value={form.centreId}
+                  onChange={(event) => setForm((prev) => ({ ...prev, centreId: event.target.value }))}
+                  disabled={centers.length === 0 || form.mode === "ONLINE"}
+                >
+                  <option value="">{form.mode === "ONLINE" ? "No center required for online batches" : centers.length === 0 ? "No active centers available" : "Select a center"}</option>
+                  {centers.map((center) => (
+                    <option key={center.id} value={center.id}>
+                      {center.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedCenter?.addressSummary ? <p className="text-xs text-slate-500">{selectedCenter.addressSummary}</p> : null}
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Mode</label>
-                <select className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700" value={form.mode} onChange={(event) => setForm((prev) => ({ ...prev, mode: event.target.value as BatchModeValue }))}>
+                <select className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700" value={form.mode} onChange={(event) => setForm((prev) => ({ ...prev, mode: event.target.value as BatchModeValue, centreId: event.target.value === "ONLINE" ? "" : prev.centreId }))}>
                   <option value="OFFLINE">Offline</option>
                   <option value="ONLINE">Online</option>
                 </select>
@@ -534,6 +575,7 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
               <p><span className="font-semibold text-slate-900">Code:</span> {form.code.trim().toUpperCase()}</p>
               <p><span className="font-semibold text-slate-900">Batch:</span> {form.name.trim()}</p>
               <p><span className="font-semibold text-slate-900">Program:</span> {form.programName}</p>
+              <p><span className="font-semibold text-slate-900">Campus:</span> {selectedCenter?.name ?? (form.mode === "ONLINE" ? "Not required" : "Not selected")}</p>
               <p><span className="font-semibold text-slate-900">Trainers:</span> {selectedTrainerNames.length > 0 ? selectedTrainerNames.join(", ") : "Unassigned"}</p>
               <p><span className="font-semibold text-slate-900">Status:</span> {form.status}</p>
             </div>

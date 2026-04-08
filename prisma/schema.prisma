@@ -700,6 +700,10 @@ model Program {
 model TrainingCentre {
   id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name               String   @map("centre_name") @db.VarChar(255)
+  addressLine1       String?  @map("address_line_1") @db.VarChar(255)
+  addressLine2       String?  @map("address_line_2") @db.VarChar(255)
+  landmark           String?  @db.VarChar(255)
+  postalCode         String?  @map("postal_code") @db.VarChar(20)
   locationId         Int?     @map("location_id")
   infrastructure     Json     @default("{}")
   totalCapacity      Int      @default(0) @map("total_capacity")
@@ -707,9 +711,11 @@ model TrainingCentre {
   complianceStatus   String   @default("pending") @map("compliance_status") @db.VarChar(50)
   isActive           Boolean  @default(true) @map("is_active")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   location           City?    @relation(fields: [locationId], references: [id])
   batches            Batch[]
 
+  @@index([isActive], map: "idx_training_centres_active")
   @@map("training_centres")
 }
 

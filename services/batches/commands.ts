@@ -8,7 +8,49 @@ import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addLearnerEnrollmentService } from "@/services/learners-service";
 import { formatMockTrainerNames, mapBatchRecord, normalizeTrainerIds, resolveProgramAndTrainersWithAutoMapping } from "@/services/batches/internal-helpers";
 import { MOCK_BATCHES } from "@/services/batches/mock-data";
+import { MOCK_CENTERS } from "@/services/centers/mock-data";
 import { BatchBulkEnrollmentResult, BatchCreateResult, BatchOption } from "@/services/batches/types";
+
+const BATCH_MUTATION_INCLUDE = {
+  centre: {
+    select: {
+      id: true,
+      name: true,
+      addressLine1: true,
+      addressLine2: true,
+      landmark: true,
+      postalCode: true,
+      location: {
+        select: {
+          name: true,
+          state: {
+            select: {
+              name: true,
+              country: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  program: { select: { name: true } },
+  trainer: {
+    select: {
+      id: true,
+      user: { select: { name: true } },
+    },
+  },
+  trainers: {
+    select: {
+      id: true,
+      user: { select: { name: true } },
+    },
+  },
+} as const;
 
 export async function generateBatchCode(programName: string): Promise<string> {
   const prefix = programName.substring(0, 3).toUpperCase();
@@ -36,7 +78,7 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
   const normalizedName = input.name.trim();
   const normalizedProgramName = input.programName.trim();
   const normalizedTrainerIds = normalizeTrainerIds(input.trainerIds);
-  const normalizedCampus = input.campus.trim() || null;
+  const normalizedCentreId = input.centreId.trim() || null;
   const startDate = new Date(input.startDate);
   const endDate = input.endDate.trim() ? new Date(input.endDate) : null;
 
@@ -53,13 +95,25 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
     throw new Error("Invalid end date.");
   }
 
+  const mockCentre = normalizedCentreId ? MOCK_CENTERS.find((center) => center.id === normalizedCentreId && center.isActive) ?? null : null;
+
+  if (input.mode === "OFFLINE" && !normalizedCentreId) {
+    throw new Error("A physical center is required for offline batches.");
+  }
+
+  if (normalizedCentreId && !isDatabaseConfigured && !mockCentre) {
+    throw new Error("Invalid center selection.");
+  }
+
   if (!isDatabaseConfigured) {
     return {
       id: `mock-${Date.now()}`,
       code: normalizedCode,
       name: normalizedName,
       programName: normalizedProgramName,
-      campus: normalizedCampus,
+      centreId: mockCentre?.id ?? null,
+      campus: mockCentre?.name ?? null,
+      centreAddress: mockCentre?.addressSummary ?? null,
       startDate: startDate.toISOString(),
       endDate: endDate?.toISOString() ?? null,
       capacity: input.capacity,
@@ -70,14 +124,30 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
     };
   }
 
-  const [existingCode, resolved] = await Promise.all([
+  const [existingCode, resolved, centre] = await Promise.all([
     prisma.batch.findUnique({ where: { code: normalizedCode }, select: { id: true } }),
     resolveProgramAndTrainersWithAutoMapping(normalizedProgramName, normalizedTrainerIds),
+    normalizedCentreId
+      ? prisma.trainingCentre.findFirst({
+          where: { id: normalizedCentreId, isActive: true },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   if (existingCode) {
     throw new Error("Batch code already exists.");
   }
+
+  if (normalizedCentreId && !centre) {
+    throw new Error("Invalid center selection.");
+  }
+
+  if (input.mode === "OFFLINE" && !centre) {
+    throw new Error("A physical center is required for offline batches.");
+  }
+
+  const normalizedCampus = centre?.name ?? null;
 
   if (resolved.trainersToAddToProgram.length > 0) {
     await Promise.all(
@@ -99,6 +169,7 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
       code: normalizedCode,
       name: normalizedName,
       programId: resolved.program.id,
+      centreId: centre?.id ?? null,
       campus: normalizedCampus,
       startDate,
       endDate,
@@ -109,21 +180,7 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
       trainerId: resolved.trainerIds[0] ?? null,
       trainers: resolved.trainerIds.length > 0 ? { connect: resolved.trainerIds.map((trainerId) => ({ id: trainerId })) } : undefined,
     },
-    include: {
-      program: { select: { name: true } },
-      trainer: {
-        select: {
-          id: true,
-          user: { select: { name: true } },
-        },
-      },
-      trainers: {
-        select: {
-          id: true,
-          user: { select: { name: true } },
-        },
-      },
-    },
+    include: BATCH_MUTATION_INCLUDE,
   });
 
   const mapped = mapBatchRecord(batch);
@@ -145,7 +202,9 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
     code: mapped.code,
     name: mapped.name,
     programName: mapped.programName,
+    centreId: mapped.centreId,
     campus: mapped.campus,
+    centreAddress: mapped.centreAddress,
     startDate: mapped.startDate ?? startDate.toISOString(),
     endDate: mapped.endDate ?? null,
     capacity: mapped.capacity ?? input.capacity,
@@ -162,7 +221,7 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
   const normalizedName = input.name.trim();
   const normalizedProgramName = input.programName.trim();
   const normalizedTrainerIds = normalizeTrainerIds(input.trainerIds);
-  const normalizedCampus = input.campus.trim() || null;
+  const normalizedCentreId = input.centreId.trim() || null;
   const startDate = new Date(input.startDate);
   const endDate = input.endDate.trim() ? new Date(input.endDate) : null;
 
@@ -174,13 +233,17 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
     throw new Error("Invalid end date.");
   }
 
+  const mockCentre = normalizedCentreId ? MOCK_CENTERS.find((center) => center.id === normalizedCentreId && center.isActive) ?? null : null;
+
   if (!isDatabaseConfigured) {
     return {
       id: normalizedBatchId,
       code: normalizedCode,
       name: normalizedName,
       programName: normalizedProgramName,
-      campus: normalizedCampus,
+      centreId: mockCentre?.id ?? null,
+      campus: mockCentre?.name ?? null,
+      centreAddress: mockCentre?.addressSummary ?? null,
       startDate: startDate.toISOString(),
       endDate: endDate?.toISOString() ?? null,
       capacity: input.capacity,
@@ -196,14 +259,30 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
     throw new Error("Batch not found.");
   }
 
-  const [duplicateCode, resolved] = await Promise.all([
+  const [duplicateCode, resolved, centre] = await Promise.all([
     prisma.batch.findFirst({ where: { code: normalizedCode, NOT: { id: normalizedBatchId } }, select: { id: true } }),
     resolveProgramAndTrainersWithAutoMapping(normalizedProgramName, normalizedTrainerIds),
+    normalizedCentreId
+      ? prisma.trainingCentre.findFirst({
+          where: { id: normalizedCentreId, isActive: true },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   if (duplicateCode) {
     throw new Error("Batch code already exists.");
   }
+
+  if (normalizedCentreId && !centre) {
+    throw new Error("Invalid center selection.");
+  }
+
+  if (input.mode === "OFFLINE" && !centre) {
+    throw new Error("A physical center is required for offline batches.");
+  }
+
+  const normalizedCampus = centre?.name ?? null;
 
   if (resolved.trainersToAddToProgram.length > 0) {
     await Promise.all(
@@ -226,6 +305,7 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
       code: normalizedCode,
       name: normalizedName,
       programId: resolved.program.id,
+      centreId: centre?.id ?? null,
       trainerId: resolved.trainerIds[0] ?? null,
       trainers: { set: resolved.trainerIds.map((trainerId) => ({ id: trainerId })) },
       campus: normalizedCampus,
@@ -236,21 +316,7 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
       capacity: input.capacity,
       schedule: input.schedule,
     },
-    include: {
-      program: { select: { name: true } },
-      trainer: {
-        select: {
-          id: true,
-          user: { select: { name: true } },
-        },
-      },
-      trainers: {
-        select: {
-          id: true,
-          user: { select: { name: true } },
-        },
-      },
-    },
+    include: BATCH_MUTATION_INCLUDE,
   });
 
   const mapped = mapBatchRecord(batch);
@@ -272,7 +338,9 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
     code: mapped.code,
     name: mapped.name,
     programName: mapped.programName,
+    centreId: mapped.centreId,
     campus: mapped.campus,
+    centreAddress: mapped.centreAddress,
     startDate: mapped.startDate ?? startDate.toISOString(),
     endDate: mapped.endDate ?? null,
     capacity: mapped.capacity ?? input.capacity,
@@ -301,21 +369,7 @@ export async function archiveBatchService(batchId: string): Promise<BatchOption>
   const batch = await prisma.batch.update({
     where: { id: normalizedBatchId },
     data: { status: "ARCHIVED" },
-    include: {
-      program: { select: { name: true } },
-      trainer: {
-        select: {
-          id: true,
-          user: { select: { name: true } },
-        },
-      },
-      trainers: {
-        select: {
-          id: true,
-          user: { select: { name: true } },
-        },
-      },
-    },
+    include: BATCH_MUTATION_INCLUDE,
   });
 
   return mapBatchRecord(batch);
