@@ -59,3 +59,49 @@ export type GradingReport = {
   passed: boolean;
   results: GradeResult[];
 };
+
+export type CandidateAssessmentQuestion = {
+  id: string;
+  questionText: string;
+  questionType: QuestionType;
+  options: unknown;
+  marks: number;
+  sortOrder: number;
+};
+
+export type CandidateAssessmentAttemptSummary = {
+  assessmentId: string;
+  percentage: number;
+  passed: boolean;
+  gradedAt: Date;
+  marksObtained: number | null;
+  totalMarks: number;
+};
+
+export type CandidateAssessmentDetail = {
+  batchId: string;
+  assessmentPoolId: string;
+  mappingId: string;
+  assessmentTitle: string;
+  assessmentCode: string;
+  description: string | null;
+  questionType: QuestionType;
+  difficultyLevel: DifficultyLevel;
+  totalMarks: number;
+  passingMarks: number;
+  timeLimitMinutes: number | null;
+  scheduledAt: Date | null;
+  opensAt: Date | null;
+  isOpen: boolean;
+  supportsInAppAttempt: boolean;
+  availabilityMessage: string | null;
+  questionCount: number;
+  questions: CandidateAssessmentQuestion[];
+  attempt: CandidateAssessmentAttemptSummary | null;
+};
+
+export type CandidateAssessmentSubmissionResult = {
+  batchId: string;
+  assessmentPoolId: string;
+  attempt: CandidateAssessmentAttemptSummary;
+};

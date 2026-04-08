@@ -18,10 +18,18 @@ export {
 } from "@/services/assessment-pool/commands";
 
 export { gradeSubmissionService } from "@/services/assessment-pool/grading";
+export {
+  getCandidateAssessmentDetailService,
+  submitCandidateAssessmentService,
+} from "@/services/assessment-pool/candidate";
 export { generateAssessmentWithAi } from "@/services/assessment-pool/ai-stubs";
 
 export type {
   AssessmentPoolCreateResult,
+  CandidateAssessmentAttemptSummary,
+  CandidateAssessmentDetail,
+  CandidateAssessmentQuestion,
+  CandidateAssessmentSubmissionResult,
   AssessmentPoolDetail,
   AssessmentPoolListItem,
   GradeResult,
