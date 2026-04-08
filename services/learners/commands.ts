@@ -6,6 +6,7 @@ import { AuditActionType, AuditEntityType, Prisma } from "@prisma/client";
 import { buildPendingAccountActivationMetadata, mergeAccountMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { UpdateCandidateSelfProfileInput } from "@/lib/validation-schemas/candidate-profile";
 import { CreateLearnerEnrollmentInput, CreateLearnerInput, UpdateLearnerInput } from "@/lib/validation-schemas/learners";
 import {
   batchDetailArgs,
@@ -19,9 +20,11 @@ import {
   sendCandidateEnrollmentCredentialsEmail,
   MOCK_ENROLLMENT_CATALOG,
 } from "@/services/learners/internal-helpers";
+import { getCandidateProfileByUserIdService } from "@/services/learners/queries";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
+import { CandidateProfile } from "@/services/learners/types";
 
 export async function createLearnerService(input: CreateLearnerInput) {
   const normalizedEmail = input.email.trim().toLowerCase();
@@ -484,4 +487,47 @@ export async function updateLearnerService(learnerCode: string, input: UpdateLea
   });
 
   return mappedLearner;
+}
+
+export async function updateCandidateSelfProfileService(
+  userId: string,
+  input: UpdateCandidateSelfProfileInput,
+  actorUserId?: string,
+): Promise<CandidateProfile> {
+  if (!isDatabaseConfigured) {
+    const mockProfile = await getCandidateProfileByUserIdService(userId);
+
+    if (!mockProfile) {
+      throw new Error("Candidate profile not found.");
+    }
+
+    return {
+      ...mockProfile,
+      fullName: input.fullName?.trim() ?? mockProfile.fullName,
+      email: input.email?.trim().toLowerCase() ?? mockProfile.email,
+      phone: input.phone !== undefined ? input.phone.trim() || null : mockProfile.phone ?? null,
+      country: input.country !== undefined ? input.country.trim() || null : mockProfile.country ?? null,
+      dob: input.dob !== undefined ? input.dob.trim() || null : mockProfile.dob ?? null,
+      gender: input.gender !== undefined ? input.gender.trim() || null : mockProfile.gender ?? null,
+    };
+  }
+
+  const learner = await prisma.learner.findFirst({
+    where: { userId },
+    select: { learnerCode: true },
+  });
+
+  if (!learner) {
+    throw new Error("Candidate profile not found.");
+  }
+
+  await updateLearnerService(learner.learnerCode, input, actorUserId ?? userId);
+
+  const profile = await getCandidateProfileByUserIdService(userId);
+
+  if (!profile) {
+    throw new Error("Candidate profile not found.");
+  }
+
+  return profile;
 }
