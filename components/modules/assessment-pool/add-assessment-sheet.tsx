@@ -5,8 +5,8 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const QUESTION_TYPES = [
   { value: "MCQ", label: "Multiple Choice" },
@@ -209,7 +209,7 @@ export function AddAssessmentSheet({
     onOpenChange(false);
   }, [isDirty, isSubmitting, onOpenChange, resetWorkflow]);
 
-  const handleSheetOpenChange = (nextOpen: boolean) => {
+  const handleDialogOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       onOpenChange(true);
       return;
@@ -324,13 +324,13 @@ export function AddAssessmentSheet({
   const timeLimitError = shouldShowFieldError("timeLimitMinutes") ? questionSetupErrors.timeLimitMinutes : undefined;
 
   return (
-    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
-      <SheetContent className="sm:max-w-xl flex h-full max-h-screen flex-col overflow-hidden">
-        <SheetHeader>
-          <SheetTitle>Create Assessment</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent className="flex max-h-[90vh] w-[min(96vw,56rem)] max-w-4xl flex-col overflow-hidden p-0">
+        <DialogHeader className="space-y-4">
+          <DialogTitle>Create Assessment</DialogTitle>
+          <DialogDescription>
             Build the assessment setup in guided steps, then continue directly into question authoring.
-          </SheetDescription>
+          </DialogDescription>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {STEP_SEQUENCE.map((step, index) => {
               const isActive = currentStep === step.id;
@@ -366,10 +366,10 @@ export function AddAssessmentSheet({
               );
             })}
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-1 py-4">
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
             {currentStep === "BASICS" ? (
               <>
                 <div className="space-y-2">
@@ -577,7 +577,7 @@ export function AddAssessmentSheet({
               </div>
             ) : null}
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-6">
               <div className="flex items-center gap-2">
                 <Button type="button" variant="secondary" onClick={requestClose}>
                   Cancel
@@ -606,7 +606,7 @@ export function AddAssessmentSheet({
             </div>
           </div>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

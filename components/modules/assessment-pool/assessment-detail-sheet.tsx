@@ -15,6 +15,9 @@ type QuestionItem = {
   id: string;
   questionText: string;
   questionType: string;
+  options: unknown;
+  correctAnswer: unknown;
+  explanation: string | null;
   marks: number;
   sortOrder: number;
 };
@@ -126,6 +129,7 @@ export function AssessmentDetailSheet({
   const [metadataErrors, setMetadataErrors] = useState<AssessmentMetadataErrors>({});
   const [pendingDeleteQuestionId, setPendingDeleteQuestionId] = useState<string | null>(null);
   const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
+  const [editingQuestion, setEditingQuestion] = useState<QuestionItem | null>(null);
 
   const fetchDetail = useCallback(async () => {
     if (!poolId) return;
@@ -161,9 +165,19 @@ export function AssessmentDetailSheet({
       setIsSavingMetadata(false);
       setPendingDeleteQuestionId(null);
       setDeletingQuestionId(null);
+      setEditingQuestion(null);
       setMetadataErrors({});
     }
   }, [open, poolId]);
+
+  useEffect(() => {
+    if (!detail || !editingQuestion) {
+      return;
+    }
+
+    const nextEditingQuestion = detail.questions.find((question) => question.id === editingQuestion.id) ?? null;
+    setEditingQuestion(nextEditingQuestion);
+  }, [detail, editingQuestion?.id]);
 
   const handleStartMetadataEdit = () => {
     if (!detail) {
@@ -259,12 +273,25 @@ export function AssessmentDetailSheet({
       if (!response.ok) throw new Error("Failed to delete question.");
       toast.success("Question removed.");
       setPendingDeleteQuestionId(null);
+      setEditingQuestion((current) => (current?.id === questionId ? null : current));
       void fetchDetail();
+      onUpdated?.();
     } catch {
       toast.error("Failed to delete question.");
     } finally {
       setDeletingQuestionId(null);
     }
+  };
+
+  const handleStartQuestionEdit = (question: QuestionItem) => {
+    setPendingDeleteQuestionId(null);
+    setEditingQuestion((current) => (current?.id === question.id ? null : question));
+  };
+
+  const handleQuestionSaved = () => {
+    setEditingQuestion(null);
+    void fetchDetail();
+    onUpdated?.();
   };
 
   const handleDeleteAssessment = async () => {
@@ -517,13 +544,21 @@ export function AssessmentDetailSheet({
                 ) : (
                   <div className="divide-y rounded-lg border">
                     {detail.questions.map((q, i) => (
-                      <div key={q.id} className="flex items-start justify-between gap-3 px-3 py-2">
+                      <div
+                        key={q.id}
+                        className={`flex items-start justify-between gap-3 px-3 py-2 ${editingQuestion?.id === q.id ? "bg-slate-50" : ""}`}
+                      >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-muted-foreground">Q{i + 1}</span>
                             <Badge variant="info" className="text-[10px] px-1 py-0">
                               {questionTypeLabels[q.questionType] ?? q.questionType}
                             </Badge>
+                            {editingQuestion?.id === q.id ? (
+                              <Badge variant="info" className="text-[10px] px-1 py-0">
+                                Editing
+                              </Badge>
+                            ) : null}
                             <span className="text-xs text-muted-foreground">{q.marks} mark{q.marks !== 1 ? "s" : ""}</span>
                           </div>
                           <p className="mt-0.5 text-sm line-clamp-2">{q.questionText}</p>
@@ -555,15 +590,29 @@ export function AssessmentDetailSheet({
                           ) : null}
                         </div>
                         <CanAccess permission="assessment_pool.edit">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="shrink-0 text-destructive hover:text-destructive"
-                            onClick={() => setPendingDeleteQuestionId((current) => (current === q.id ? null : q.id))}
-                          >
-                            Remove
-                          </Button>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleStartQuestionEdit(q)}
+                              disabled={deletingQuestionId === q.id}
+                            >
+                              {editingQuestion?.id === q.id ? "Close" : "Edit"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => {
+                                setEditingQuestion((current) => (current?.id === q.id ? null : current));
+                                setPendingDeleteQuestionId((current) => (current === q.id ? null : q.id));
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </CanAccess>
                       </div>
                     ))}
@@ -579,7 +628,10 @@ export function AssessmentDetailSheet({
                       poolId={detail.id}
                       defaultType={detail.questionType}
                       questionCount={detail.questionCount}
-                      onQuestionAdded={fetchDetail}
+                      mode={editingQuestion ? "edit" : "create"}
+                      initialQuestion={editingQuestion}
+                      onSaved={handleQuestionSaved}
+                      onCancel={() => setEditingQuestion(null)}
                     />
                   </CanAccess>
                 </section>

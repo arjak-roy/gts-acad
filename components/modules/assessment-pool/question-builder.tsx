@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,19 @@ import { Input } from "@/components/ui/input";
 type QuestionForm = {
   questionText: string;
   questionType: string;
-  options: unknown;
-  correctAnswer: unknown;
   explanation: string;
   marks: number;
+};
+
+type EditableQuestion = {
+  id: string;
+  questionText: string;
+  questionType: string;
+  options: unknown;
+  correctAnswer: unknown;
+  explanation: string | null;
+  marks: number;
+  sortOrder?: number;
 };
 
 const QUESTION_TYPES = [
@@ -24,6 +33,154 @@ const QUESTION_TYPES = [
   { value: "MULTI_INPUT_REASONING", label: "Multi-Input" },
   { value: "TWO_PART_ANALYSIS", label: "Two-Part" },
 ];
+
+const DEFAULT_MCQ_OPTIONS = [
+  { label: "A", text: "" },
+  { label: "B", text: "" },
+  { label: "C", text: "" },
+  { label: "D", text: "" },
+];
+
+const DEFAULT_TWO_PART_OPTIONS = ["", "", "", ""];
+
+const DEFAULT_MULTI_FIELDS = [{ label: "", expectedAnswer: "" }];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function cloneMcqOptions(options: { label: string; text: string }[]) {
+  return options.map((option) => ({ ...option }));
+}
+
+function getInitialQuestionType(defaultType: string, question?: EditableQuestion | null) {
+  return question?.questionType || defaultType || "MCQ";
+}
+
+function buildInitialForm(defaultType: string, question?: EditableQuestion | null): QuestionForm {
+  return {
+    questionText: question?.questionText ?? "",
+    questionType: getInitialQuestionType(defaultType, question),
+    explanation: question?.explanation ?? "",
+    marks: question?.marks ?? 1,
+  };
+}
+
+function getInitialMcqOptions(options: unknown) {
+  if (!Array.isArray(options)) {
+    return cloneMcqOptions(DEFAULT_MCQ_OPTIONS);
+  }
+
+  const normalized = options
+    .map((option, index) => {
+      if (!isRecord(option)) {
+        return null;
+      }
+
+      const label = typeof option.label === "string" && option.label.trim().length > 0
+        ? option.label
+        : String.fromCharCode(65 + index);
+      const text = typeof option.text === "string" ? option.text : "";
+
+      return { label, text };
+    })
+    .filter((option): option is { label: string; text: string } => Boolean(option));
+
+  return normalized.length > 0 ? normalized : cloneMcqOptions(DEFAULT_MCQ_OPTIONS);
+}
+
+function getInitialMcqCorrectAnswer(
+  correctAnswer: unknown,
+  options: { label: string; text: string }[],
+) {
+  if (typeof correctAnswer !== "string") {
+    return "";
+  }
+
+  if (options.some((option) => option.label === correctAnswer)) {
+    return correctAnswer;
+  }
+
+  const matchingOption = options.find((option) => option.text === correctAnswer);
+  return matchingOption?.label ?? "";
+}
+
+function getInitialNumericAnswer(correctAnswer: unknown) {
+  if (!isRecord(correctAnswer)) {
+    return { value: "", tolerance: 0 };
+  }
+
+  const value = typeof correctAnswer.value === "number" || typeof correctAnswer.value === "string"
+    ? correctAnswer.value
+    : "";
+  const tolerance = typeof correctAnswer.tolerance === "number" || typeof correctAnswer.tolerance === "string"
+    ? correctAnswer.tolerance
+    : 0;
+
+  return { value, tolerance };
+}
+
+function getInitialFillAnswers(correctAnswer: unknown) {
+  if (!Array.isArray(correctAnswer)) {
+    return [""];
+  }
+
+  const answers = correctAnswer.filter((answer): answer is string => typeof answer === "string");
+  return answers.length > 0 ? answers : [""];
+}
+
+function getInitialTwoPartOptions(options: unknown) {
+  if (!Array.isArray(options)) {
+    return [...DEFAULT_TWO_PART_OPTIONS];
+  }
+
+  const normalized = options.filter((option): option is string => typeof option === "string");
+  return normalized.length > 0 ? normalized : [...DEFAULT_TWO_PART_OPTIONS];
+}
+
+function getInitialTwoPartAnswer(correctAnswer: unknown) {
+  if (!isRecord(correctAnswer)) {
+    return { partA: "", partB: "" };
+  }
+
+  return {
+    partA: typeof correctAnswer.partA === "string" ? correctAnswer.partA : "",
+    partB: typeof correctAnswer.partB === "string" ? correctAnswer.partB : "",
+  };
+}
+
+function getInitialMultiFields(options: unknown, correctAnswer: unknown) {
+  if (isRecord(options) && Array.isArray(options.fields)) {
+    const normalized = options.fields
+      .map((field) => {
+        if (!isRecord(field)) {
+          return null;
+        }
+
+        return {
+          label: typeof field.label === "string" ? field.label : "",
+          expectedAnswer: typeof field.expectedAnswer === "string" ? field.expectedAnswer : "",
+        };
+      })
+      .filter((field): field is { label: string; expectedAnswer: string } => Boolean(field));
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
+  if (isRecord(correctAnswer)) {
+    const normalized = Object.entries(correctAnswer)
+      .filter(([, value]) => typeof value === "string")
+      .map(([label, expectedAnswer]) => ({ label, expectedAnswer: expectedAnswer as string }));
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
+  return [...DEFAULT_MULTI_FIELDS];
+}
 
 function McqOptions({
   options,
@@ -276,60 +433,107 @@ export function QuestionBuilder({
   poolId,
   defaultType,
   questionCount,
-  onQuestionAdded,
+  mode = "create",
+  initialQuestion = null,
+  onSaved,
+  onCancel,
 }: {
   poolId: string;
   defaultType: string;
   questionCount?: number;
-  onQuestionAdded: () => void;
+  mode?: "create" | "edit";
+  initialQuestion?: EditableQuestion | null;
+  onSaved: () => void;
+  onCancel?: () => void;
 }) {
-  const [form, setForm] = useState<QuestionForm>({
-    questionText: "",
-    questionType: defaultType || "MCQ",
-    options: null,
-    correctAnswer: null,
-    explanation: "",
-    marks: 1,
-  });
+  const [form, setForm] = useState<QuestionForm>(() => buildInitialForm(defaultType, initialQuestion));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Type-specific state
-  const [mcqOptions, setMcqOptions] = useState<{ label: string; text: string }[]>([
-    { label: "A", text: "" }, { label: "B", text: "" }, { label: "C", text: "" }, { label: "D", text: "" },
-  ]);
-  const [mcqCorrect, setMcqCorrect] = useState("");
-  const [numericValue, setNumericValue] = useState<number | string>("");
-  const [numericTolerance, setNumericTolerance] = useState<number | string>(0);
-  const [fillAnswers, setFillAnswers] = useState<string[]>([""]);
-  const [twoPartOptions, setTwoPartOptions] = useState<string[]>(["", "", "", ""]);
-  const [twoPartA, setTwoPartA] = useState("");
-  const [twoPartB, setTwoPartB] = useState("");
-  const [multiFields, setMultiFields] = useState<{ label: string; expectedAnswer: string }[]>([{ label: "", expectedAnswer: "" }]);
+  const [mcqOptions, setMcqOptions] = useState<{ label: string; text: string }[]>(() => getInitialMcqOptions(initialQuestion?.options));
+  const [mcqCorrect, setMcqCorrect] = useState(() => getInitialMcqCorrectAnswer(initialQuestion?.correctAnswer, getInitialMcqOptions(initialQuestion?.options)));
+  const [numericValue, setNumericValue] = useState<number | string>(() => getInitialNumericAnswer(initialQuestion?.correctAnswer).value);
+  const [numericTolerance, setNumericTolerance] = useState<number | string>(() => getInitialNumericAnswer(initialQuestion?.correctAnswer).tolerance);
+  const [fillAnswers, setFillAnswers] = useState<string[]>(() => getInitialFillAnswers(initialQuestion?.correctAnswer));
+  const [twoPartOptions, setTwoPartOptions] = useState<string[]>(() => getInitialTwoPartOptions(initialQuestion?.options));
+  const [twoPartA, setTwoPartA] = useState(() => getInitialTwoPartAnswer(initialQuestion?.correctAnswer).partA);
+  const [twoPartB, setTwoPartB] = useState(() => getInitialTwoPartAnswer(initialQuestion?.correctAnswer).partB);
+  const [multiFields, setMultiFields] = useState<{ label: string; expectedAnswer: string }[]>(() => getInitialMultiFields(initialQuestion?.options, initialQuestion?.correctAnswer));
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const isEditMode = mode === "edit" && Boolean(initialQuestion?.id);
+
+  useEffect(() => {
+    if (mode === "edit" && initialQuestion) {
+      const nextMcqOptions = getInitialMcqOptions(initialQuestion.options);
+      const nextNumeric = getInitialNumericAnswer(initialQuestion.correctAnswer);
+      const nextTwoPartAnswer = getInitialTwoPartAnswer(initialQuestion.correctAnswer);
+
+      setForm(buildInitialForm(defaultType, initialQuestion));
+      setMcqOptions(nextMcqOptions);
+      setMcqCorrect(getInitialMcqCorrectAnswer(initialQuestion.correctAnswer, nextMcqOptions));
+      setNumericValue(nextNumeric.value);
+      setNumericTolerance(nextNumeric.tolerance);
+      setFillAnswers(getInitialFillAnswers(initialQuestion.correctAnswer));
+      setTwoPartOptions(getInitialTwoPartOptions(initialQuestion.options));
+      setTwoPartA(nextTwoPartAnswer.partA);
+      setTwoPartB(nextTwoPartAnswer.partB);
+      setMultiFields(getInitialMultiFields(initialQuestion.options, initialQuestion.correctAnswer));
+      setValidationError(null);
+      return;
+    }
+
+    setForm(buildInitialForm(defaultType));
+    setMcqOptions(cloneMcqOptions(DEFAULT_MCQ_OPTIONS));
+    setMcqCorrect("");
+    setNumericValue("");
+    setNumericTolerance(0);
+    setFillAnswers([""]);
+    setTwoPartOptions([...DEFAULT_TWO_PART_OPTIONS]);
+    setTwoPartA("");
+    setTwoPartB("");
+    setMultiFields([...DEFAULT_MULTI_FIELDS]);
+    setValidationError(null);
+  }, [defaultType, initialQuestion?.id, mode]);
 
   const buildPayload = () => {
     let options: unknown = null;
     let correctAnswer: unknown = null;
 
     switch (form.questionType) {
-      case "MCQ":
-        options = mcqOptions;
+      case "MCQ": {
+        const normalizedOptions = mcqOptions.map((option) => ({
+          label: option.label,
+          text: option.text.trim(),
+        }));
+        options = normalizedOptions.filter((option) => option.text.length > 0);
         correctAnswer = mcqCorrect;
         break;
+      }
       case "NUMERIC":
         correctAnswer = { value: Number(numericValue), tolerance: Number(numericTolerance) };
         break;
       case "FILL_IN_THE_BLANK":
-        correctAnswer = fillAnswers.filter(Boolean);
+        correctAnswer = fillAnswers.map((answer) => answer.trim()).filter(Boolean);
         break;
       case "TWO_PART_ANALYSIS":
-        options = twoPartOptions.filter(Boolean);
-        correctAnswer = { partA: twoPartA, partB: twoPartB };
+        options = twoPartOptions.map((option) => option.trim()).filter(Boolean);
+        correctAnswer = { partA: twoPartA.trim(), partB: twoPartB.trim() };
         break;
-      case "MULTI_INPUT_REASONING":
-        options = { fields: multiFields };
-        correctAnswer = multiFields.reduce((acc, f) => ({ ...acc, [f.label]: f.expectedAnswer }), {});
+      case "MULTI_INPUT_REASONING": {
+        const normalizedFields = multiFields
+          .map((field) => ({
+            label: field.label.trim(),
+            expectedAnswer: field.expectedAnswer.trim(),
+          }))
+          .filter((field) => field.label.length > 0 && field.expectedAnswer.length > 0);
+        options = { fields: normalizedFields };
+        correctAnswer = normalizedFields.reduce<Record<string, string>>((acc, field) => ({
+          ...acc,
+          [field.label]: field.expectedAnswer,
+        }), {});
         break;
+      }
       case "ESSAY":
         options = { rubric: "", maxWordCount: 500 };
         break;
@@ -360,6 +564,10 @@ export function QuestionBuilder({
     }
 
     if (form.questionType === "NUMERIC") {
+      if (String(numericValue).trim().length === 0) {
+        return "Enter a valid numeric answer.";
+      }
+
       const parsedValue = Number(numericValue);
       const parsedTolerance = Number(numericTolerance);
       if (!Number.isFinite(parsedValue)) {
@@ -413,8 +621,12 @@ export function QuestionBuilder({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/assessment-pool/${poolId}/questions`, {
-        method: "POST",
+      const response = await fetch(
+        isEditMode
+          ? `/api/assessment-pool/${poolId}/questions/${initialQuestion?.id}`
+          : `/api/assessment-pool/${poolId}/questions`,
+        {
+          method: isEditMode ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           questionText: form.questionText,
@@ -424,19 +636,38 @@ export function QuestionBuilder({
           explanation: form.explanation,
           marks: form.marks,
         }),
-      });
+        },
+      );
 
       if (!response.ok) {
         const errData = (await response.json()) as { error?: string };
-        throw new Error(errData.error || "Failed to add question.");
+        throw new Error(errData.error || (isEditMode ? "Failed to update question." : "Failed to add question."));
       }
 
-      toast.success("Question added.");
-      setForm((prev) => ({ ...prev, questionText: "", explanation: "" }));
+      toast.success(isEditMode ? "Question updated." : "Question added.");
+
+      if (!isEditMode) {
+        setForm((prev) => ({
+          ...prev,
+          questionText: "",
+          explanation: "",
+          marks: 1,
+        }));
+        setMcqOptions(cloneMcqOptions(DEFAULT_MCQ_OPTIONS));
+        setMcqCorrect("");
+        setNumericValue("");
+        setNumericTolerance(0);
+        setFillAnswers([""]);
+        setTwoPartOptions([...DEFAULT_TWO_PART_OPTIONS]);
+        setTwoPartA("");
+        setTwoPartB("");
+        setMultiFields([...DEFAULT_MULTI_FIELDS]);
+      }
+
       setValidationError(null);
-      onQuestionAdded();
+      onSaved();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add question.");
+      toast.error(error instanceof Error ? error.message : (isEditMode ? "Failed to update question." : "Failed to add question."));
     } finally {
       setIsSubmitting(false);
     }
@@ -446,15 +677,17 @@ export function QuestionBuilder({
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
-          <h4 className="text-sm font-medium">Add Question</h4>
+          <h4 className="text-sm font-medium">{isEditMode ? "Edit Question" : "Add Question"}</h4>
           <p className="text-xs text-muted-foreground">
-            {questionCount && questionCount > 0
-              ? `${questionCount} question${questionCount === 1 ? "" : "s"} already in this assessment.`
-              : "Add your first question to unlock publishing."}
+            {isEditMode
+              ? "Update the question content, answers, and marks, then save your changes."
+              : questionCount && questionCount > 0
+                ? `${questionCount} question${questionCount === 1 ? "" : "s"} already in this assessment.`
+                : "Add your first question to unlock publishing."}
           </p>
         </div>
-        <Badge variant={questionCount && questionCount > 0 ? "success" : "warning"}>
-          {questionCount && questionCount > 0 ? "Publish Ready" : "Needs Questions"}
+        <Badge variant={isEditMode ? "info" : questionCount && questionCount > 0 ? "success" : "warning"}>
+          {isEditMode ? "Editing" : questionCount && questionCount > 0 ? "Publish Ready" : "Needs Questions"}
         </Badge>
       </div>
 
@@ -568,9 +801,16 @@ export function QuestionBuilder({
       </div>
 
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={isSubmitting || !form.questionText.trim()}>
-          {isSubmitting ? "Adding..." : "Add Question"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {isEditMode && onCancel ? (
+            <Button type="button" size="sm" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
+            </Button>
+          ) : null}
+          <Button type="submit" size="sm" disabled={isSubmitting || !form.questionText.trim()}>
+            {isSubmitting ? (isEditMode ? "Saving..." : "Adding...") : (isEditMode ? "Save Changes" : "Add Question")}
+          </Button>
+        </div>
       </div>
     </form>
   );
