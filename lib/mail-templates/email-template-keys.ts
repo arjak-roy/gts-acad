@@ -6,6 +6,13 @@ export const ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY = "auth-account-activation";
 export const INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY = "internal-user-password-changed";
 export const CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "candidate-welcome-credentials";
 export const INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "internal-user-welcome-credentials";
+export const USER_INVITATION_EMAIL_TEMPLATE_KEY = "user-invitation";
+export const COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY = "course-enrollment-confirmation";
+export const COURSE_COMPLETION_EMAIL_TEMPLATE_KEY = "course-completion";
+export const QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY = "quiz-assigned";
+export const QUIZ_RESULT_EMAIL_TEMPLATE_KEY = "quiz-result";
+export const TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY = "trainer-assignment";
+export const GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY = "general-notification";
 
 export type EmailTemplateKeyOption = {
   key: string;
@@ -43,6 +50,41 @@ export const EMAIL_TEMPLATE_KEY_OPTIONS: EmailTemplateKeyOption[] = [
     key: INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
     label: "Internal User Welcome Credentials",
     description: "Email sent when an internal user account is created from the admin portal.",
+  },
+  {
+    key: USER_INVITATION_EMAIL_TEMPLATE_KEY,
+    label: "User Invitation",
+    description: "Email sent when a user is invited to join the platform.",
+  },
+  {
+    key: COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
+    label: "Course Enrollment Confirmation",
+    description: "Email confirming successful enrollment in a course.",
+  },
+  {
+    key: COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
+    label: "Course Completion",
+    description: "Email sent when a learner completes a course.",
+  },
+  {
+    key: QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,
+    label: "Quiz Assigned",
+    description: "Email sent when a quiz is assigned to a learner.",
+  },
+  {
+    key: QUIZ_RESULT_EMAIL_TEMPLATE_KEY,
+    label: "Quiz Result",
+    description: "Email sent with quiz results after completion.",
+  },
+  {
+    key: TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
+    label: "Trainer Assignment",
+    description: "Email sent when a trainer is assigned to a batch or course.",
+  },
+  {
+    key: GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+    label: "General Notification",
+    description: "General-purpose notification email template.",
   },
 ];
 

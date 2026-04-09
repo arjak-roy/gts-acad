@@ -19,6 +19,7 @@ import { EditCourseSheet } from "@/components/modules/courses/edit-course-sheet"
 import { AddEmailTemplateSheet } from "@/components/modules/email-templates/add-email-template-sheet";
 import { EditEmailTemplateSheet } from "@/components/modules/email-templates/edit-email-template-sheet";
 import { EmailTemplateDetailSheet } from "@/components/modules/email-templates/email-template-detail-sheet";
+import { TemplateHistorySheet } from "@/components/modules/email-templates/template-history-sheet";
 import { ProgramDetailSheet } from "@/components/modules/programs/program-detail-sheet";
 import { EditProgramSheet } from "@/components/modules/programs/edit-program-sheet";
 import { TrainerDetailSheet } from "@/components/modules/trainers/trainer-detail-sheet";
@@ -63,6 +64,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [editingTrainerId, setEditingTrainerId] = useState<string | null>(null);
   const [editingEmailTemplateId, setEditingEmailTemplateId] = useState<string | null>(null);
+  const [historyTemplateId, setHistoryTemplateId] = useState<string | null>(null);
+  const [historyTemplateName, setHistoryTemplateName] = useState<string | null>(null);
   const [studentsBatch, setStudentsBatch] = useState<{ id: string; code: string } | null>(null);
   const [exportingBatchId, setExportingBatchId] = useState<string | null>(null);
   const [batchActionError, setBatchActionError] = useState<string | null>(null);
@@ -264,6 +267,46 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     }
   };
 
+  const handleDuplicateTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/email-templates/${id}/duplicate`, { method: "POST" });
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to duplicate template.");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteTemplate = async (row: PortalSectionTableRow) => {
+    if (row.isSystem === "true") return;
+    if (!confirm(`Delete template "${row.name}"? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/email-templates/${row.id}`, { method: "DELETE" });
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to delete template.");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleTemplateStatus = async (id: string) => {
+    try {
+      const res = await fetch(`/api/email-templates/${id}/toggle-status`, { method: "PATCH" });
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to toggle template status.");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openTemplateHistory = (row: PortalSectionTableRow) => {
+    setHistoryTemplateId(row.id);
+    setHistoryTemplateName(row.name);
+  };
+
   const columns = useMemo<ColumnDef<PortalSectionTableRow>[]>(
     () => {
       const baseColumns: ColumnDef<PortalSectionTableRow>[] = section.tableColumns.map((column) => ({
@@ -290,6 +333,24 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
                   <CanAccess permission={editPermForSection}>
                     <DropdownMenuItem onSelect={() => openEditor(row.original.id)}>Edit</DropdownMenuItem>
                   </CanAccess>
+                  {isEmailTemplatesSection ? (
+                    <>
+                      <CanAccess permission="email_templates.edit">
+                        <DropdownMenuItem onSelect={() => void handleToggleTemplateStatus(row.original.id)}>
+                          {row.original.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                        </DropdownMenuItem>
+                      </CanAccess>
+                      <CanAccess permission="email_templates.create">
+                        <DropdownMenuItem onSelect={() => void handleDuplicateTemplate(row.original.id)}>Duplicate</DropdownMenuItem>
+                      </CanAccess>
+                      <DropdownMenuItem onSelect={() => openTemplateHistory(row.original)}>History</DropdownMenuItem>
+                      {row.original.isSystem !== "true" ? (
+                        <CanAccess permission="email_templates.delete">
+                          <DropdownMenuItem onSelect={() => void handleDeleteTemplate(row.original)} className="text-rose-600">Delete</DropdownMenuItem>
+                        </CanAccess>
+                      ) : null}
+                    </>
+                  ) : null}
                   {sectionKey === "batches" ? (
                     <CanAccess permission="batches.edit">
                       <DropdownMenuItem onSelect={() => void openStudentsPopup(row.original)}>Students</DropdownMenuItem>
@@ -309,7 +370,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
     return baseColumns;
   },
-  [hasDetailActions, section.tableColumns, editPermForSection, sectionKey, exportingBatchId],
+  [hasDetailActions, section.tableColumns, editPermForSection, sectionKey, exportingBatchId, isEmailTemplatesSection],
   );
 
   const table = useReactTable({
@@ -560,6 +621,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         open={Boolean(editingEmailTemplateId)}
         onOpenChange={(nextOpen) => !nextOpen && closeEditor()}
         existingTemplateKeys={emailTemplateKeys}
+      />
+      <TemplateHistorySheet
+        templateId={historyTemplateId}
+        templateName={historyTemplateName}
+        open={Boolean(historyTemplateId)}
+        onOpenChange={(nextOpen) => { if (!nextOpen) { setHistoryTemplateId(null); setHistoryTemplateName(null); } }}
       />
       <BatchEnrollmentSheet
         open={Boolean(studentsBatch)}

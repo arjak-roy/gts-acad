@@ -17,10 +17,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requirePermission(request, "email_templates.create");
+    const session = await requirePermission(request, "email_templates.create");
     const body = await request.json();
     const input = createEmailTemplateSchema.parse(body);
-    const template = await createEmailTemplateService(input);
+    const template = await createEmailTemplateService({ ...input, userId: session.userId });
     return apiSuccess(template, { status: 201 });
   } catch (error) {
     return apiError(error);

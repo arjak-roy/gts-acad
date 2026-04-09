@@ -22,6 +22,9 @@ export function selectEmailTemplateRecord() {
     variables: true,
     isSystem: true,
     isActive: true,
+    categoryId: true,
+    category: { select: { name: true } },
+    updatedBy: { select: { name: true } },
     createdAt: true,
     updatedAt: true,
   } as const;
@@ -52,6 +55,7 @@ export function buildTestTemplateVariables(template: EmailTemplateDetail, recipi
     roleSummary: "Academy Admin, Content Manager",
     code: "123456",
     expiresInMinutes: 10,
+    expiresInHours: 24,
     purposeLabel: "verify your account",
     resetUrl: "https://gts-academy.app/reset-password?token=SAMPLE_RESET_TOKEN",
     resetToken: "SAMPLE_RESET_TOKEN",
@@ -60,6 +64,18 @@ export function buildTestTemplateVariables(template: EmailTemplateDetail, recipi
     temporaryPassword: "TempPass#123",
     currentYear: new Date().getFullYear(),
     templateName: template.name,
+    invitationUrl: "https://gts-academy.app/activate-account?token=SAMPLE_INVITE_TOKEN",
+    courseName: "React Fundamentals",
+    batchName: "Batch A - 2026",
+    startDate: new Date().toLocaleDateString("en-IN"),
+    completionDate: new Date().toLocaleDateString("en-IN"),
+    quizName: "Module 1 Assessment",
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("en-IN"),
+    score: "85%",
+    resultStatus: "Passed",
+    notificationSubject: "Important Update",
+    notificationTitle: "Platform Update",
+    notificationBody: "This is a sample notification message for preview purposes.",
   };
 
   const variables: TemplateVariables = { ...defaults };
@@ -87,6 +103,9 @@ export function mapRecordToDetail(template: EmailTemplateRecord): EmailTemplateD
     variables: template.variables,
     isSystem: template.isSystem,
     isActive: template.isActive,
+    categoryId: template.categoryId,
+    categoryName: template.category?.name ?? null,
+    updatedByName: template.updatedBy?.name ?? null,
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
   };
@@ -113,6 +132,9 @@ export function resolveMockTemplate(key: string): EmailTemplateDetail | null {
     variables: extractTemplateVariables(fallback.subject, fallback.htmlContent, fallback.textContent),
     isSystem: fallback.isSystem,
     isActive: fallback.isActive,
+    categoryId: null,
+    categoryName: null,
+    updatedByName: null,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
   };

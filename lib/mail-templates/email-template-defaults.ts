@@ -1,19 +1,33 @@
 import {
   ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY,
   CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
+  COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
+  COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
+  GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY,
   INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
   INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
   PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+  QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,
+  QUIZ_RESULT_EMAIL_TEMPLATE_KEY,
+  TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
   TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+  USER_INVITATION_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-keys";
 
 export {
   ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY,
   CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
+  COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
+  COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
+  GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY,
   INTERNAL_USER_PASSWORD_CHANGED_EMAIL_TEMPLATE_KEY,
   INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
   PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+  QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,
+  QUIZ_RESULT_EMAIL_TEMPLATE_KEY,
+  TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
   TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+  USER_INVITATION_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-keys";
 
 export type EmailTemplateSource = {
@@ -241,6 +255,231 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
           </div>
           <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #334155;">Sign in here: <a href="{{loginUrl}}" style="color: #0d3b84;">{{loginUrl}}</a></p>
           <p style="margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: #475569;">For security, change your password immediately after signing in.</p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: USER_INVITATION_EMAIL_TEMPLATE_KEY,
+    name: "User Invitation",
+    description: "Email sent when a user is invited to join the platform.",
+    subject: "You are invited to join {{appName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "You have been invited to join {{appName}}.",
+      "",
+      "Click the link below to set up your account:",
+      "{{invitationUrl}}",
+      "",
+      "This invitation expires in {{expiresInHours}} hours.",
+      "If you did not expect this email, you can ignore it.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">You are invited</h1>
+          <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, you have been invited to join {{appName}}.</p>
+          <a href="{{invitationUrl}}" style="display: inline-block; margin-bottom: 20px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Accept Invitation</a>
+          <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #475569;">This invitation expires in {{expiresInHours}} hours.</p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">If you did not expect this email, you can ignore it.</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
+    name: "Course Enrollment Confirmation",
+    description: "Email confirming successful enrollment in a course.",
+    subject: "Enrollment confirmed: {{courseName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "You have been successfully enrolled in the course: {{courseName}}.",
+      "",
+      "Program: {{programName}}",
+      "Batch: {{batchName}}",
+      "Start Date: {{startDate}}",
+      "",
+      "Login to access your course materials: {{loginUrl}}",
+      "If you have any questions, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Enrollment confirmed</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, you have been enrolled in <strong>{{courseName}}</strong>.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Start Date:</strong> {{startDate}}</p>
+          </div>
+          <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Go to Course</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
+    name: "Course Completion",
+    description: "Email sent when a learner completes a course.",
+    subject: "Congratulations! You completed {{courseName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "Congratulations! You have successfully completed the course: {{courseName}}.",
+      "",
+      "Completion Date: {{completionDate}}",
+      "",
+      "Keep up the great work!",
+      "Login to view your achievements: {{loginUrl}}",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Course completed!</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, congratulations on completing <strong>{{courseName}}</strong>!</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; text-align: center;">
+            <p style="margin: 0; font-size: 18px; font-weight: 700; color: #065f46;">Course Completed</p>
+            <p style="margin: 4px 0 0; font-size: 13px; color: #047857;">{{completionDate}}</p>
+          </div>
+          <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">View Achievements</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Keep up the great work!</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,
+    name: "Quiz Assigned",
+    description: "Email sent when a quiz is assigned to a learner.",
+    subject: "New quiz assigned: {{quizName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "A new quiz has been assigned to you: {{quizName}}",
+      "",
+      "Course: {{courseName}}",
+      "Due Date: {{dueDate}}",
+      "",
+      "Login to start the quiz: {{loginUrl}}",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Quiz assigned</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, a new quiz has been assigned to you.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Quiz:</strong> {{quizName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Due Date:</strong> {{dueDate}}</p>
+          </div>
+          <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Start Quiz</a>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: QUIZ_RESULT_EMAIL_TEMPLATE_KEY,
+    name: "Quiz Result",
+    description: "Email sent with quiz results after completion.",
+    subject: "Your quiz results: {{quizName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "Your results for {{quizName}} are ready.",
+      "",
+      "Score: {{score}}",
+      "Status: {{resultStatus}}",
+      "",
+      "Login to view details: {{loginUrl}}",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Quiz results</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your results for <strong>{{quizName}}</strong> are ready.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; text-align: center;">
+            <p style="margin: 0 0 8px; font-size: 28px; font-weight: 800; color: #0f172a;">{{score}}</p>
+            <p style="margin: 0; font-size: 14px; font-weight: 600; color: #475569;">{{resultStatus}}</p>
+          </div>
+          <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">View Details</a>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
+    name: "Trainer Assignment",
+    description: "Email sent when a trainer is assigned to a batch or course.",
+    subject: "New assignment: {{batchName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "You have been assigned as a trainer for:",
+      "",
+      "Batch: {{batchName}}",
+      "Course: {{courseName}}",
+      "Program: {{programName}}",
+      "",
+      "Login to view your schedule: {{loginUrl}}",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Trainer assignment</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, you have been assigned as a trainer.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+          </div>
+          <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">View Schedule</a>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+    name: "General Notification",
+    description: "General-purpose notification email template.",
+    subject: "{{notificationSubject}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "{{notificationBody}}",
+      "",
+      "If you have any questions, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">{{notificationTitle}}</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}},</p>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">{{notificationBody}}</p>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
         </div>
       </div>

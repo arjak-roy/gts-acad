@@ -20,6 +20,9 @@ type EmailTemplateDetail = {
   variables: string[];
   isSystem: boolean;
   isActive: boolean;
+  categoryId: string | null;
+  categoryName: string | null;
+  updatedByName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -200,9 +203,18 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
                   <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Subject</p>
                   <p className="mt-2 text-sm text-slate-700">{template.subject}</p>
                 </div>
+                {template.categoryName ? (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Category</p>
+                    <p className="mt-2 text-sm text-slate-700">{template.categoryName}</p>
+                  </div>
+                ) : null}
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Updated</p>
-                  <p className="mt-2 text-sm text-slate-700">{new Date(template.updatedAt).toLocaleString("en-IN")}</p>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {new Date(template.updatedAt).toLocaleString("en-IN")}
+                    {template.updatedByName ? ` by ${template.updatedByName}` : ""}
+                  </p>
                 </div>
               </div>
 

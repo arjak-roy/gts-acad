@@ -8,6 +8,7 @@ export const createEmailTemplateSchema = z.object({
   htmlContent: z.string().trim().min(10).max(100_000),
   textContent: z.string().max(50_000).optional().default(""),
   isActive: z.coerce.boolean().optional().default(true),
+  categoryId: z.string().uuid().optional().nullable(),
 });
 
 export const emailTemplateIdSchema = z.object({

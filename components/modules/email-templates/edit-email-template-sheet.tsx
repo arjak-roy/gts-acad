@@ -7,9 +7,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { TipTapEmailEditor } from "@/components/ui/tiptap-email-editor";
 import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
+
+type CategoryOption = {
+  id: string;
+  name: string;
+  code: string;
+};
 
 type EmailTemplateDetail = {
   id: string;
@@ -22,6 +29,7 @@ type EmailTemplateDetail = {
   variables: string[];
   isSystem: boolean;
   isActive: boolean;
+  categoryId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -34,6 +42,7 @@ type EditEmailTemplateForm = {
   htmlContent: string;
   textContent: string;
   isActive: boolean;
+  categoryId: string;
 };
 
 const emptyForm: EditEmailTemplateForm = {
@@ -44,6 +53,7 @@ const emptyForm: EditEmailTemplateForm = {
   htmlContent: "",
   textContent: "",
   isActive: true,
+  categoryId: "",
 };
 
 const textareaClassName = "min-h-28 w-full rounded-xl border border-[#dde1e6] px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]";
@@ -73,6 +83,7 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
   const router = useRouter();
   const [form, setForm] = useState<EditEmailTemplateForm>(emptyForm);
   const [isSystem, setIsSystem] = useState(false);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [step, setStep] = useState<"form" | "confirm" | "updated">("form");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,6 +93,16 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
     () => extractVariables(form.subject, form.htmlContent, form.textContent),
     [form.subject, form.htmlContent, form.textContent],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/email-template-categories")
+      .then((res) => res.json())
+      .then((payload: { data?: CategoryOption[] }) => {
+        if (payload.data) setCategories(payload.data);
+      })
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!open || !templateId) {
@@ -113,6 +134,7 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
           htmlContent: payload.data.htmlContent,
           textContent: payload.data.textContent,
           isActive: payload.data.isActive,
+          categoryId: payload.data.categoryId ?? "",
         });
         setIsSystem(payload.data.isSystem);
       } catch (loadError) {
@@ -173,7 +195,10 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          categoryId: form.categoryId || undefined,
+        }),
       });
 
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -227,16 +252,30 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
                 </div>
 
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                    value={form.categoryId}
+                    onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+                  >
+                    <option value="">No Category</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Subject</label>
                   <Input value={form.subject} onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))} />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">HTML Body</label>
-                  <textarea
-                    className="min-h-56 w-full rounded-xl border border-[#dde1e6] px-3 py-2 font-mono text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                  <TipTapEmailEditor
                     value={form.htmlContent}
-                    onChange={(event) => setForm((prev) => ({ ...prev, htmlContent: event.target.value }))}
+                    onChange={(value) => setForm((prev) => ({ ...prev, htmlContent: value }))}
+                    placeholderVariables={detectedVariables}
                   />
                 </div>
 

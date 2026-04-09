@@ -13,8 +13,9 @@ import {
   selectEmailTemplateRecord,
 } from "@/services/email-templates/helpers";
 import { EmailTemplateDetail } from "@/services/email-templates/types";
+import { createVersionSnapshot } from "@/services/email-templates/versions";
 
-export async function createEmailTemplateService(input: CreateEmailTemplateInput): Promise<EmailTemplateDetail> {
+export async function createEmailTemplateService(input: CreateEmailTemplateInput & { userId?: string | null }): Promise<EmailTemplateDetail> {
   const key = normalizeTemplateKey(input.key);
   const name = input.name.trim();
   const description = input.description.trim() || null;
@@ -39,6 +40,9 @@ export async function createEmailTemplateService(input: CreateEmailTemplateInput
       variables,
       isSystem: false,
       isActive: input.isActive,
+      categoryId: input.categoryId ?? null,
+      categoryName: null,
+      updatedByName: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -66,6 +70,9 @@ export async function createEmailTemplateService(input: CreateEmailTemplateInput
         textContent,
         variables,
         isActive: input.isActive,
+        categoryId: input.categoryId ?? null,
+        createdById: input.userId ?? null,
+        updatedById: input.userId ?? null,
       },
       select: selectEmailTemplateRecord(),
     });
@@ -80,7 +87,7 @@ export async function createEmailTemplateService(input: CreateEmailTemplateInput
   }
 }
 
-export async function updateEmailTemplateService(input: UpdateEmailTemplateInput): Promise<EmailTemplateDetail> {
+export async function updateEmailTemplateService(input: UpdateEmailTemplateInput & { userId?: string | null }): Promise<EmailTemplateDetail> {
   const templateId = input.templateId.trim();
   const name = input.name.trim();
   const description = input.description.trim() || null;
@@ -105,6 +112,7 @@ export async function updateEmailTemplateService(input: UpdateEmailTemplateInput
       textContent,
       variables: extractTemplateVariables(subject, htmlContent, textContent),
       isActive: input.isActive,
+      categoryId: input.categoryId ?? existingMock.categoryId,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -114,12 +122,21 @@ export async function updateEmailTemplateService(input: UpdateEmailTemplateInput
 
     const existingTemplate = await prisma.emailTemplate.findUnique({
       where: { id: templateId },
-      select: { id: true, key: true, isSystem: true },
+      select: { id: true, key: true, isSystem: true, subject: true, htmlContent: true, textContent: true },
     });
 
     if (!existingTemplate) {
       throw new Error("Email template not found.");
     }
+
+    // Save version snapshot before applying changes
+    await createVersionSnapshot({
+      templateId: existingTemplate.id,
+      subject: existingTemplate.subject,
+      htmlContent: existingTemplate.htmlContent,
+      textContent: existingTemplate.textContent,
+      updatedById: input.userId ?? null,
+    });
 
     const nextKey = existingTemplate.isSystem ? existingTemplate.key : normalizeTemplateKey(input.key);
     if (!nextKey) {
@@ -148,6 +165,8 @@ export async function updateEmailTemplateService(input: UpdateEmailTemplateInput
         textContent,
         variables: extractTemplateVariables(subject, htmlContent, textContent),
         isActive: input.isActive,
+        categoryId: input.categoryId ?? undefined,
+        updatedById: input.userId ?? undefined,
       },
       select: selectEmailTemplateRecord(),
     });
@@ -160,4 +179,99 @@ export async function updateEmailTemplateService(input: UpdateEmailTemplateInput
 
     throw error;
   }
+}
+
+export async function deleteEmailTemplateService(templateId: string): Promise<void> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const template = await prisma.emailTemplate.findUnique({
+    where: { id: templateId },
+    select: { id: true, isSystem: true },
+  });
+
+  if (!template) {
+    throw new Error("Email template not found.");
+  }
+
+  if (template.isSystem) {
+    throw new Error("System templates cannot be deleted.");
+  }
+
+  await prisma.emailTemplate.delete({
+    where: { id: templateId },
+  });
+}
+
+export async function duplicateEmailTemplateService(templateId: string, userId?: string | null): Promise<EmailTemplateDetail> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  await ensureDefaultEmailTemplates();
+
+  const source = await prisma.emailTemplate.findUnique({
+    where: { id: templateId },
+    select: selectEmailTemplateRecord(),
+  });
+
+  if (!source) {
+    throw new Error("Email template not found.");
+  }
+
+  const baseKey = `${source.key}-copy`;
+  let candidateKey = baseKey;
+  let counter = 1;
+
+  while (await prisma.emailTemplate.findUnique({ where: { key: candidateKey }, select: { id: true } })) {
+    candidateKey = `${baseKey}-${counter}`;
+    counter++;
+  }
+
+  const created = await prisma.emailTemplate.create({
+    data: {
+      key: candidateKey,
+      name: `${source.name} (Copy)`,
+      description: source.description,
+      subject: source.subject,
+      htmlContent: source.htmlContent,
+      textContent: source.textContent,
+      variables: source.variables,
+      isSystem: false,
+      isActive: false,
+      categoryId: source.categoryId,
+      createdById: userId ?? null,
+      updatedById: userId ?? null,
+    },
+    select: selectEmailTemplateRecord(),
+  });
+
+  return mapRecordToDetail(created);
+}
+
+export async function toggleEmailTemplateStatusService(templateId: string, userId?: string | null): Promise<EmailTemplateDetail> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const existing = await prisma.emailTemplate.findUnique({
+    where: { id: templateId },
+    select: { id: true, isActive: true },
+  });
+
+  if (!existing) {
+    throw new Error("Email template not found.");
+  }
+
+  const updated = await prisma.emailTemplate.update({
+    where: { id: templateId },
+    data: {
+      isActive: !existing.isActive,
+      updatedById: userId ?? undefined,
+    },
+    select: selectEmailTemplateRecord(),
+  });
+
+  return mapRecordToDetail(updated);
 }

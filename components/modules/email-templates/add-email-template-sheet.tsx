@@ -1,15 +1,22 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { TipTapEmailEditor } from "@/components/ui/tiptap-email-editor";
 import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { getEmailTemplateKeyOption } from "@/lib/mail-templates/email-template-keys";
+
+type CategoryOption = {
+  id: string;
+  name: string;
+  code: string;
+};
 
 type AddEmailTemplateForm = {
   key: string;
@@ -19,6 +26,7 @@ type AddEmailTemplateForm = {
   htmlContent: string;
   textContent: string;
   isActive: boolean;
+  categoryId: string;
 };
 
 const initialForm: AddEmailTemplateForm = {
@@ -29,6 +37,7 @@ const initialForm: AddEmailTemplateForm = {
   htmlContent: "",
   textContent: "",
   isActive: true,
+  categoryId: "",
 };
 
 const textareaClassName = "min-h-28 w-full rounded-xl border border-[#dde1e6] px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]";
@@ -56,6 +65,7 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
   const [form, setForm] = useState<AddEmailTemplateForm>(initialForm);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +73,16 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
     () => extractVariables(form.subject, form.htmlContent, form.textContent),
     [form.subject, form.htmlContent, form.textContent],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/email-template-categories")
+      .then((res) => res.json())
+      .then((payload: { data?: CategoryOption[] }) => {
+        if (payload.data) setCategories(payload.data);
+      })
+      .catch(() => {});
+  }, [open]);
 
   const resetFlow = () => {
     setForm(initialForm);
@@ -115,7 +135,10 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          categoryId: form.categoryId || undefined,
+        }),
       });
 
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -166,6 +189,20 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
             </div>
 
             <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
+              <select
+                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                value={form.categoryId}
+                onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+              >
+                <option value="">No Category</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Subject</label>
               <Input
                 value={form.subject}
@@ -176,11 +213,11 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">HTML Body</label>
-              <textarea
-                className="min-h-56 w-full rounded-xl border border-[#dde1e6] px-3 py-2 font-mono text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
-                placeholder="<div>Hello {{recipientName}}</div>"
+              <TipTapEmailEditor
                 value={form.htmlContent}
-                onChange={(event) => setForm((prev) => ({ ...prev, htmlContent: event.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, htmlContent: value }))}
+                placeholder="Start writing your email template..."
+                placeholderVariables={detectedVariables}
               />
             </div>
 

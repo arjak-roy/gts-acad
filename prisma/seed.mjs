@@ -654,9 +654,13 @@ async function seed() {
     }
 
     const curriculum = await prisma.curriculum.upsert({
-      where: { courseId: seededCourse.id },
+      where: {
+        courseId_title: {
+          courseId: seededCourse.id,
+          title: curriculumSeed.title,
+        },
+      },
       update: {
-        title: curriculumSeed.title,
         description: curriculumSeed.description,
         status: CurriculumStatus.DRAFT,
         createdById: adminUser.id,

@@ -7,6 +7,9 @@ export type EmailTemplateSummary = {
   variables: string[];
   isSystem: boolean;
   isActive: boolean;
+  categoryId: string | null;
+  categoryName: string | null;
+  updatedByName: string | null;
   updatedAt: string;
 };
 
@@ -35,6 +38,9 @@ export type EmailTemplateRecord = {
   variables: string[];
   isSystem: boolean;
   isActive: boolean;
+  categoryId: string | null;
+  category: { name: string } | null;
+  updatedBy: { name: string } | null;
   createdAt: Date;
   updatedAt: Date;
 };

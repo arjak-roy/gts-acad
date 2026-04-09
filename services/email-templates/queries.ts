@@ -32,6 +32,9 @@ export async function listEmailTemplatesService(): Promise<EmailTemplateSummary[
         variables: true,
         isSystem: true,
         isActive: true,
+        categoryId: true,
+        category: { select: { name: true } },
+        updatedBy: { select: { name: true } },
         updatedAt: true,
       },
     });
@@ -45,6 +48,9 @@ export async function listEmailTemplatesService(): Promise<EmailTemplateSummary[
       variables: template.variables,
       isSystem: template.isSystem,
       isActive: template.isActive,
+      categoryId: template.categoryId,
+      categoryName: template.category?.name ?? null,
+      updatedByName: template.updatedBy?.name ?? null,
       updatedAt: template.updatedAt.toISOString(),
     }));
   } catch (error) {

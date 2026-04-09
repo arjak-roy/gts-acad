@@ -407,6 +407,9 @@ model User {
   assignedBatchAssessments BatchAssessmentMapping[] @relation("BatchAssessmentAssignedBy")
   assignedBatchCurricula   BatchCurriculumMapping[] @relation("BatchCurriculumAssignedBy")
   aiAssessmentJobs         AiAssessmentJob[]        @relation("AiJobCreatedBy")
+  createdEmailTemplates    EmailTemplate[]          @relation("EmailTemplateCreatedBy")
+  updatedEmailTemplates    EmailTemplate[]          @relation("EmailTemplateUpdatedBy")
+  emailTemplateVersions    EmailTemplateVersion[]   @relation("EmailTemplateVersionUpdatedBy")
 
   @@map("users")
 }
@@ -500,22 +503,59 @@ model AccountActivationToken {
   @@map("account_activation_tokens")
 }
 
+model EmailTemplateCategory {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("category_id")
+  name        String          @db.VarChar(120)
+  code        String          @unique @db.VarChar(80)
+  description String?         @db.VarChar(500)
+  isActive    Boolean         @default(true) @map("is_active")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  templates   EmailTemplate[]
+
+  @@map("email_template_categories")
+}
+
 model EmailTemplate {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("template_id")
-  key         String   @unique @map("template_key") @db.VarChar(120)
-  name        String   @db.VarChar(255)
-  description String?  @db.VarChar(500)
-  subject     String   @db.VarChar(255)
-  htmlContent String   @map("html_content")
-  textContent String?  @map("text_content")
-  variables   String[] @default([])
-  isSystem    Boolean  @default(false) @map("is_system")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("template_id")
+  key         String                 @unique @map("template_key") @db.VarChar(120)
+  name        String                 @db.VarChar(255)
+  description String?                @db.VarChar(500)
+  subject     String                 @db.VarChar(255)
+  htmlContent String                 @map("html_content")
+  textContent String?                @map("text_content")
+  variables   String[]               @default([])
+  isSystem    Boolean                @default(false) @map("is_system")
+  isActive    Boolean                @default(true) @map("is_active")
+  categoryId  String?                @db.Uuid @map("category_id")
+  createdById String?                @db.Uuid @map("created_by_user_id")
+  updatedById String?                @db.Uuid @map("updated_by_user_id")
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  category    EmailTemplateCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy   User?                  @relation("EmailTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?                  @relation("EmailTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  versions    EmailTemplateVersion[]
 
   @@index([isActive, updatedAt], map: "idx_email_templates_active_updated")
+  @@index([categoryId], map: "idx_email_templates_category")
   @@map("email_templates")
+}
+
+model EmailTemplateVersion {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("version_id")
+  templateId    String        @db.Uuid @map("template_id")
+  versionNumber Int           @map("version_number")
+  subject       String        @db.VarChar(255)
+  htmlContent   String        @map("html_content")
+  textContent   String?       @map("text_content")
+  updatedById   String?       @db.Uuid @map("updated_by_user_id")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  template      EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  updatedBy     User?         @relation("EmailTemplateVersionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([templateId, versionNumber], map: "idx_email_template_versions_template_version")
+  @@map("email_template_versions")
 }
 
 model EmailLog {
