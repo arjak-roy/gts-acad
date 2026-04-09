@@ -38,6 +38,8 @@ export const AUDIT_ACTION_TYPE = {
   LOGIN: "LOGIN",
   TWO_FACTOR: "TWO_FACTOR",
   RETRY: "RETRY",
+  DEACTIVATED: "DEACTIVATED",
+  ACTIVATED: "ACTIVATED",
 } as const;
 
 export const AUDIT_LOG_LEVEL = {
