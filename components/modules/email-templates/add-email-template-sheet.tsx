@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TipTapEmailEditor } from "@/components/ui/tiptap-email-editor";
 import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
+import { FloatingVariablePanel } from "@/components/modules/email-templates/floating-variable-panel";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { getEmailTemplateKeyOption } from "@/lib/mail-templates/email-template-keys";
 
@@ -68,6 +69,7 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showVariablePanel, setShowVariablePanel] = useState(false);
 
   const detectedVariables = useMemo(
     () => extractVariables(form.subject, form.htmlContent, form.textContent),
@@ -259,6 +261,9 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
             {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
 
             <SheetFooter className="p-0 pt-2 sm:justify-end sm:border-0">
+              <Button variant="outline" size="sm" type="button" onClick={() => setShowVariablePanel(!showVariablePanel)}>
+                {showVariablePanel ? "Hide Variables" : "Variables"}
+              </Button>
               <Button variant="secondary" type="button" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
@@ -322,6 +327,7 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
             </SheetFooter>
           </div>
         ) : null}
+        <FloatingVariablePanel open={showVariablePanel} onClose={() => setShowVariablePanel(false)} />
       </SheetContent>
     </Sheet>
   );
