@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState, startTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Shield, Users, Lock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CanAccess } from "@/components/ui/can-access";
 import { RoleDetailSheet } from "@/components/modules/roles/role-detail-sheet";
 import { AddRoleSheet } from "@/components/modules/roles/add-role-sheet";
+import { sortByAccessor, type ActiveSortDirection } from "@/lib/table-sorting";
 
 type RoleListItem = {
   id: string;
@@ -24,11 +26,26 @@ type RoleListItem = {
   userCount: number;
 };
 
+type RoleSortKey = "name" | "code" | "description" | "permissionCount" | "userCount" | "status";
+
+const roleSortAccessors: Record<RoleSortKey, (role: RoleListItem) => string | number> = {
+  name: (role) => role.name,
+  code: (role) => role.code,
+  description: (role) => role.description ?? "",
+  permissionCount: (role) => role.permissionCount,
+  userCount: (role) => role.userCount,
+  status: (role) => (role.isActive ? "Active" : "Inactive"),
+};
+
 export default function RolesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [roles, setRoles] = useState<RoleListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sortState, setSortState] = useState<{ column: RoleSortKey; direction: ActiveSortDirection }>({
+    column: "name",
+    direction: "asc",
+  });
 
   const selectedRoleId = searchParams.get("id");
 
@@ -63,6 +80,15 @@ export default function RolesPage() {
 
   const handleRoleUpdated = () => {
     fetchRoles();
+  };
+
+  const sortedRoles = useMemo(
+    () => sortByAccessor(roles, sortState.direction, roleSortAccessors[sortState.column]),
+    [roles, sortState],
+  );
+
+  const handleSort = (columnKey: string, direction: "asc" | "desc") => {
+    setSortState({ column: columnKey as RoleSortKey, direction });
   };
 
   const totalUsers = roles.reduce((sum, r) => sum + r.userCount, 0);
@@ -121,12 +147,12 @@ export default function RolesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[200px]">Role</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-center">Permissions</TableHead>
-                <TableHead className="text-center">Users</TableHead>
-                <TableHead className="text-center">Status</TableHead>
+                <SortableTableHead label="Role" columnKey="name" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="w-[200px]" />
+                <SortableTableHead label="Code" columnKey="code" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                <SortableTableHead label="Description" columnKey="description" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                <SortableTableHead label="Permissions" columnKey="permissionCount" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="text-center" />
+                <SortableTableHead label="Users" columnKey="userCount" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="text-center" />
+                <SortableTableHead label="Status" columnKey="status" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="text-center" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,7 +163,7 @@ export default function RolesPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                roles.map((role) => (
+                sortedRoles.map((role) => (
                   <TableRow
                     key={role.id}
                     className="cursor-pointer"

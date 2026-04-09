@@ -27,6 +27,7 @@ export async function getCandidateUsersService(input: GetCandidateUsersInput): P
     email: { email: input.sortDirection },
     createdAt: { createdAt: input.sortDirection },
     lastLoginAt: { lastLoginAt: input.sortDirection },
+    status: { isActive: input.sortDirection },
   };
 
   const where = buildCandidateUserWhere({ search: input.search, status: input.status });

@@ -62,6 +62,8 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(filters.search);
+  const activeSort = filters.sortBy || "fullName";
+  const activeDirection = filters.sortDirection === "desc" ? "desc" : "asc";
   const viewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
 
@@ -105,7 +107,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
     () => [
       {
         accessorKey: "fullName",
-        header: () => <HeaderButton label="Learner Profile" columnKey="fullName" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("fullName")} />,
+        header: () => <HeaderButton label="Learner Profile" columnKey="fullName" activeSort={activeSort} activeDirection={activeDirection} onClick={() => toggleSort("fullName")} />,
         cell: ({ row }) => (
           <div>
             <p className="font-bold text-slate-900">{row.original.fullName}</p>
@@ -128,17 +130,17 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
       },
       {
         accessorKey: "attendancePercentage",
-        header: () => <HeaderButton label="Attend. %" columnKey="attendancePercentage" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("attendancePercentage")} className="justify-center" />,
+        header: () => <HeaderButton label="Attend. %" columnKey="attendancePercentage" activeSort={activeSort} activeDirection={activeDirection} onClick={() => toggleSort("attendancePercentage")} className="justify-center" />,
         cell: ({ row }) => <div className="text-center font-black text-emerald-600">{row.original.attendancePercentage.toFixed(1)}%</div>,
       },
       {
         accessorKey: "averageScore",
-        header: () => <HeaderButton label="Avg Score" columnKey="averageScore" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("averageScore")} className="justify-center" />,
+        header: () => <HeaderButton label="Avg Score" columnKey="averageScore" activeSort={activeSort} activeDirection={activeDirection} onClick={() => toggleSort("averageScore")} className="justify-center" />,
         cell: ({ row }) => <div className="text-center font-black text-slate-900">{row.original.averageScore.toFixed(0)}/100</div>,
       },
       {
         accessorKey: "placementStatus",
-        header: () => <HeaderButton label="Readiness" columnKey="readinessPercentage" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("readinessPercentage")} className="justify-center" />,
+        header: () => <HeaderButton label="Readiness" columnKey="readinessPercentage" activeSort={activeSort} activeDirection={activeDirection} onClick={() => toggleSort("readinessPercentage")} className="justify-center" />,
         cell: ({ row }) => (
           <div className="flex items-center justify-center gap-2">
             <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
@@ -207,12 +209,12 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
         },
       },
     ],
-    [filters.batchCode, filters.placementStatus, filters.search, filters.sortBy, filters.sortDirection, response.page, response.pageSize, viewMode, layoutPreset],
+    [activeDirection, activeSort, filters.batchCode, filters.placementStatus, filters.search, filters.sortBy, filters.sortDirection, response.page, response.pageSize, viewMode, layoutPreset],
   );
 
   const sorting = useMemo<SortingState>(
-    () => [{ id: filters.sortBy, desc: filters.sortDirection === "desc" }],
-    [filters.sortBy, filters.sortDirection],
+    () => [{ id: activeSort, desc: activeDirection === "desc" }],
+    [activeDirection, activeSort],
   );
 
   const table = useReactTable({

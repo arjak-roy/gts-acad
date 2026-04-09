@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CanAccess } from "@/components/ui/can-access";
 import { Input } from "@/components/ui/input";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import {
   Table,
   TableBody,
@@ -16,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { sortByAccessor, type ActiveSortDirection } from "@/lib/table-sorting";
 
 type VariableItem = {
   id: string;
@@ -30,6 +32,16 @@ type VariableItem = {
 type VariableGroup = {
   category: string;
   variables: VariableItem[];
+};
+
+type VariableSortKey = "name" | "label" | "description" | "sampleValue" | "type";
+
+const variableSortAccessors: Record<VariableSortKey, (variable: VariableItem) => string> = {
+  name: (variable) => variable.name,
+  label: (variable) => variable.label,
+  description: (variable) => variable.description ?? "",
+  sampleValue: (variable) => variable.sampleValue ?? "",
+  type: (variable) => (variable.isSystem ? "System" : "Custom"),
 };
 
 const CATEGORY_ORDER = [
@@ -90,6 +102,10 @@ export function TemplateVariableLegend() {
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortState, setSortState] = useState<{ column: VariableSortKey; direction: ActiveSortDirection }>({
+    column: "name",
+    direction: "asc",
+  });
 
   const fetchVariables = useCallback(async () => {
     try {
@@ -121,7 +137,18 @@ export function TemplateVariableLegend() {
     );
   }, [variables, searchQuery]);
 
-  const groups = useMemo(() => groupByCategory(filtered), [filtered]);
+  const groups = useMemo(
+    () =>
+      groupByCategory(filtered).map((group) => ({
+        ...group,
+        variables: sortByAccessor(group.variables, sortState.direction, variableSortAccessors[sortState.column]),
+      })),
+    [filtered, sortState],
+  );
+
+  const handleSort = (columnKey: string, direction: "asc" | "desc") => {
+    setSortState({ column: columnKey as VariableSortKey, direction });
+  };
 
   const handleCreate = async () => {
     if (!form.name.trim() || !form.label.trim() || !form.category.trim()) {
@@ -340,11 +367,11 @@ export function TemplateVariableLegend() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[200px]">Variable</TableHead>
-                        <TableHead>Label</TableHead>
-                        <TableHead className="hidden lg:table-cell">Description</TableHead>
-                        <TableHead className="hidden md:table-cell">Sample</TableHead>
-                        <TableHead className="w-[100px] text-right">Type</TableHead>
+                        <SortableTableHead label="Variable" columnKey="name" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="w-[200px]" />
+                        <SortableTableHead label="Label" columnKey="label" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                        <SortableTableHead label="Description" columnKey="description" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden lg:table-cell" />
+                        <SortableTableHead label="Sample" columnKey="sampleValue" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden md:table-cell" />
+                        <SortableTableHead label="Type" columnKey="type" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="w-[100px] text-right" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>

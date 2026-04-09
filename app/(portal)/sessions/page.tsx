@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { CanAccess } from "@/components/ui/can-access";
+import { sortByAccessor, type ActiveSortDirection } from "@/lib/table-sorting";
 
 type SessionRecord = {
   id: string;
@@ -23,6 +25,16 @@ type SessionRecord = {
 type SessionsPayload = {
   items: SessionRecord[];
   currentSessionId: string | null;
+};
+
+type SessionSortKey = "device" | "browser" | "loginTime" | "ipAddress" | "status";
+
+const sessionSortAccessors: Record<SessionSortKey, (session: SessionRecord) => string> = {
+  device: (session) => session.device ?? "",
+  browser: (session) => session.browser ?? "",
+  loginTime: (session) => session.loginTime,
+  ipAddress: (session) => session.ipAddress ?? "",
+  status: (session) => (session.isCurrent ? "Current" : session.status),
 };
 
 async function fetchSessions(): Promise<SessionsPayload> {
@@ -44,10 +56,50 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function SessionTableHeader({
+  label,
+  columnKey,
+  activeSort,
+  activeDirection,
+  onSort,
+}: {
+  label: string;
+  columnKey: SessionSortKey;
+  activeSort: SessionSortKey;
+  activeDirection: ActiveSortDirection;
+  onSort: (columnKey: SessionSortKey, direction: ActiveSortDirection) => void;
+}) {
+  const isActive = activeSort === columnKey;
+  const nextDirection = isActive && activeDirection === "asc" ? "desc" : "asc";
+
+  return (
+    <th className="px-6 py-4">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 hover:text-slate-600"
+        onClick={() => onSort(columnKey, nextDirection)}
+      >
+        {label}
+        {isActive && activeDirection === "asc" ? (
+          <ArrowUp className="h-3 w-3" />
+        ) : isActive && activeDirection === "desc" ? (
+          <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
+    </th>
+  );
+}
+
 export default function SessionsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [sortState, setSortState] = useState<{ column: SessionSortKey; direction: ActiveSortDirection }>({
+    column: "loginTime",
+    direction: "desc",
+  });
 
   const sessionsQuery = useQuery({
     queryKey: ["auth", "sessions"],
@@ -114,6 +166,14 @@ export default function SessionsPage() {
   });
 
   const sessions = sessionsQuery.data?.items ?? [];
+  const sortedSessions = useMemo(
+    () => sortByAccessor(sessions, sortState.direction, sessionSortAccessors[sortState.column]),
+    [sessions, sortState],
+  );
+
+  const handleSort = (columnKey: SessionSortKey, direction: ActiveSortDirection) => {
+    setSortState({ column: columnKey, direction });
+  };
 
   return (
     <div className="space-y-6">
@@ -160,16 +220,16 @@ export default function SessionsPage() {
             <table className="min-w-full border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
-                  <th className="px-6 py-4">Device</th>
-                  <th className="px-6 py-4">Browser</th>
-                  <th className="px-6 py-4">Login Time</th>
-                  <th className="px-6 py-4">IP Address</th>
-                  <th className="px-6 py-4">Status</th>
+                  <SessionTableHeader label="Device" columnKey="device" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                  <SessionTableHeader label="Browser" columnKey="browser" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                  <SessionTableHeader label="Login Time" columnKey="loginTime" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                  <SessionTableHeader label="IP Address" columnKey="ipAddress" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                  <SessionTableHeader label="Status" columnKey="status" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
                   <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {sessions.map((session) => {
+                {sortedSessions.map((session) => {
                   const isPendingAction = terminateSessionMutation.isPending && pendingSessionId === session.id;
 
                   return (

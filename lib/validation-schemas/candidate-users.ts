@@ -5,7 +5,7 @@ export const getCandidateUsersSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(100).optional().default(""),
   status: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
-  sortBy: z.enum(["name", "email", "createdAt", "lastLoginAt"]).default("name"),
+  sortBy: z.enum(["name", "email", "createdAt", "lastLoginAt", "status"]).default("name"),
   sortDirection: z.enum(["asc", "desc"]).default("asc"),
 });
 

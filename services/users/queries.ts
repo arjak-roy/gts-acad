@@ -28,6 +28,7 @@ export async function getUsersService(input: GetUsersInput): Promise<InternalUse
     email: { email: input.sortDirection },
     createdAt: { createdAt: input.sortDirection },
     lastLoginAt: { lastLoginAt: input.sortDirection },
+    status: { isActive: input.sortDirection },
   };
 
   const where = buildInternalUserWhere({ search: input.search, status: input.status });

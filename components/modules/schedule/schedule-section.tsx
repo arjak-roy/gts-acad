@@ -11,7 +11,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { sortByAccessor, type ActiveSortDirection } from "@/lib/table-sorting";
 import { cn } from "@/lib/utils";
 import { useRbac } from "@/lib/rbac-context";
 
@@ -86,6 +88,17 @@ type ScheduleAssessmentOption = {
   questionCount: number;
   scheduledAt: string | null;
   source: "assigned" | "available";
+};
+
+type ScheduleListSortKey = "batchCode" | "title" | "type" | "classMode" | "startsAt" | "status";
+
+const scheduleListSortAccessors: Record<ScheduleListSortKey, (event: ScheduleEvent) => string> = {
+  batchCode: (event) => event.batchCode,
+  title: (event) => event.title,
+  type: (event) => event.type,
+  classMode: (event) => event.classMode ?? "",
+  startsAt: (event) => event.startsAt,
+  status: (event) => event.status,
 };
 
 type ScheduleResponse = {
@@ -740,6 +753,10 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [listSortState, setListSortState] = useState<{ column: ScheduleListSortKey; direction: ActiveSortDirection }>({
+    column: "startsAt",
+    direction: "asc",
+  });
   const [assessmentOptions, setAssessmentOptions] = useState<ScheduleAssessmentOption[]>([]);
   const [assessmentOptionsLoading, setAssessmentOptionsLoading] = useState(false);
   const [assessmentOptionsError, setAssessmentOptionsError] = useState<string | null>(null);
@@ -755,6 +772,14 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
   const range = useMemo(() => getRangeForView(baseDate, viewMode), [baseDate, viewMode]);
   const supportsAssessmentPool = eventTypeSupportsCourseBuilderAssessment(form.type);
+  const sortedEvents = useMemo(
+    () => sortByAccessor(events, listSortState.direction, scheduleListSortAccessors[listSortState.column]),
+    [events, listSortState],
+  );
+
+  const handleListSort = (columnKey: string, direction: "asc" | "desc") => {
+    setListSortState({ column: columnKey as ScheduleListSortKey, direction });
+  };
 
   const loadBatches = async () => {
     try {
@@ -1106,18 +1131,18 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               <Table>
                 <TableHeader className="bg-slate-50/80">
                   <TableRow>
-                    <TableHead>Batch</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Mode</TableHead>
-                    <TableHead>Start</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortableTableHead label="Batch" columnKey="batchCode" activeSort={listSortState.column} activeDirection={listSortState.direction} onSort={handleListSort} />
+                    <SortableTableHead label="Title" columnKey="title" activeSort={listSortState.column} activeDirection={listSortState.direction} onSort={handleListSort} />
+                    <SortableTableHead label="Type" columnKey="type" activeSort={listSortState.column} activeDirection={listSortState.direction} onSort={handleListSort} />
+                    <SortableTableHead label="Mode" columnKey="classMode" activeSort={listSortState.column} activeDirection={listSortState.direction} onSort={handleListSort} />
+                    <SortableTableHead label="Start" columnKey="startsAt" activeSort={listSortState.column} activeDirection={listSortState.direction} onSort={handleListSort} />
+                    <SortableTableHead label="Status" columnKey="status" activeSort={listSortState.column} activeDirection={listSortState.direction} onSort={handleListSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {events.length > 0 ? (
-                    events.map((event) => {
+                  {sortedEvents.length > 0 ? (
+                    sortedEvents.map((event) => {
                       const style = getEventTypeStyle(event.type);
                       return (
                         <TableRow key={event.id} className={event.status === "CANCELLED" ? "opacity-50" : ""}>

@@ -53,8 +53,8 @@ export function UsersTable({ response, filters }: Props) {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(filters.search);
 
-  const activeSort = filters.sortBy ?? null;
-  const activeDirection: SortDirection = (filters.sortDirection as SortDirection) ?? null;
+  const activeSort = filters.sortBy || "name";
+  const activeDirection: SortDirection = filters.sortDirection === "desc" ? "desc" : "asc";
 
   function handleSort(columnKey: string, direction: "asc" | "desc") {
     updateUrl({ sortBy: columnKey, sortDirection: direction, page: 1 });
