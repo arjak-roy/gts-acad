@@ -12,9 +12,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTableSearchBar } from "@/components/ui/data-table-search-bar";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DataTableEmptyState } from "@/components/ui/data-table-empty-state";
+import { DataTableFilterBar, type FilterConfig } from "@/components/ui/data-table-filter-bar";
+import { DataTableFilterChips } from "@/components/ui/data-table-filter-chips";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EnrollCandidateSheet } from "@/components/modules/learners/enroll-candidate-sheet";
 import { CanAccess } from "@/components/ui/can-access";
@@ -37,6 +38,24 @@ function placementVariant(status: PlacementStatus) {
   if (status === PlacementStatus.IN_REVIEW) return "warning" as const;
   return "default" as const;
 }
+
+const learnerFilterConfigs: FilterConfig[] = [
+  {
+    key: "batchCode",
+    label: "Batch Code",
+    type: "text",
+  },
+  {
+    key: "placementStatus",
+    label: "Placement Status",
+    type: "select",
+    options: [
+      { label: "Not Ready", value: "NOT_READY" },
+      { label: "In Review", value: "IN_REVIEW" },
+      { label: "Placement Ready", value: "PLACEMENT_READY" },
+    ],
+  },
+];
 
 export function LearnersTable({ response, filters }: LearnersTableProps) {
   const router = useRouter();
@@ -249,7 +268,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
 
       <Card>
         <CardContent className="space-y-4 p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_200px_220px]">
+          <div className="flex flex-col gap-3">
             <DataTableSearchBar
               value={search}
               onChange={(nextSearch) => {
@@ -258,18 +277,19 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
               }}
               placeholder="Filter by name, learner ID, or email..."
               debounceMs={0}
+              className="max-w-sm"
             />
-            <Input value={filters.batchCode} onChange={(event) => updateUrl({ batchCode: event.target.value, page: 1 })} placeholder="Batch code" />
-            <select
-              className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
-              value={filters.placementStatus ?? ""}
-              onChange={(event) => updateUrl({ placementStatus: event.target.value || undefined, page: 1 })}
-            >
-              <option value="">All statuses</option>
-              <option value="NOT_READY">Not Ready</option>
-              <option value="IN_REVIEW">In Review</option>
-              <option value="PLACEMENT_READY">Placement Ready</option>
-            </select>
+            <DataTableFilterBar
+              filters={learnerFilterConfigs}
+              values={{ batchCode: filters.batchCode, placementStatus: filters.placementStatus ?? "" }}
+              onChange={(key, value) => updateUrl({ [key]: value || undefined, page: 1 })}
+              onReset={() => updateUrl({ batchCode: undefined, placementStatus: undefined, page: 1 })}
+            />
+            <DataTableFilterChips
+              filters={learnerFilterConfigs}
+              values={{ batchCode: filters.batchCode, placementStatus: filters.placementStatus ?? "" }}
+              onRemove={(key) => updateUrl({ [key]: undefined, page: 1 })}
+            />
           </div>
 
           {viewMode === "table" ? (
