@@ -20,6 +20,7 @@ import { AddEmailTemplateSheet } from "@/components/modules/email-templates/add-
 import { EditEmailTemplateSheet } from "@/components/modules/email-templates/edit-email-template-sheet";
 import { EmailTemplateDetailSheet } from "@/components/modules/email-templates/email-template-detail-sheet";
 import { TemplateHistorySheet } from "@/components/modules/email-templates/template-history-sheet";
+import { TemplateVariableLegend } from "@/components/modules/email-templates/template-variable-legend";
 import { ProgramDetailSheet } from "@/components/modules/programs/program-detail-sheet";
 import { EditProgramSheet } from "@/components/modules/programs/edit-program-sheet";
 import { TrainerDetailSheet } from "@/components/modules/trainers/trainer-detail-sheet";
@@ -456,6 +457,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
       <div className="grid gap-6">
         {batchActionError ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{batchActionError}</p> : null}
+        {isEmailTemplatesSection && <TemplateVariableLegend />}
         <Card>
           <CardHeader>
             <CardTitle>{section.tableTitle}</CardTitle>
