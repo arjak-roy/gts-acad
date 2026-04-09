@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { SortableTableHead, type SortDirection } from "@/components/ui/sortable-table-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CandidateUsersResponse } from "@/types";
 
@@ -17,6 +18,8 @@ type Props = {
   filters: {
     search: string;
     status: "ALL" | "ACTIVE" | "INACTIVE";
+    sortBy?: string;
+    sortDirection?: string;
   };
 };
 
@@ -37,6 +40,13 @@ export function CandidateUsersTable({ response, filters }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(filters.search);
+
+  const activeSort = filters.sortBy ?? null;
+  const activeDirection: SortDirection = (filters.sortDirection as SortDirection) ?? null;
+
+  function handleSort(columnKey: string, direction: "asc" | "desc") {
+    updateUrl({ sortBy: columnKey, sortDirection: direction, page: 1 });
+  }
 
   useEffect(() => {
     setSearch(filters.search);
@@ -91,12 +101,12 @@ export function CandidateUsersTable({ response, filters }: Props) {
             <Table>
               <TableHeader className="bg-slate-50/80">
                 <TableRow>
-                  <TableHead>Candidate</TableHead>
+                  <SortableTableHead label="Candidate" columnKey="name" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <TableHead>Learner Code</TableHead>
                   <TableHead>Program</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <TableHead>Onboarding</TableHead>
-                  <TableHead>Last Login</TableHead>
+                  <SortableTableHead label="Last Login" columnKey="lastLoginAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>

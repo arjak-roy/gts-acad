@@ -47,6 +47,8 @@ export default function UsersPage() {
   const selectedUserId = searchParams.get("id");
   const search = searchParams.get("search") ?? "";
   const status = (searchParams.get("status") as "ALL" | "ACTIVE" | "INACTIVE" | null) ?? "ALL";
+  const sortBy = searchParams.get("sortBy") ?? "";
+  const sortDirection = searchParams.get("sortDirection") ?? "";
 
   useEffect(() => {
     let cancelled = false;
@@ -197,12 +199,12 @@ export default function UsersPage() {
       ) : tab === "candidates" ? (
         <CandidateUsersTable
           response={candidateResponse}
-          filters={{ search, status }}
+          filters={{ search, status, sortBy, sortDirection }}
         />
       ) : (
         <UsersTable
           response={response}
-          filters={{ search, status }}
+          filters={{ search, status, sortBy, sortDirection }}
         />
       )}
 

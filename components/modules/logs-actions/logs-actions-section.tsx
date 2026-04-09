@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { SortableTableHead, type SortDirection } from "@/components/ui/sortable-table-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -249,6 +250,42 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [emailSortKey, setEmailSortKey] = useState<string | null>(null);
+  const [emailSortDir, setEmailSortDir] = useState<SortDirection>(null);
+  const [auditSortKey, setAuditSortKey] = useState<string | null>(null);
+  const [auditSortDir, setAuditSortDir] = useState<SortDirection>(null);
+
+  function handleEmailSort(columnKey: string, direction: "asc" | "desc") {
+    setEmailSortKey(columnKey);
+    setEmailSortDir(direction);
+  }
+
+  function handleAuditSort(columnKey: string, direction: "asc" | "desc") {
+    setAuditSortKey(columnKey);
+    setAuditSortDir(direction);
+  }
+
+  const sortedEmailItems = useMemo(() => {
+    const items = emailData?.items ?? [];
+    if (!emailSortKey || !emailSortDir) return items;
+    return [...items].sort((a, b) => {
+      const aVal = String((a as Record<string, unknown>)[emailSortKey] ?? "");
+      const bVal = String((b as Record<string, unknown>)[emailSortKey] ?? "");
+      const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" });
+      return emailSortDir === "desc" ? -cmp : cmp;
+    });
+  }, [emailData?.items, emailSortKey, emailSortDir]);
+
+  const sortedAuditItems = useMemo(() => {
+    const items = auditData?.items ?? [];
+    if (!auditSortKey || !auditSortDir) return items;
+    return [...items].sort((a, b) => {
+      const aVal = String((a as Record<string, unknown>)[auditSortKey] ?? "");
+      const bVal = String((b as Record<string, unknown>)[auditSortKey] ?? "");
+      const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" });
+      return auditSortDir === "desc" ? -cmp : cmp;
+    });
+  }, [auditData?.items, auditSortKey, auditSortDir]);
 
   const retryableVisibleEmailIds = useMemo(
     () => (emailData?.items ?? []).filter((item) => item.status === "FAILED").map((item) => item.id),
@@ -543,18 +580,18 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
                         disabled={retryableVisibleEmailIds.length === 0}
                       />
                     </TableHead>
-                    <TableHead>To</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Attempts</TableHead>
-                    <TableHead>Last Attempt</TableHead>
+                    <SortableTableHead label="To" columnKey="toEmail" activeSort={emailSortKey} activeDirection={emailSortDir} onSort={handleEmailSort} />
+                    <SortableTableHead label="Subject" columnKey="subject" activeSort={emailSortKey} activeDirection={emailSortDir} onSort={handleEmailSort} />
+                    <SortableTableHead label="Category" columnKey="category" activeSort={emailSortKey} activeDirection={emailSortDir} onSort={handleEmailSort} />
+                    <SortableTableHead label="Status" columnKey="status" activeSort={emailSortKey} activeDirection={emailSortDir} onSort={handleEmailSort} />
+                    <SortableTableHead label="Attempts" columnKey="attemptCount" activeSort={emailSortKey} activeDirection={emailSortDir} onSort={handleEmailSort} className="text-right" />
+                    <SortableTableHead label="Last Attempt" columnKey="lastAttemptAt" activeSort={emailSortKey} activeDirection={emailSortDir} onSort={handleEmailSort} />
                     <TableHead>Error</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(emailData?.items ?? []).map((item) => {
+                  {sortedEmailItems.map((item) => {
                     const isRetryable = item.status === "FAILED";
                     return (
                       <TableRow key={item.id}>
@@ -635,16 +672,16 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
               <Table>
                 <TableHeader className="bg-slate-50/80">
                   <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Level</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortableTableHead label="Timestamp" columnKey="createdAt" activeSort={auditSortKey} activeDirection={auditSortDir} onSort={handleAuditSort} />
+                    <SortableTableHead label="Action" columnKey="action" activeSort={auditSortKey} activeDirection={auditSortDir} onSort={handleAuditSort} />
+                    <SortableTableHead label="Level" columnKey="level" activeSort={auditSortKey} activeDirection={auditSortDir} onSort={handleAuditSort} />
+                    <SortableTableHead label="Status" columnKey="status" activeSort={auditSortKey} activeDirection={auditSortDir} onSort={handleAuditSort} />
                     <TableHead>Entity</TableHead>
                     <TableHead>Message & Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(auditData?.items ?? []).map((item) => {
+                  {sortedAuditItems.map((item) => {
                     const metadataEntries = getMetadataEntries(item.metadata);
                     const permissionChanges = getPermissionChangeSummary(item.metadata);
 

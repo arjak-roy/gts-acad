@@ -76,6 +76,13 @@ type EmptyStateConfig = {
   action?: { label: string; onClick: () => void };
 };
 
+export type SortChangeEvent = {
+  /** Column key being sorted */
+  column: string;
+  /** Sort direction */
+  direction: "asc" | "desc";
+} | null;
+
 export type DataTableProps<TData> = {
   /** Column definitions */
   columns: DataTableColumn<TData>[];
@@ -97,6 +104,8 @@ export type DataTableProps<TData> = {
   emptyState?: EmptyStateConfig;
   /** Called when a row body cell is clicked */
   onRowClick?: (row: TData) => void;
+  /** Called when the sort state changes – emits current sort or null when cleared */
+  onSortChange?: (sort: SortChangeEvent) => void;
   /** Stick the header row while scrolling (default: true) */
   stickyHeader?: boolean;
   /** Extra className on the outermost wrapper */
@@ -131,6 +140,7 @@ export function DataTable<TData extends Record<string, unknown>>({
   pagination,
   emptyState,
   onRowClick,
+  onSortChange,
   stickyHeader = true,
   className,
 }: DataTableProps<TData>) {
@@ -232,7 +242,17 @@ export function DataTable<TData extends Record<string, unknown>>({
       sorting: sortingState,
       globalFilter,
     },
-    onSortingChange: setSortingState,
+    onSortingChange: (updater) => {
+      const next = typeof updater === "function" ? updater(sortingState) : updater;
+      setSortingState(next);
+      if (onSortChange) {
+        if (next.length > 0) {
+          onSortChange({ column: next[0].id, direction: next[0].desc ? "desc" : "asc" });
+        } else {
+          onSortChange(null);
+        }
+      }
+    },
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),

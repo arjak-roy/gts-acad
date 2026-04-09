@@ -3,7 +3,7 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
 import { ColumnDef, SortingState, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 
 import { Badge } from "@/components/ui/badge";
@@ -105,7 +105,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
     () => [
       {
         accessorKey: "fullName",
-        header: () => <HeaderButton label="Learner Profile" onClick={() => toggleSort("fullName")} />,
+        header: () => <HeaderButton label="Learner Profile" columnKey="fullName" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("fullName")} />,
         cell: ({ row }) => (
           <div>
             <p className="font-bold text-slate-900">{row.original.fullName}</p>
@@ -128,17 +128,17 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
       },
       {
         accessorKey: "attendancePercentage",
-        header: () => <HeaderButton label="Attend. %" onClick={() => toggleSort("attendancePercentage")} className="justify-center" />,
+        header: () => <HeaderButton label="Attend. %" columnKey="attendancePercentage" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("attendancePercentage")} className="justify-center" />,
         cell: ({ row }) => <div className="text-center font-black text-emerald-600">{row.original.attendancePercentage.toFixed(1)}%</div>,
       },
       {
         accessorKey: "averageScore",
-        header: () => <HeaderButton label="Avg Score" onClick={() => toggleSort("averageScore")} className="justify-center" />,
+        header: () => <HeaderButton label="Avg Score" columnKey="averageScore" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("averageScore")} className="justify-center" />,
         cell: ({ row }) => <div className="text-center font-black text-slate-900">{row.original.averageScore.toFixed(0)}/100</div>,
       },
       {
         accessorKey: "placementStatus",
-        header: () => <HeaderButton label="Readiness" onClick={() => toggleSort("readinessPercentage")} className="justify-center" />,
+        header: () => <HeaderButton label="Readiness" columnKey="readinessPercentage" activeSort={filters.sortBy} activeDirection={filters.sortDirection} onClick={() => toggleSort("readinessPercentage")} className="justify-center" />,
         cell: ({ row }) => (
           <div className="flex items-center justify-center gap-2">
             <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
@@ -419,11 +419,18 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
   );
 }
 
-function HeaderButton({ label, onClick, className }: { label: string; onClick: () => void; className?: string }) {
+function HeaderButton({ label, columnKey, activeSort, activeDirection, onClick, className }: { label: string; columnKey: string; activeSort: string; activeDirection: string; onClick: () => void; className?: string }) {
+  const isActive = activeSort === columnKey;
   return (
     <button className={`flex w-full items-center gap-2 ${className ?? ""}`} onClick={onClick} type="button">
       <span>{label}</span>
-      <ArrowUpDown className="h-3.5 w-3.5" />
+      {isActive && activeDirection === "asc" ? (
+        <ArrowUp className="h-3.5 w-3.5" />
+      ) : isActive && activeDirection === "desc" ? (
+        <ArrowDown className="h-3.5 w-3.5" />
+      ) : (
+        <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+      )}
     </button>
   );
 }
