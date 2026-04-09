@@ -1091,15 +1091,15 @@ export function SettingsWorkspace() {
       {error ? <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div> : null}
       {successMessage ? <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successMessage}</div> : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {(overview?.metrics ?? []).map((metric) => (
-          <Card key={metric.label}>
+          <Card key={metric.label} className="min-w-0">
             <CardHeader className="pb-3">
-              <CardDescription>{metric.label}</CardDescription>
-              <CardTitle className="text-3xl text-slate-950">{isLoadingOverview ? "—" : metric.value}</CardTitle>
+              <CardDescription className="break-words leading-5">{metric.label}</CardDescription>
+              <CardTitle className="break-words text-2xl text-slate-950 sm:text-3xl">{isLoadingOverview ? "—" : metric.value}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-slate-500">{metric.helper}</p>
+              <p className="break-words text-sm leading-6 text-slate-500">{metric.helper}</p>
             </CardContent>
           </Card>
         ))}

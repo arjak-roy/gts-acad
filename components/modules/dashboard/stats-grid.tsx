@@ -30,22 +30,22 @@ export function StatsGrid({ stats }: StatsGridProps) {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {summaryCards(stats).map((card) => (
           <Card key={card.label}>
-            <CardContent className="p-5">
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">{card.label}</p>
-              <h2 className="mt-2 text-3xl font-black tracking-tight text-primary">{card.value}</h2>
-              <p className="mt-3 text-xs font-bold text-slate-500">{card.helper}</p>
+            <CardContent className="min-w-0 p-4 sm:p-5">
+              <p className="text-[10px] font-black uppercase leading-4 tracking-[0.22em] text-slate-400 break-words">{card.label}</p>
+              <h2 className="mt-2 break-words text-2xl font-black tracking-tight text-primary sm:text-3xl">{card.value}</h2>
+              <p className="mt-3 break-words text-xs font-bold leading-5 text-slate-500">{card.helper}</p>
             </CardContent>
           </Card>
         ))}
 
         <Card className="border-none bg-primary text-white shadow-shell">
-          <CardContent className="p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/60">Placement Ready</p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight">{stats.placementReady}</h2>
-            <p className="mt-3 text-xs font-bold text-white/70">Eligible to sync into Recruiter Workspace.</p>
+          <CardContent className="min-w-0 p-4 sm:p-5">
+            <p className="text-[10px] font-black uppercase leading-4 tracking-[0.22em] text-white/60 break-words">Placement Ready</p>
+            <h2 className="mt-2 break-words text-2xl font-black tracking-tight sm:text-3xl">{stats.placementReady}</h2>
+            <p className="mt-3 break-words text-xs font-bold leading-5 text-white/70">Eligible to sync into Recruiter Workspace.</p>
           </CardContent>
         </Card>
       </div>

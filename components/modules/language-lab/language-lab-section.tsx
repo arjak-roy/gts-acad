@@ -207,15 +207,15 @@ function MetricCard({
     <Card className="h-full">
       <CardContent className="flex h-full flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">{label}</p>
-            <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase leading-4 tracking-[0.2em] text-slate-400 break-words">{label}</p>
+            <p className="mt-2 break-words text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{value}</p>
           </div>
           <div className={cn("rounded-2xl p-3", tone === "accent" ? "bg-orange-50" : tone === "success" ? "bg-emerald-50" : tone === "warning" ? "bg-amber-50" : tone === "danger" ? "bg-rose-50" : "bg-blue-50")}>
             <Icon className={cn("h-5 w-5", tonePalette[tone].inkClass)} />
           </div>
         </div>
-        <p className="text-xs font-semibold text-slate-500">{helper}</p>
+        <p className="break-words text-xs font-semibold leading-5 text-slate-500">{helper}</p>
       </CardContent>
     </Card>
   );

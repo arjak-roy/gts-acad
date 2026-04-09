@@ -591,15 +591,15 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {section.metrics.map((metric) => (
           <Card key={metric.label} className="shadow-none">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{metric.label}</p>
-                <p className="mt-0.5 text-2xl font-extrabold leading-tight text-slate-950">{metric.value}</p>
+            <CardContent className="min-w-0 space-y-2 p-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase leading-4 tracking-[0.16em] text-slate-400 break-words">{metric.label}</p>
+                <p className="mt-1 break-words text-2xl font-extrabold leading-tight text-slate-950 sm:text-3xl">{metric.value}</p>
               </div>
-              <p className="hidden text-xs text-slate-500 sm:block">{metric.helper}</p>
+              <p className="break-words text-xs leading-5 text-slate-500">{metric.helper}</p>
             </CardContent>
           </Card>
         ))}
