@@ -1,12 +1,17 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
-import { ColumnDef, SortingState, flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
+import { ArrowUpDown, Download, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
+import { ColumnDef, ColumnFiltersState, SortingState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DataTableSearchBar } from "@/components/ui/data-table-search-bar";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { DataTableFilterBar, type FilterConfig } from "@/components/ui/data-table-filter-bar";
+import { DataTableFilterChips } from "@/components/ui/data-table-filter-chips";
+import { DataTableEmptyState } from "@/components/ui/data-table-empty-state";
 import { BatchDetailSheet } from "@/components/modules/batches/batch-detail-sheet";
 import { BatchEnrollmentSheet } from "@/components/modules/batches/batch-enrollment-sheet";
 import { EditBatchSheet } from "@/components/modules/batches/edit-batch-sheet";
@@ -46,13 +51,59 @@ type SectionPageContentProps = {
 
 type ViewMode = "table" | "card";
 
-const PAGE_SIZE = 4;
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_FILTER_OPTIONS = 15;
+
+function deriveFilterConfigs(rows: PortalSectionTableRow[], columns: PortalSectionTableColumn[]): FilterConfig[] {
+  const configs: FilterConfig[] = [];
+
+  for (const column of columns) {
+    if (column.key === "id") continue;
+    const uniqueValues = new Set<string>();
+    for (const row of rows) {
+      const value = row[column.key];
+      if (value) uniqueValues.add(value);
+    }
+    if (uniqueValues.size >= 2 && uniqueValues.size <= MAX_FILTER_OPTIONS) {
+      configs.push({
+        key: column.key,
+        label: column.header,
+        type: "select",
+        options: Array.from(uniqueValues).sort().map((v) => ({ label: v, value: v })),
+      });
+    }
+  }
+
+  return configs;
+}
 
 export function SectionPageContent({ section, sectionKey }: SectionPageContentProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [sorting, setSorting] = useState<SortingState>([]);
+
+  // URL-driven initial state
+  const initialSearch = searchParams.get("search") ?? "";
+  const initialPageSize = Number(searchParams.get("pageSize")) || DEFAULT_PAGE_SIZE;
+  const initialPage = Math.max(0, Number(searchParams.get("page")) - 1 || 0);
+
+  const [sorting, setSorting] = useState<SortingState>(() => {
+    const sortBy = searchParams.get("sortBy");
+    const sortDir = searchParams.get("sortDir");
+    if (sortBy) return [{ id: sortBy, desc: sortDir === "desc" }];
+    return [];
+  });
+  const [globalFilter, setGlobalFilter] = useState(initialSearch);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
+    const initial: ColumnFiltersState = [];
+    searchParams.forEach((value, key) => {
+      if (key.startsWith("filter_") && value) {
+        initial.push({ id: key.slice(7), value });
+      }
+    });
+    return initial;
+  });
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const [viewingCourseId, setViewingCourseId] = useState<string | null>(null);
   const [viewingBatchId, setViewingBatchId] = useState<string | null>(null);
   const [viewingCenterId, setViewingCenterId] = useState<string | null>(null);
@@ -103,6 +154,94 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         }, [])
       : []),
     [isEmailTemplatesSection, section.tableRows],
+  );
+
+  // Auto-derive filterable columns from data
+  const filterConfigs = useMemo(
+    () => deriveFilterConfigs(section.tableRows, section.tableColumns),
+    [section.tableRows, section.tableColumns],
+  );
+
+  // Column filter values as a flat map (for bar/chips)
+  const columnFilterValues = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const cf of columnFilters) {
+      map[cf.id] = String(cf.value);
+    }
+    return map;
+  }, [columnFilters]);
+
+  // URL state sync
+  const updateUrl = useCallback(
+    (patch: Record<string, string | number | null | undefined>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      Object.entries(patch).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === "") {
+          next.delete(key);
+        } else {
+          next.set(key, String(value));
+        }
+      });
+      startTransition(() => {
+        const qs = next.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      });
+    },
+    [searchParams, pathname, router],
+  );
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setGlobalFilter(value);
+      updateUrl({ search: value || null, page: null });
+    },
+    [updateUrl],
+  );
+
+  const handleColumnFilterChange = useCallback(
+    (key: string, value: string) => {
+      setColumnFilters((prev) => {
+        const without = prev.filter((f) => f.id !== key);
+        return value ? [...without, { id: key, value }] : without;
+      });
+      updateUrl({ [`filter_${key}`]: value || null, page: null });
+    },
+    [updateUrl],
+  );
+
+  const handleColumnFilterReset = useCallback(() => {
+    setColumnFilters([]);
+    const patch: Record<string, null> = {};
+    for (const f of filterConfigs) {
+      patch[`filter_${f.key}`] = null;
+    }
+    patch.page = null;
+    updateUrl(patch);
+  }, [filterConfigs, updateUrl]);
+
+  const handleColumnFilterRemove = useCallback(
+    (key: string) => handleColumnFilterChange(key, ""),
+    [handleColumnFilterChange],
+  );
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      table.setPageIndex(page);
+      updateUrl({ page: page > 0 ? page + 1 : null });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [updateUrl],
+  );
+
+  const handlePageSizeChange = useCallback(
+    (size: number) => {
+      setPageSize(size);
+      table.setPageSize(size);
+      table.setPageIndex(0);
+      updateUrl({ pageSize: size !== DEFAULT_PAGE_SIZE ? size : null, page: null });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [updateUrl],
   );
 
   if (sectionKey === "logs-actions") {
@@ -377,15 +516,26 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const table = useReactTable({
     data: section.tableRows,
     columns,
-    state: { sorting },
-    onSortingChange: setSorting,
+    state: { sorting, globalFilter, columnFilters },
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      const next = typeof updater === "function" ? updater(sorting) : updater;
+      if (next.length > 0) {
+        updateUrl({ sortBy: next[0].id, sortDir: next[0].desc ? "desc" : "asc" });
+      } else {
+        updateUrl({ sortBy: null, sortDir: null });
+      }
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
     initialState: {
       pagination: {
-        pageIndex: 0,
-        pageSize: PAGE_SIZE,
+        pageIndex: initialPage,
+        pageSize,
       },
     },
     getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
@@ -460,8 +610,33 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
         {isEmailTemplatesSection && <TemplateVariableLegend />}
         <Card>
           <CardHeader>
-            <CardTitle>{section.tableTitle}</CardTitle>
-            <CardDescription>{section.tableDescription}</CardDescription>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>{section.tableTitle}</CardTitle>
+                <CardDescription>{section.tableDescription}</CardDescription>
+              </div>
+              <DataTableSearchBar
+                value={globalFilter}
+                onChange={handleSearchChange}
+                placeholder={`Search ${section.tableTitle.toLowerCase()}…`}
+                className="w-full sm:w-64"
+              />
+            </div>
+            {filterConfigs.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                <DataTableFilterBar
+                  filters={filterConfigs}
+                  values={columnFilterValues}
+                  onChange={handleColumnFilterChange}
+                  onReset={handleColumnFilterReset}
+                />
+                <DataTableFilterChips
+                  filters={filterConfigs}
+                  values={columnFilterValues}
+                  onRemove={handleColumnFilterRemove}
+                />
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
             {viewMode === "table" ? (
@@ -552,27 +727,22 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
                 ))}
               </FlexibleCardGrid>
             ) : (
-              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-8 text-center text-sm font-medium text-slate-500">No rows available for this section.</div>
+              <DataTableEmptyState
+                title="No rows available for this section."
+                description={globalFilter || columnFilters.length > 0 ? "Try adjusting your filters or search criteria." : undefined}
+                action={globalFilter || columnFilters.length > 0 ? { label: "Clear filters", onClick: () => { handleSearchChange(""); handleColumnFilterReset(); } } : undefined}
+              />
             )}
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">
-                Showing <span className="font-bold text-slate-900">{table.getRowModel().rows.length}</span> of <span className="font-bold text-slate-900">{section.tableRows.length}</span> rows.
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <span className="min-w-24 text-center text-sm font-semibold text-slate-600">
-                  Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
-                </span>
-                <Button variant="secondary" size="sm" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+            <DataTablePagination
+              currentPage={table.getState().pagination.pageIndex}
+              pageCount={table.getPageCount()}
+              totalRows={table.getFilteredRowModel().rows.length}
+              visibleRows={table.getRowModel().rows.length}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
           </CardContent>
         </Card>
       </div>

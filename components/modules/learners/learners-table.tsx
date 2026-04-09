@@ -3,12 +3,15 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, ChevronLeft, ChevronRight, LayoutGrid, MoreHorizontal, Rows3, Search } from "lucide-react";
+import { ArrowUpDown, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
 import { ColumnDef, SortingState, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTableSearchBar } from "@/components/ui/data-table-search-bar";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { DataTableEmptyState } from "@/components/ui/data-table-empty-state";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
 import { Input } from "@/components/ui/input";
@@ -247,19 +250,15 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="grid gap-3 lg:grid-cols-[1fr_200px_220px]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={search}
-                onChange={(event) => {
-                  const nextSearch = event.target.value;
-                  setSearch(nextSearch);
-                  updateUrl({ search: nextSearch, page: 1 });
-                }}
-                className="pl-10"
-                placeholder="Filter by name, learner ID, or email..."
-              />
-            </div>
+            <DataTableSearchBar
+              value={search}
+              onChange={(nextSearch) => {
+                setSearch(nextSearch);
+                updateUrl({ search: nextSearch, page: 1 });
+              }}
+              placeholder="Filter by name, learner ID, or email..."
+              debounceMs={0}
+            />
             <Input value={filters.batchCode} onChange={(event) => updateUrl({ batchCode: event.target.value, page: 1 })} placeholder="Batch code" />
             <select
               className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
@@ -298,8 +297,8 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={columns.length} className="py-10 text-center text-sm text-slate-500">
-                        No learners matched the selected filters.
+                      <TableCell colSpan={columns.length} className="p-0">
+                        <DataTableEmptyState title="No learners matched the selected filters." />
                       </TableCell>
                     </TableRow>
                   )}
@@ -381,27 +380,19 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
               })}
             </FlexibleCardGrid>
           ) : (
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-8 text-center text-sm text-slate-500">No learners matched the selected filters.</div>
+            <DataTableEmptyState title="No learners matched the selected filters." />
           )}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500">
-              Showing <span className="font-bold text-slate-900">{response.items.length}</span> of <span className="font-bold text-slate-900">{response.totalCount}</span> learners.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" disabled={response.page <= 1} onClick={() => updateUrl({ page: response.page - 1 })}>
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <span className="min-w-24 text-center text-sm font-semibold text-slate-600">
-                Page {response.page} / {response.pageCount}
-              </span>
-              <Button variant="secondary" size="sm" disabled={response.page >= response.pageCount} onClick={() => updateUrl({ page: response.page + 1 })}>
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          <DataTablePagination
+            currentPage={response.page - 1}
+            pageCount={response.pageCount}
+            totalRows={response.totalCount}
+            visibleRows={response.items.length}
+            pageSize={response.pageSize}
+            pageSizes={[10, 25, 50, 100]}
+            onPageChange={(page) => updateUrl({ page: page + 1 })}
+            onPageSizeChange={(size) => updateUrl({ pageSize: size, page: 1 })}
+          />
         </CardContent>
       </Card>
     </div>
