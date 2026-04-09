@@ -108,9 +108,6 @@ export function AssessmentPoolTab({
           <CanAccess permission="assessment_pool.create">
             <Button size="sm" variant="secondary" onClick={onAiGenerate} className="gap-1.5">
               <span className="text-xs">✦</span> AI Generate
-              <Badge variant="accent" className="ml-1 text-[8px] px-1 py-0">
-                Soon
-              </Badge>
             </Button>
           </CanAccess>
           <CanAccess permission="assessment_pool.create">

@@ -23,6 +23,7 @@ export {
   getEmailRuntimeSettings,
   getFileUploadRuntimeSettings,
   getGeneralRuntimeSettings,
+  getRuntimeSettingValue,
 } from "@/services/settings/runtime";
 export { sendSettingsTestEmailService } from "@/services/settings/testing";
 

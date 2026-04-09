@@ -913,5 +913,98 @@
         ]
       }
     ]
+  },
+  {
+    "name": "AI Features",
+    "code": "ai-features",
+    "description": "Configure AI-powered capabilities such as automatic assessment generation, question authoring, and content suggestions.",
+    "icon": "Sparkles",
+    "displayOrder": 75,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "ai.enable_ai_features",
+        "label": "Enable AI Features",
+        "description": "Master toggle for all AI-powered capabilities across the application. When disabled, AI buttons and generation endpoints are hidden and blocked.",
+        "type": "TOGGLE",
+        "defaultValue": false,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "General"
+      },
+      {
+        "key": "ai.provider",
+        "label": "AI Provider",
+        "description": "Select which AI provider to use for question generation. Gemini offers a generous free tier.",
+        "type": "SELECT",
+        "defaultValue": "gemini",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 15,
+        "groupName": "General",
+        "options": [
+          { "label": "Google Gemini (Free tier available)", "value": "gemini" },
+          { "label": "OpenAI", "value": "openai" }
+        ]
+      },
+      {
+        "key": "ai.gemini_api_key",
+        "label": "Gemini API Key",
+        "description": "API key for Google Gemini. Get one free at aistudio.google.com. Stored encrypted. Leave empty to use the GEMINI_API_KEY env variable.",
+        "type": "PASSWORD",
+        "defaultValue": "",
+        "isRequired": false,
+        "isEncrypted": true,
+        "isSystem": true,
+        "displayOrder": 16,
+        "groupName": "Gemini Configuration",
+        "placeholder": "AIza..."
+      },
+      {
+        "key": "ai.openai_api_key",
+        "label": "OpenAI API Key",
+        "description": "API key used to authenticate requests to the OpenAI platform. Stored encrypted. Leave empty to use the OPENAI_API_KEY environment variable as fallback.",
+        "type": "PASSWORD",
+        "defaultValue": "",
+        "isRequired": false,
+        "isEncrypted": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "OpenAI Configuration",
+        "placeholder": "sk-..."
+      },
+      {
+        "key": "ai.default_model",
+        "label": "Default Model",
+        "description": "Model used for AI generation. Pick a model matching your selected provider.",
+        "type": "SELECT",
+        "defaultValue": "gemini-2.0-flash",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Model",
+        "options": [
+          { "label": "Gemini 3.5 Flash Lite (Lightweight, free tier)", "value": "gemini-3.1-flash-lite-preview" },
+          { "label": "Gemini 2.0 Flash (Fast, free tier)", "value": "gemini-2.0-flash" },
+          { "label": "Gemini 1.5 Pro (High quality)", "value": "gemini-1.5-pro" },
+          { "label": "Gemini 1.5 Flash (Balanced)", "value": "gemini-1.5-flash" },
+          { "label": "GPT-4o (Best quality)", "value": "gpt-4o" },
+          { "label": "GPT-4o Mini (Balanced)", "value": "gpt-4o-mini" }
+        ]
+      },
+      {
+        "key": "ai.max_questions_per_request",
+        "label": "Max Questions per Request",
+        "description": "Maximum number of questions the AI can generate in a single request. Higher values use more tokens and take longer.",
+        "type": "NUMBER",
+        "defaultValue": 10,
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Limits",
+        "validationRules": { "min": 1, "max": 50 }
+      }
+    ]
   }
 ]

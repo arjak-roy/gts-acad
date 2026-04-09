@@ -6,6 +6,7 @@ import { ClipboardList, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddAssessmentSheet } from "@/components/modules/assessment-pool/add-assessment-sheet";
+import { AiGenerateDialog } from "@/components/modules/assessment-pool/ai-generate-dialog";
 import { AssessmentDetailSheet } from "@/components/modules/assessment-pool/assessment-detail-sheet";
 import { AssessmentPoolTab } from "@/components/modules/assessment-pool/assessment-pool-tab";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ export default function AssessmentsPage() {
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [isLoadingCourses, setIsLoadingCourses] = useState(true);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [detailPoolId, setDetailPoolId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -156,14 +158,17 @@ export default function AssessmentsPage() {
             courseId={selectedCourseId || undefined}
             onAddAssessment={() => setAddSheetOpen(true)}
             onSelectAssessment={(poolId) => setDetailPoolId(poolId)}
-            onAiGenerate={() => {
-              toast.info(
-                "AI-powered assessment generation is coming soon. This feature will use tool calling to automatically create questions based on your prompt.",
-              );
-            }}
+            onAiGenerate={() => setAiDialogOpen(true)}
           />
         </CardContent>
       </Card>
+
+      <AiGenerateDialog
+        open={aiDialogOpen}
+        onOpenChange={setAiDialogOpen}
+        courseId={selectedCourseId || undefined}
+        onCreated={handleCreated}
+      />
 
       <AddAssessmentSheet
         open={addSheetOpen}

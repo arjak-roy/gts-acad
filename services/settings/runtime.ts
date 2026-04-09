@@ -71,7 +71,7 @@ async function getRuntimeValueMap() {
   }
 }
 
-async function getRuntimeSettingValue<T>(key: string, fallbackValue: T) {
+export async function getRuntimeSettingValue<T>(key: string, fallbackValue: T) {
   const valueMap = await getRuntimeValueMap();
   const value = valueMap.get(key);
 

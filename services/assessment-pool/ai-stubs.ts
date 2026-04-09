@@ -148,20 +148,36 @@ export type AiGenerateRequest = {
 };
 
 export type AiGenerateResponse = {
-  available: false;
+  available: boolean;
   message: string;
   toolDefinitions: typeof AI_TOOL_DEFINITIONS;
 };
 
 /**
- * Stub for AI assessment generation. Returns a "Coming Soon" response
- * with the tool definitions that will be used when AI is integrated.
+ * Legacy stub — delegates to the real AI service when enabled,
+ * falls back to the "Coming Soon" response when AI features are disabled.
  */
-export async function generateAssessmentWithAi(_request: AiGenerateRequest): Promise<AiGenerateResponse> {
+export async function generateAssessmentWithAi(request: AiGenerateRequest): Promise<AiGenerateResponse> {
+  try {
+    const { getRuntimeSettingValue } = await import("@/services/settings/runtime");
+    const enabled = await getRuntimeSettingValue<boolean>("ai.enable_ai_features", false);
+
+    if (enabled) {
+      return {
+        available: true,
+        message:
+          "AI features are enabled. Use the AI Generate dialog in the assessment builder for full generation and preview.",
+        toolDefinitions: AI_TOOL_DEFINITIONS,
+      };
+    }
+  } catch {
+    // settings infrastructure unavailable — fall back to stub
+  }
+
   return {
     available: false,
     message:
-      "AI-powered assessment generation is coming soon. This feature will use tool calling to automatically create questions based on your prompt, course content, and desired difficulty level.",
+      "AI-powered assessment generation is available but currently disabled. Enable it in Settings → AI Features.",
     toolDefinitions: AI_TOOL_DEFINITIONS,
   };
 }
