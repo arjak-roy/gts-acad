@@ -5,6 +5,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { assertCandidateRole } from "@/lib/auth/route-guards";
 import { buildClearedAuthSessionCookie, getAuthSession } from "@/lib/auth/session";
 import { maskEmail } from "@/lib/auth/two-factor";
+import { prisma } from "@/lib/prisma-client";
 import { touchUserSessionActivity, validateAuthenticatedUserSession } from "@/services/auth/session-manager";
 
 const METHODS = ["GET", "OPTIONS"];
@@ -50,6 +51,16 @@ export async function GET(request: NextRequest) {
 
     const isValid = await validateAuthenticatedUserSession(session);
     if (!isValid) {
+      return buildUnauthenticatedResponse(request, true);
+    }
+
+    // Defense-in-depth: reject deactivated users even if session token is technically valid.
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { isActive: true },
+    });
+
+    if (!user || !user.isActive) {
       return buildUnauthenticatedResponse(request, true);
     }
 

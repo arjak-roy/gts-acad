@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Mail, RotateCcw, Send, ShieldCheck, UserCog } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Activity, ChevronDown, ChevronRight, Globe, Loader2, LogIn, Mail, Monitor, RotateCcw, Send, ShieldCheck, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,46 @@ type RoleOption = {
   code: string;
   isSystemRole: boolean;
   isActive: boolean;
+};
+
+type ActivityLogItem = {
+  id: string;
+  activityType: string;
+  ipAddress: string | null;
+  device: string | null;
+  browser: string | null;
+  sessionId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+type ActivityResponse = {
+  items: ActivityLogItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+type SessionHistoryItem = {
+  id: string;
+  device: string | null;
+  browser: string | null;
+  ipAddress: string | null;
+  loginAt: string;
+  lastActivityAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  isActive: boolean;
+};
+
+type SessionHistoryResponse = {
+  items: SessionHistoryItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
 };
 
 type Props = {
@@ -44,6 +84,30 @@ function onboardingVariant(status: CandidateUserDetail["onboardingStatus"]) {
   return "default";
 }
 
+const ACTIVITY_LABELS: Record<string, string> = {
+  LOGIN: "Login",
+  LOGOUT: "Logout",
+  LOGIN_FAILED: "Login Failed",
+  SESSION_EXPIRED: "Session Expired",
+  PAGE_VIEW: "Page View",
+  FORCED_LOGOUT: "Forced Logout",
+  PASSWORD_CHANGE: "Password Changed",
+  ACCOUNT_ACTIVATED: "Account Activated",
+  ACCOUNT_DEACTIVATED: "Account Deactivated",
+};
+
+function getActivityLabel(type: string) {
+  return ACTIVITY_LABELS[type] ?? type.replace(/_/g, " ");
+}
+
+function getActivityBadgeVariant(type: string): "success" | "danger" | "warning" | "info" | "default" {
+  if (type === "LOGIN" || type === "ACCOUNT_ACTIVATED") return "success";
+  if (type === "LOGIN_FAILED" || type === "FORCED_LOGOUT" || type === "ACCOUNT_DEACTIVATED") return "danger";
+  if (type === "SESSION_EXPIRED" || type === "LOGOUT") return "warning";
+  if (type === "PAGE_VIEW") return "info";
+  return "default";
+}
+
 export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props) {
   const [user, setUser] = useState<CandidateUserDetail | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
@@ -57,6 +121,16 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
   const [isSendingMail, setIsSendingMail] = useState(false);
   const [showMailForm, setShowMailForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [activityExpanded, setActivityExpanded] = useState(false);
+  const [activityData, setActivityData] = useState<ActivityResponse | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityPage, setActivityPage] = useState(1);
+
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [sessionsData, setSessionsData] = useState<SessionHistoryResponse | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsPage, setSessionsPage] = useState(1);
 
   useEffect(() => {
     if (!open || !userId) return;
@@ -109,8 +183,56 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
       setShowMailForm(false);
       setMailForm({ subject: "", body: "" });
       setError(null);
+      setActivityExpanded(false);
+      setActivityData(null);
+      setActivityPage(1);
+      setSessionsExpanded(false);
+      setSessionsData(null);
+      setSessionsPage(1);
     }
   }, [open]);
+
+  const loadActivity = useCallback(async (targetUserId: string, page: number) => {
+    setActivityLoading(true);
+    try {
+      const response = await fetch(`/api/users/candidates/${targetUserId}/activity?page=${page}&pageSize=10`);
+      const payload = (await response.json().catch(() => null)) as { data?: ActivityResponse } | null;
+      if (response.ok && payload?.data) {
+        setActivityData(payload.data);
+      }
+    } catch {
+      // Silently handle — activity is supplementary.
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
+
+  const loadSessions = useCallback(async (targetUserId: string, page: number) => {
+    setSessionsLoading(true);
+    try {
+      const response = await fetch(`/api/users/candidates/${targetUserId}/sessions?page=${page}&pageSize=10`);
+      const payload = (await response.json().catch(() => null)) as { data?: SessionHistoryResponse } | null;
+      if (response.ok && payload?.data) {
+        setSessionsData(payload.data);
+      }
+    } catch {
+      // Silently handle — sessions are supplementary.
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activityExpanded && userId) {
+      loadActivity(userId, activityPage);
+    }
+  }, [activityExpanded, activityPage, userId, loadActivity]);
+
+  useEffect(() => {
+    if (sessionsExpanded && userId) {
+      loadSessions(userId, sessionsPage);
+    }
+  }, [sessionsExpanded, sessionsPage, userId, loadSessions]);
 
   function toggleRole(roleId: string) {
     setSelectedRoleIds((current) =>
@@ -393,6 +515,179 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
                   </div>
                 ) : null}
               </CanAccess>
+
+              {/* Activity Log Section */}
+              <div className="rounded-2xl border border-slate-200">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 p-4 text-left hover:bg-slate-50"
+                  onClick={() => setActivityExpanded(!activityExpanded)}
+                >
+                  {activityExpanded ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  <Activity className="h-4 w-4 text-slate-400" />
+                  <h3 className="text-sm font-semibold text-slate-900">Activity Log</h3>
+                  {activityData ? (
+                    <span className="ml-auto text-xs text-slate-400">{activityData.totalCount} events</span>
+                  ) : null}
+                </button>
+
+                {activityExpanded ? (
+                  <div className="border-t px-4 pb-4">
+                    {activityLoading && !activityData ? (
+                      <div className="space-y-2 pt-3">
+                        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                      </div>
+                    ) : activityData && activityData.items.length > 0 ? (
+                      <>
+                        <div className="divide-y divide-slate-100">
+                          {activityData.items.map((item) => (
+                            <div key={item.id} className="flex items-start gap-3 py-3">
+                              <div className="mt-0.5">
+                                {item.activityType === "LOGIN" ? (
+                                  <LogIn className="h-4 w-4 text-emerald-500" />
+                                ) : item.activityType === "ACCOUNT_DEACTIVATED" || item.activityType === "FORCED_LOGOUT" ? (
+                                  <Monitor className="h-4 w-4 text-rose-500" />
+                                ) : (
+                                  <Globe className="h-4 w-4 text-slate-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={getActivityBadgeVariant(item.activityType)}>
+                                    {getActivityLabel(item.activityType)}
+                                  </Badge>
+                                  <span className="text-[11px] text-slate-400">
+                                    {new Date(item.createdAt).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex gap-3 text-[11px] text-slate-400">
+                                  {item.device ? <span>{item.device}</span> : null}
+                                  {item.browser ? <span>{item.browser}</span> : null}
+                                  {item.ipAddress ? <span>{item.ipAddress}</span> : null}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {activityData.pageCount > 1 ? (
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-[11px] text-slate-400">
+                              Page {activityData.page} of {activityData.pageCount}
+                            </span>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={activityPage <= 1 || activityLoading}
+                                onClick={() => setActivityPage((p) => Math.max(1, p - 1))}
+                              >
+                                Prev
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={activityPage >= activityData.pageCount || activityLoading}
+                                onClick={() => setActivityPage((p) => p + 1)}
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="pt-3 text-sm text-slate-500">No activity recorded yet.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Session History Section */}
+              <div className="rounded-2xl border border-slate-200">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 p-4 text-left hover:bg-slate-50"
+                  onClick={() => setSessionsExpanded(!sessionsExpanded)}
+                >
+                  {sessionsExpanded ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  <Monitor className="h-4 w-4 text-slate-400" />
+                  <h3 className="text-sm font-semibold text-slate-900">Session History</h3>
+                  {sessionsData ? (
+                    <span className="ml-auto text-xs text-slate-400">{sessionsData.totalCount} sessions</span>
+                  ) : null}
+                </button>
+
+                {sessionsExpanded ? (
+                  <div className="border-t px-4 pb-4">
+                    {sessionsLoading && !sessionsData ? (
+                      <div className="space-y-2 pt-3">
+                        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                      </div>
+                    ) : sessionsData && sessionsData.items.length > 0 ? (
+                      <>
+                        <div className="divide-y divide-slate-100">
+                          {sessionsData.items.map((item) => (
+                            <div key={item.id} className="flex items-start gap-3 py-3">
+                              <div className="mt-0.5">
+                                <Monitor className={`h-4 w-4 ${item.isActive ? "text-emerald-500" : "text-slate-300"}`} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={item.isActive ? "success" : item.revokedAt ? "danger" : "default"}>
+                                    {item.isActive ? "Active" : item.revokedAt ? "Revoked" : "Expired"}
+                                  </Badge>
+                                  {item.revokedReason ? (
+                                    <span className="text-[11px] text-slate-400">{item.revokedReason}</span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 flex gap-3 text-[11px] text-slate-400">
+                                  {item.device ? <span>{item.device}</span> : null}
+                                  {item.browser ? <span>{item.browser}</span> : null}
+                                  {item.ipAddress ? <span>{item.ipAddress}</span> : null}
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-slate-400">
+                                  Login: {new Date(item.loginAt).toLocaleString()}
+                                  {" · "}
+                                  Last active: {new Date(item.lastActivityAt).toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {sessionsData.pageCount > 1 ? (
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-[11px] text-slate-400">
+                              Page {sessionsData.page} of {sessionsData.pageCount}
+                            </span>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={sessionsPage <= 1 || sessionsLoading}
+                                onClick={() => setSessionsPage((p) => Math.max(1, p - 1))}
+                              >
+                                Prev
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={sessionsPage >= sessionsData.pageCount || sessionsLoading}
+                                onClick={() => setSessionsPage((p) => p + 1)}
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="pt-3 text-sm text-slate-500">No session history available.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </>
           )}
         </div>

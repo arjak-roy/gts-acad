@@ -227,8 +227,24 @@ enum AuditActionType {
   LOGIN        @map("login")
   TWO_FACTOR   @map("two_factor")
   RETRY        @map("retry")
+  DEACTIVATED  @map("deactivated")
+  ACTIVATED    @map("activated")
 
   @@map("audit_action_type")
+}
+
+enum UserActivityType {
+  LOGIN           @map("login")
+  LOGOUT          @map("logout")
+  LOGIN_FAILED    @map("login_failed")
+  SESSION_EXPIRED @map("session_expired")
+  PAGE_VIEW       @map("page_view")
+  FORCED_LOGOUT   @map("forced_logout")
+  PASSWORD_CHANGE @map("password_change")
+  ACCOUNT_ACTIVATED   @map("account_activated")
+  ACCOUNT_DEACTIVATED @map("account_deactivated")
+
+  @@map("user_activity_type")
 }
 
 enum AuditLogLevel {
@@ -410,6 +426,7 @@ model User {
   createdEmailTemplates    EmailTemplate[]          @relation("EmailTemplateCreatedBy")
   updatedEmailTemplates    EmailTemplate[]          @relation("EmailTemplateUpdatedBy")
   emailTemplateVersions    EmailTemplateVersion[]   @relation("EmailTemplateVersionUpdatedBy")
+  activityLogs             UserActivityLog[]        @relation("UserActivityLogs")
 
   @@map("users")
 }
@@ -673,6 +690,25 @@ model AuditLog {
   @@index([actorUserId], map: "idx_audit_logs_actor")
   @@index([emailLogId], map: "idx_audit_logs_email")
   @@map("audit_logs")
+}
+
+model UserActivityLog {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("activity_log_id")
+  userId        String           @db.Uuid @map("user_id")
+  activityType  UserActivityType @map("activity_type")
+  ipAddress     String?          @map("ip_address") @db.VarChar(64)
+  userAgent     String?          @map("user_agent") @db.VarChar(255)
+  device        String?          @db.VarChar(120)
+  browser       String?          @db.VarChar(120)
+  sessionId     String?          @db.Uuid @map("session_id")
+  metadata      Json             @default("{}")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  user          User             @relation("UserActivityLogs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "idx_user_activity_logs_user_created")
+  @@index([activityType, createdAt], map: "idx_user_activity_logs_type_created")
+  @@index([userId, activityType], map: "idx_user_activity_logs_user_type")
+  @@map("user_activity_logs")
 }
 
 model TrainerProfile {

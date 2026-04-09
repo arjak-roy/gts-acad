@@ -20,6 +20,8 @@ import {
 } from "@/services/users/candidate-helpers";
 import { getCandidateUserByIdService } from "@/services/users/candidate-queries";
 import { sendCandidateEnrollmentCredentialsEmail, generateLearnerCode } from "@/services/learners/internal-helpers";
+import { invalidateAllUserSessions } from "@/services/auth/session-manager";
+import { logUserActivity } from "@/services/user-activity-service";
 import type { CandidateUserDetail } from "@/types";
 
 function requireDatabase() {
@@ -257,11 +259,35 @@ export async function updateCandidateUserService(
     invalidateUserPermissionCache(userId);
   }
 
+  // When deactivating a candidate, invalidate all their sessions to force logout.
+  if (input.isActive === false) {
+    await invalidateAllUserSessions(userId, "account-deactivated-by-admin");
+
+    await logUserActivity({
+      userId,
+      activityType: "ACCOUNT_DEACTIVATED",
+      metadata: { deactivatedBy: actorUserId ?? "system" },
+    });
+  }
+
+  // Log reactivation as activity for audit trail.
+  if (input.isActive === true) {
+    await logUserActivity({
+      userId,
+      activityType: "ACCOUNT_ACTIVATED",
+      metadata: { activatedBy: actorUserId ?? "system" },
+    });
+  }
+
   await createAuditLogEntry({
     entityType: "CANDIDATE",
     entityId: userId,
-    action: "UPDATED",
-    message: `Candidate user ${record.email} updated from user management.`,
+    action: input.isActive === false ? "DEACTIVATED" : input.isActive === true ? "ACTIVATED" : "UPDATED",
+    message: input.isActive === false
+      ? `Candidate user ${record.email} deactivated. All sessions invalidated.`
+      : input.isActive === true
+        ? `Candidate user ${record.email} activated.`
+        : `Candidate user ${record.email} updated from user management.`,
     metadata: {
       name: input.name?.trim(),
       email: normalizedEmail,

@@ -3,13 +3,14 @@ import { z } from "zod";
 
 import { withCors, handleCorsPreflight } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { buildLoginRateLimitKey, clearLoginRateLimit, getLoginRateLimitStatus, registerFailedLoginAttempt } from "@/lib/auth/login-rate-limiter";
+import { buildLoginRateLimitKey, clearLoginRateLimit, getLoginRateLimitStatus, registerFailedLoginAttempt, getClientIpAddress } from "@/lib/auth/login-rate-limiter";
 import { buildAuthSessionCookie, createAuthSessionToken } from "@/lib/auth/session";
 import { getTwoFactorCodeTtlMinutes } from "@/lib/auth/two-factor";
 import { AccountActivationRequiredError } from "@/services/auth/account-activation";
 import { LoginLockedError } from "@/services/auth/login-lockout";
 import { createAuthenticatedUserSession } from "@/services/auth/session-manager";
 import { loginWithPassword } from "@/services/auth";
+import { logUserActivity } from "@/services/user-activity-service";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Valid email is required."),
@@ -44,6 +45,17 @@ async function buildAuthenticatedResponse(request: NextRequest, user: Authentica
 
   const authenticatedSession = await createAuthenticatedUserSession(request, user, rememberMe);
   response.cookies.set(authenticatedSession.cookie);
+
+  // Non-blocking activity log for login events.
+  logUserActivity({
+    userId: user.id,
+    activityType: "LOGIN",
+    ipAddress: getClientIpAddress(request),
+    userAgent: request.headers.get("user-agent"),
+    sessionId: authenticatedSession.sessionId,
+    metadata: { rememberMe, role: user.role },
+  }).catch(() => {});
+
   return response;
 }
 
