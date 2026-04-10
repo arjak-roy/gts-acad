@@ -10,7 +10,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
-import { cn } from "@/lib/utils";
 
 type ProgramTypeValue = "LANGUAGE" | "CLINICAL" | "TECHNICAL";
 

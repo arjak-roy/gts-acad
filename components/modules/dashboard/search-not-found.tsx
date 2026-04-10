@@ -18,7 +18,7 @@ export function SearchNotFound({ query }: SearchNotFoundProps) {
 
         <h2 className="mt-6 text-2xl font-bold text-slate-900">No results found</h2>
         <p className="mt-2 max-w-md text-center text-slate-500">
-          No matches for <span className="font-semibold text-slate-700">"{query}"</span>
+          No matches for <span className="font-semibold text-slate-700">&ldquo;{query}&rdquo;</span>
         </p>
 
         <div className="mt-8 flex flex-col gap-2 sm:flex-row">

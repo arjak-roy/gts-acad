@@ -244,18 +244,6 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     [updateUrl],
   );
 
-  if (sectionKey === "logs-actions") {
-    return <LogsActionsSection title={section.title} description={section.description} />;
-  }
-
-  if (sectionKey === "schedule") {
-    return <ScheduleSection title={section.title} description={section.description} />;
-  }
-
-  if (sectionKey === "language-lab") {
-    return <LanguageLabSection title={section.title} description={section.description} />;
-  }
-
   useEffect(() => {
     const viewId = searchParams.get("viewId");
     const editId = searchParams.get("editId");
@@ -510,7 +498,22 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
     return baseColumns;
   },
-  [hasDetailActions, section.tableColumns, editPermForSection, sectionKey, exportingBatchId, isEmailTemplatesSection],
+  [
+    editPermForSection,
+    exportBatchCsv,
+    exportingBatchId,
+    handleDeleteTemplate,
+    handleDuplicateTemplate,
+    handleToggleTemplateStatus,
+    hasDetailActions,
+    isEmailTemplatesSection,
+    openEditor,
+    openStudentsPopup,
+    openTemplateHistory,
+    openViewer,
+    section.tableColumns,
+    sectionKey,
+  ],
   );
 
   const table = useReactTable({
@@ -539,6 +542,18 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
+
+  if (sectionKey === "logs-actions") {
+    return <LogsActionsSection title={section.title} description={section.description} />;
+  }
+
+  if (sectionKey === "schedule") {
+    return <ScheduleSection title={section.title} description={section.description} />;
+  }
+
+  if (sectionKey === "language-lab") {
+    return <LanguageLabSection title={section.title} description={section.description} />;
+  }
 
   return (
     <div className="space-y-6">

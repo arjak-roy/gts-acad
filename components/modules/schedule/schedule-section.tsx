@@ -745,7 +745,6 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   const { can } = useRbac();
   const canCreate = can("schedule.create");
   const canEdit   = can("schedule.edit");
-  const canDelete = can("schedule.delete");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [baseDate, setBaseDate] = useState(new Date());
   const [batchFilter, setBatchFilter] = useState<string>("");

@@ -56,7 +56,7 @@ export function DashboardSearchResults({ search }: DashboardSearchResultsProps) 
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-[#dde1e6] bg-slate-50/80 p-8 text-center">
-            <p className="text-sm font-bold text-slate-900">No matches found for "{search.query}".</p>
+            <p className="text-sm font-bold text-slate-900">No matches found for &ldquo;{search.query}&rdquo;.</p>
             <p className="mt-2 text-sm text-slate-500">Try a learner code, program name, trainer name, batch code, or a dashboard metric label.</p>
           </div>
         )}

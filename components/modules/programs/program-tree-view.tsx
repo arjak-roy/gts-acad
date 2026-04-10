@@ -155,7 +155,11 @@ export function ProgramTreeView() {
 
     setExpandedCourses((prev) => {
       const next = new Set(prev);
-      isExpanding ? next.add(courseId) : next.delete(courseId);
+      if (isExpanding) {
+        next.add(courseId);
+      } else {
+        next.delete(courseId);
+      }
       return next;
     });
 
@@ -189,7 +193,11 @@ export function ProgramTreeView() {
 
     setExpandedPrograms((prev) => {
       const next = new Set(prev);
-      isExpanding ? next.add(programId) : next.delete(programId);
+      if (isExpanding) {
+        next.add(programId);
+      } else {
+        next.delete(programId);
+      }
       return next;
     });
 
@@ -221,7 +229,11 @@ export function ProgramTreeView() {
   const toggleTrainers = (batchId: string) => {
     setExpandedTrainers((prev) => {
       const next = new Set(prev);
-      prev.has(batchId) ? next.delete(batchId) : next.add(batchId);
+      if (prev.has(batchId)) {
+        next.delete(batchId);
+      } else {
+        next.add(batchId);
+      }
       return next;
     });
   };
@@ -231,7 +243,11 @@ export function ProgramTreeView() {
 
     setExpandedStudents((prev) => {
       const next = new Set(prev);
-      isExpanding ? next.add(batchCode) : next.delete(batchCode);
+      if (isExpanding) {
+        next.add(batchCode);
+      } else {
+        next.delete(batchCode);
+      }
       return next;
     });
 

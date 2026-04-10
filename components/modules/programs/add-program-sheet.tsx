@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useDebounce } from "@/hooks/use-debounce";
-import { cn, formatGeneratedCode } from "@/lib/utils";
+import { formatGeneratedCode } from "@/lib/utils";
 
 type ProgramTypeValue = "LANGUAGE" | "CLINICAL" | "TECHNICAL";
 

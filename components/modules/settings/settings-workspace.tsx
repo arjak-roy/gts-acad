@@ -461,13 +461,15 @@ export function SettingsWorkspace() {
         return;
       }
 
+      const categories = payload.data.categories;
+
       setSelectedCategoryCode((currentSelectedCategoryCode) => {
         const nextSelectedCode =
-          preferredCategoryCode && payload.data.categories.some((category) => category.code === preferredCategoryCode)
+          preferredCategoryCode && categories.some((category) => category.code === preferredCategoryCode)
             ? preferredCategoryCode
-            : currentSelectedCategoryCode && payload.data.categories.some((category) => category.code === currentSelectedCategoryCode)
+            : currentSelectedCategoryCode && categories.some((category) => category.code === currentSelectedCategoryCode)
               ? currentSelectedCategoryCode
-              : payload.data.categories[0].code;
+              : categories[0].code;
 
         return nextSelectedCode === currentSelectedCategoryCode ? currentSelectedCategoryCode : nextSelectedCode;
       });

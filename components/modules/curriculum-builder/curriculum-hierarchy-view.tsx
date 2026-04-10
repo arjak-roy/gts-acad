@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, ClipboardList, FileText, Layers3 } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardList, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";

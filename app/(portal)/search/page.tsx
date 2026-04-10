@@ -8,7 +8,7 @@ import { searchAction } from "./actions";
 import { DashboardSearchResult } from "@/types";
 import { DashboardSearchResults } from "@/components/modules/dashboard/dashboard-search-results";
 import { SearchNotFound } from "@/components/modules/dashboard/search-not-found";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
@@ -70,7 +70,7 @@ export default function SearchPage() {
             </div>
             <h2 className="mt-6 text-2xl font-bold text-slate-900">Start searching</h2>
             <p className="mt-2 text-center text-slate-500">
-              Enter a learner code, learner name, program, batch, or trainer to find what you're looking for.
+              Enter a learner code, learner name, program, batch, or trainer to find what you&apos;re looking for.
             </p>
           </CardContent>
         </Card>
@@ -83,7 +83,7 @@ export default function SearchPage() {
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Search Results</h1>
         <p className="mt-2 text-slate-500">
-          Showing results for <span className="font-semibold text-slate-900">"{query}"</span>
+          Showing results for <span className="font-semibold text-slate-900">&ldquo;{query}&rdquo;</span>
         </p>
       </div>
 
