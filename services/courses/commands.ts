@@ -10,6 +10,14 @@ import { mapCourseOption, normalizeProgramIds } from "@/services/courses/interna
 import { MOCK_COURSES } from "@/services/courses/mock-data";
 import { CourseCreateResult, CourseOption } from "@/services/courses/types";
 
+function resolveCourseActivation(status: CreateCourseInput["status"] | UpdateCourseInput["status"], isActive: boolean) {
+  return status === "ARCHIVED" ? false : isActive;
+}
+
+function normalizeTrainerIds(trainerIds: string[]) {
+  return Array.from(new Set(trainerIds.map((trainerId) => trainerId.trim()).filter(Boolean)));
+}
+
 export async function generateCourseCode(courseName: string): Promise<string> {
   const prefix = deriveGeneratedCodePrefix(courseName);
 
@@ -36,6 +44,9 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
   const normalizedName = input.name.trim();
   const normalizedDescription = input.description.trim() || null;
   const selectedProgramIds = normalizeProgramIds(input.programIds ?? []);
+  const selectedTrainerIds = normalizeTrainerIds(input.trainerIds ?? []);
+  const status = input.status;
+  const isActive = resolveCourseActivation(status, input.isActive);
   let normalizedCode = input.code.trim().toUpperCase();
 
   if (!normalizedCode) {
@@ -47,12 +58,13 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
       id: `mock-course-${Date.now()}`,
       name: normalizedName,
       description: normalizedDescription,
-      isActive: input.isActive,
+      status,
+      isActive,
       programCount: selectedProgramIds.length,
     };
   }
 
-  const [existingName, existingCode, selectedPrograms] = await Promise.all([
+  const [existingName, existingCode, selectedPrograms, selectedTrainers] = await Promise.all([
     prisma.course.findFirst({
       where: { name: { equals: normalizedName, mode: "insensitive" } },
       select: { id: true },
@@ -63,6 +75,9 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     }),
     selectedProgramIds.length > 0
       ? prisma.program.findMany({ where: { id: { in: selectedProgramIds } }, select: { id: true } })
+      : Promise.resolve([]),
+    selectedTrainerIds.length > 0
+      ? prisma.trainerProfile.findMany({ where: { id: { in: selectedTrainerIds } }, select: { id: true, courses: true } })
       : Promise.resolve([]),
   ]);
 
@@ -78,18 +93,24 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     throw new Error("One or more selected programs were not found.");
   }
 
+  if (selectedTrainers.length !== selectedTrainerIds.length) {
+    throw new Error("One or more selected trainers were not found.");
+  }
+
   const createdCourse = await prisma.$transaction(async (tx) => {
     const course = await tx.course.create({
       data: {
         code: normalizedCode,
         name: normalizedName,
         description: normalizedDescription,
-        isActive: input.isActive,
+        status,
+        isActive,
       },
       select: {
         id: true,
         name: true,
         description: true,
+        status: true,
         isActive: true,
       },
     });
@@ -99,6 +120,26 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
         where: { id: { in: selectedProgramIds } },
         data: { courseId: course.id },
       });
+    }
+
+    if (selectedTrainerIds.length > 0) {
+      await Promise.all(
+        selectedTrainers.map((trainer) => {
+          const hasCourse = trainer.courses.some((courseName) => courseName.trim().toLowerCase() === normalizedName.toLowerCase());
+          if (hasCourse) {
+            return Promise.resolve();
+          }
+
+          return tx.trainerProfile.update({
+            where: { id: trainer.id },
+            data: {
+              courses: {
+                push: normalizedName,
+              },
+            },
+          });
+        }),
+      );
     }
 
     return {
@@ -114,7 +155,9 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     message: `Course ${createdCourse.name} created.`,
     metadata: {
       code: normalizedCode,
+      status: createdCourse.status,
       programCount: selectedProgramIds.length,
+      trainerCount: selectedTrainerIds.length,
     },
   });
 
@@ -124,6 +167,9 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
 export async function updateCourseService(input: UpdateCourseInput): Promise<CourseCreateResult> {
   const normalizedName = input.name.trim();
   const normalizedDescription = input.description.trim() || null;
+  const selectedTrainerIds = normalizeTrainerIds(input.trainerIds ?? []);
+  const status = input.status;
+  const isActive = resolveCourseActivation(status, input.isActive);
 
   if (!isDatabaseConfigured) {
     const existing = MOCK_COURSES.find((course) => course.id === input.courseId);
@@ -131,7 +177,8 @@ export async function updateCourseService(input: UpdateCourseInput): Promise<Cou
       id: input.courseId,
       name: normalizedName,
       description: normalizedDescription,
-      isActive: input.isActive,
+      status,
+      isActive,
       programCount: existing?.programs.length ?? 0,
     };
   }
@@ -139,7 +186,7 @@ export async function updateCourseService(input: UpdateCourseInput): Promise<Cou
   const [existingCourse, duplicateName] = await Promise.all([
     prisma.course.findUnique({
       where: { id: input.courseId },
-      select: { id: true, _count: { select: { programs: true } } },
+      select: { id: true, name: true, _count: { select: { programs: true } } },
     }),
     prisma.course.findFirst({
       where: {
@@ -158,19 +205,77 @@ export async function updateCourseService(input: UpdateCourseInput): Promise<Cou
     throw new Error("Course name already exists.");
   }
 
-  const course = await prisma.course.update({
-    where: { id: input.courseId },
-    data: {
-      name: normalizedName,
-      description: normalizedDescription,
-      isActive: input.isActive,
-    },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      isActive: true,
-    },
+  const [selectedTrainers, currentlyAssigned] = await Promise.all([
+    selectedTrainerIds.length > 0
+      ? prisma.trainerProfile.findMany({
+          where: { id: { in: selectedTrainerIds } },
+          select: { id: true, courses: true },
+        })
+      : Promise.resolve([]),
+    prisma.trainerProfile.findMany({
+      where: {
+        OR: [
+          { courses: { has: existingCourse.name } },
+          ...(existingCourse.name.trim().toLowerCase() === normalizedName.toLowerCase() ? [] : [{ courses: { has: normalizedName } }]),
+        ],
+      },
+      select: { id: true, courses: true },
+    }),
+  ]);
+
+  if (selectedTrainers.length !== selectedTrainerIds.length) {
+    throw new Error("One or more selected trainers were not found.");
+  }
+
+  const course = await prisma.$transaction(async (tx) => {
+    const selectedSet = new Set(selectedTrainerIds);
+    const touched = new Map<string, string[]>();
+
+    for (const trainer of currentlyAssigned) {
+      touched.set(trainer.id, trainer.courses);
+    }
+
+    for (const trainer of selectedTrainers) {
+      if (!touched.has(trainer.id)) {
+        touched.set(trainer.id, trainer.courses);
+      }
+    }
+
+    const oldCourseLower = existingCourse.name.trim().toLowerCase();
+    const newCourseLower = normalizedName.toLowerCase();
+
+    for (const [trainerId, trainerCourses] of touched.entries()) {
+      const filteredCourses = trainerCourses.filter((courseName) => {
+        const lowerCourse = courseName.trim().toLowerCase();
+        return lowerCourse !== oldCourseLower && lowerCourse !== newCourseLower;
+      });
+
+      if (selectedSet.has(trainerId)) {
+        filteredCourses.push(normalizedName);
+      }
+
+      await tx.trainerProfile.update({
+        where: { id: trainerId },
+        data: { courses: filteredCourses },
+      });
+    }
+
+    return tx.course.update({
+      where: { id: input.courseId },
+      data: {
+        name: normalizedName,
+        description: normalizedDescription,
+        status,
+        isActive,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        isActive: true,
+      },
+    });
   });
 
   await createAuditLogEntry({
@@ -179,7 +284,9 @@ export async function updateCourseService(input: UpdateCourseInput): Promise<Cou
     action: AuditActionType.UPDATED,
     message: `Course ${course.name} updated.`,
     metadata: {
+      status: course.status,
       isActive: course.isActive,
+      trainerCount: selectedTrainerIds.length,
     },
   });
 
@@ -198,19 +305,32 @@ export async function archiveCourseService(courseId: string): Promise<CourseOpti
 
     return {
       ...mapCourseOption(course),
+      status: "ARCHIVED",
       isActive: false,
     };
   }
 
   const course = await prisma.course.update({
     where: { id: courseId },
-    data: { isActive: false },
+    data: { status: "ARCHIVED", isActive: false },
     select: {
       id: true,
       name: true,
       description: true,
+      status: true,
       isActive: true,
       _count: { select: { programs: true } },
+    },
+  });
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.COURSE,
+    entityId: course.id,
+    action: AuditActionType.DEACTIVATED,
+    message: `Course ${course.name} archived.`,
+    metadata: {
+      status: course.status,
+      isActive: course.isActive,
     },
   });
 
@@ -218,6 +338,7 @@ export async function archiveCourseService(courseId: string): Promise<CourseOpti
     id: course.id,
     name: course.name,
     description: course.description,
+    status: course.status,
     isActive: course.isActive,
     programCount: course._count.programs,
   };

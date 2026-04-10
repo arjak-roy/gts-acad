@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-export const getDashboardStatsSchema = z.object({}).default({});
+const dashboardProgramTypeSchema = z.enum(["LANGUAGE", "CLINICAL", "TECHNICAL"]).optional();
+const dashboardFilterIdSchema = z.string().trim().min(1).optional();
+
+export const getDashboardStatsSchema = z.object({
+	programType: dashboardProgramTypeSchema,
+	courseId: dashboardFilterIdSchema,
+	programId: dashboardFilterIdSchema,
+	batchId: dashboardFilterIdSchema,
+}).default({});
 
 export const dashboardSearchSchema = z.object({
 	query: z.string().trim().min(2).max(120),

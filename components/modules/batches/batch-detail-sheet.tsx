@@ -113,6 +113,10 @@ type BatchAssignedCurriculum = {
   mappingId: string;
   assignedAt: string;
   assignedByName: string | null;
+  assignmentSource: "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
   curriculum: CurriculumDetailSnapshot;
 };
 
@@ -142,6 +146,10 @@ type BatchAssignedAssessment = {
   assignedByName: string | null;
   scheduledAt: string | null;
   assignedAt: string;
+  assignmentSource: "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
 };
 
 type AvailableBatchAssessment = {
@@ -181,6 +189,12 @@ function curriculumStatusVariant(status: string) {
   if (status === "ARCHIVED") return "warning" as const;
   return "info" as const;
 }
+
+const assignmentSourceLabels: Record<BatchAssignedAssessment["assignmentSource"], string> = {
+  COURSE: "Inherited from course",
+  BATCH: "Batch-specific mapping",
+  COURSE_AND_BATCH: "Inherited + batch mapping",
+};
 
 function formatDate(iso?: string | null) {
   if (!iso) return "—";
@@ -671,8 +685,8 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                       <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Curriculum Snapshot</p>
                         <div className="mt-3 space-y-3 text-sm text-slate-600">
-                          <p>{assignedCount === 0 ? "No curricula mapped to this batch yet." : `${assignedCount} curriculum mapping${assignedCount === 1 ? "" : "s"} available for review.`}</p>
-                          <p>{availableCount > 0 ? `${availableCount} additional course curricula can be assigned from the Curricula tab.` : "No additional course curricula are currently available for assignment."}</p>
+                          <p>{assignedCount === 0 ? "No published curricula are currently available to this batch." : `${assignedCount} curriculum${assignedCount === 1 ? "" : "s"} currently available to this batch.`}</p>
+                          <p>{availableCount > 0 ? `${availableCount} unpublished ${availableCount === 1 ? "curriculum is" : "curricula are"} still available for batch mapping from the Curricula tab.` : "No additional unpublished curricula are currently available for batch mapping."}</p>
                           <Button type="button" variant="secondary" size="sm" onClick={() => setActiveTab("curricula")}>Review Curricula</Button>
                         </div>
                       </div>
@@ -683,13 +697,13 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                           <div className="mt-3 space-y-3 text-sm text-slate-600">
                             <p>
                               {assignedAssessmentCount === 0
-                                ? "No assessments are mapped to this batch yet."
-                                : `${assignedAssessmentCount} assessment mapping${assignedAssessmentCount === 1 ? "" : "s"} ready for batch delivery.`}
+                                ? "No published assessments are currently available to this batch."
+                                : `${assignedAssessmentCount} assessment${assignedAssessmentCount === 1 ? "" : "s"} currently available to this batch.`}
                             </p>
                             <p>
                               {availableAssessmentCount > 0
-                                ? `${availableAssessmentCount} additional published assessments are available from the same course.`
-                                : "No additional published assessments are currently available for assignment."}
+                                ? `${availableAssessmentCount} supplemental published assessments can still be batch-mapped from this course.`
+                                : "No supplemental published assessments are currently available for batch mapping."}
                             </p>
                             <Button type="button" variant="secondary" size="sm" onClick={() => setActiveTab("assessments")}>Review Assessments</Button>
                           </div>
@@ -719,7 +733,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                             <div>
                               <p className="text-lg font-semibold text-slate-950">Curriculum Workspace</p>
                               <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Review every curriculum mapped to this batch, including modules, stages, and required items.
+                                Review every curriculum available to this batch. Published course curricula are inherited automatically, while unpublished curricula can still be batch-mapped for batch-level planning.
                               </p>
                             </div>
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-primary">
@@ -754,7 +768,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                           {canEditCurriculumAssignments ? (
                             <>
                               <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Assign another curriculum</label>
+                                <label className="text-sm font-medium text-slate-700">Add a batch-mapped curriculum</label>
                                 <select
                                   value={selectedCurriculumId}
                                   onChange={(event) => setSelectedCurriculumId(event.target.value)}
@@ -767,7 +781,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                   ))}
                                 </select>
                                 <p className="text-xs leading-5 text-slate-500">
-                                  Only curricula from the same course can be assigned to this batch.
+                                  Published course curricula already appear automatically. Use this only for unpublished curricula that still need batch-specific planning.
                                 </p>
                               </div>
                               <Button
@@ -776,11 +790,11 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                 onClick={() => void handleAssignCurriculum()}
                               >
                                 <Plus className="h-4 w-4" />
-                                {isUpdatingCurriculum ? "Updating..." : "Assign Curriculum"}
+                                {isUpdatingCurriculum ? "Updating..." : "Add Batch Mapping"}
                               </Button>
                             </>
                           ) : (
-                            <p className="text-sm leading-6 text-slate-500">You can review assigned curricula here, but only batch or curriculum editors can change the mappings.</p>
+                            <p className="text-sm leading-6 text-slate-500">You can review inherited and batch-mapped curricula here, but only batch or curriculum editors can change explicit mappings.</p>
                           )}
 
                           <Button asChild variant="secondary" size="sm">
@@ -811,10 +825,11 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-sm font-semibold text-slate-900">{assignment.curriculum.title}</p>
                                 <Badge variant={curriculumStatusVariant(assignment.curriculum.status)}>{assignment.curriculum.status}</Badge>
+                                <Badge variant="info">{assignmentSourceLabels[assignment.assignmentSource]}</Badge>
                                 <Badge variant="info">{assignment.curriculum.moduleCount} modules</Badge>
                                 <Badge variant="info">{assignment.curriculum.stageCount} stages</Badge>
                               </div>
-                              {canEditCurriculumAssignments ? (
+                              {canEditCurriculumAssignments && assignment.canRemoveBatchMapping ? (
                                 <Button
                                   type="button"
                                   variant="secondary"
@@ -822,7 +837,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                   disabled={isUpdatingCurriculum}
                                   onClick={() => void handleRemoveCurriculum(assignment.curriculum.id)}
                                 >
-                                  Remove Mapping
+                                  Remove Batch Mapping
                                 </Button>
                               ) : null}
                             </div>
@@ -837,9 +852,9 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                       </div>
                     ) : (
                       <div className="rounded-3xl border border-dashed bg-white p-8 text-center shadow-sm">
-                        <p className="text-base font-semibold text-slate-900">No curricula mapped yet</p>
+                        <p className="text-base font-semibold text-slate-900">No curricula available yet</p>
                         <p className="mt-2 text-sm leading-6 text-slate-500">
-                          Assign a curriculum from the same course to expose its full delivery sequence directly inside this batch info panel.
+                          Publish a course curriculum to inherit it automatically into this batch, or add an unpublished curriculum mapping here for planning.
                         </p>
                       </div>
                     )}
@@ -853,7 +868,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                             <div>
                               <p className="text-lg font-semibold text-slate-950">Assessment Workspace</p>
                               <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Review the published assessments assigned to this batch and manage which pools stay available for schedules and delivery.
+                                Review every published assessment available to this batch. Course-linked pools are inherited automatically, while batch mappings stay available for supplemental delivery and scheduling.
                               </p>
                             </div>
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-primary">
@@ -886,7 +901,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                           {canAssignBatchAssessments ? (
                             <>
                               <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Assign another assessment</label>
+                                <label className="text-sm font-medium text-slate-700">Add a supplemental assessment</label>
                                 <select
                                   value={selectedAssessmentPoolId}
                                   onChange={(event) => setSelectedAssessmentPoolId(event.target.value)}
@@ -901,7 +916,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                   ))}
                                 </select>
                                 <p className="text-xs leading-5 text-slate-500">
-                                  Only published assessments from this batch&apos;s course are available here.
+                                  Course-linked assessments already appear automatically. Use this only for additional batch-specific pools.
                                 </p>
                               </div>
                               <Button
@@ -910,7 +925,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                 onClick={() => void handleAssignAssessment()}
                               >
                                 <Plus className="h-4 w-4" />
-                                {isUpdatingAssessments ? "Updating..." : "Assign Assessment"}
+                                {isUpdatingAssessments ? "Updating..." : "Add Batch Mapping"}
                               </Button>
                             </>
                           ) : (
@@ -948,6 +963,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                     <p className="text-base font-semibold text-slate-950">{assessment.assessmentTitle}</p>
                                     <Badge variant="info">{assessment.assessmentCode}</Badge>
                                     <Badge variant={curriculumStatusVariant(assessment.status)}>{assessment.status}</Badge>
+                                    <Badge variant="info">{assignmentSourceLabels[assessment.assignmentSource]}</Badge>
                                   </div>
                                   <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-500">
                                     <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{assessment.questionType}</span>
@@ -957,7 +973,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                   </div>
                                 </div>
 
-                                {canRemoveBatchAssessments ? (
+                                {canRemoveBatchAssessments && assessment.canRemoveBatchMapping ? (
                                   <Button
                                     type="button"
                                     variant="secondary"
@@ -973,7 +989,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                                 <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
                                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Assigned By</p>
-                                  <p className="mt-1 text-sm font-semibold text-slate-900">{assessment.assignedByName ?? "System"}</p>
+                                  <p className="mt-1 text-sm font-semibold text-slate-900">{assessment.assignedByName ?? (assessment.isInheritedFromCourse ? "Course inheritance" : "System")}</p>
                                 </div>
                                 <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
                                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Assigned On</p>

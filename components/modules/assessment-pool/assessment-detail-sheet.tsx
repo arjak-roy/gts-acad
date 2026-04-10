@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ArrowDownToLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { CanAccess } from "@/components/ui/can-access";
 import { QuestionBuilder } from "@/components/modules/assessment-pool/question-builder";
+import { ImportQuestionBankDialog } from "@/components/modules/question-bank/import-question-bank-dialog";
 
 type QuestionItem = {
   id: string;
@@ -27,7 +29,6 @@ type AssessmentDetail = {
   code: string;
   title: string;
   description: string | null;
-  courseName: string | null;
   questionType: string;
   difficultyLevel: string;
   totalMarks: number;
@@ -39,6 +40,24 @@ type AssessmentDetail = {
   courseLinksCount: number;
   createdByName: string | null;
   questions: QuestionItem[];
+};
+
+type CourseOption = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+type AssessmentCourseLink = {
+  id: string;
+  courseId: string;
+  assessmentPoolId: string;
+  sortOrder: number;
+  isRequired: boolean;
+  createdAt: string;
+  course: {
+    name: string;
+  };
 };
 
 type AssessmentMetadataForm = {
@@ -130,6 +149,15 @@ export function AssessmentDetailSheet({
   const [pendingDeleteQuestionId, setPendingDeleteQuestionId] = useState<string | null>(null);
   const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuestionItem | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const [isDuplicatingToBank, setIsDuplicatingToBank] = useState(false);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [courseLinks, setCourseLinks] = useState<AssessmentCourseLink[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [assignAsRequired, setAssignAsRequired] = useState(false);
+  const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+  const [isSavingAssignment, setIsSavingAssignment] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     if (!poolId) return;
@@ -146,9 +174,48 @@ export function AssessmentDetailSheet({
     }
   }, [poolId]);
 
+  const fetchCourseAssignments = useCallback(async () => {
+    if (!poolId) {
+      return;
+    }
+
+    setIsLoadingAssignments(true);
+
+    try {
+      const [coursesResponse, linksResponse] = await Promise.all([
+        fetch("/api/courses", { cache: "no-store" }),
+        fetch(`/api/course-assessment-link?assessmentPoolId=${encodeURIComponent(poolId)}`, { cache: "no-store" }),
+      ]);
+
+      const [coursesResult, linksResult] = await Promise.all([
+        coursesResponse.json() as Promise<{ data?: CourseOption[]; error?: string }>,
+        linksResponse.json() as Promise<{ data?: AssessmentCourseLink[]; error?: string }>,
+      ]);
+
+      if (!coursesResponse.ok) {
+        throw new Error(coursesResult.error || "Failed to load courses.");
+      }
+
+      if (!linksResponse.ok) {
+        throw new Error(linksResult.error || "Failed to load assessment course assignments.");
+      }
+
+      setCourses((coursesResult.data ?? []).filter((course) => course.isActive));
+      setCourseLinks(linksResult.data ?? []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load assessment course assignments.");
+    } finally {
+      setIsLoadingAssignments(false);
+    }
+  }, [poolId]);
+
   useEffect(() => {
-    if (open && poolId) void fetchDetail();
-  }, [open, poolId, fetchDetail]);
+    if (!open || !poolId) {
+      return;
+    }
+
+    void Promise.all([fetchDetail(), fetchCourseAssignments()]);
+  }, [open, poolId, fetchCourseAssignments, fetchDetail]);
 
   useEffect(() => {
     if (detail) {
@@ -166,6 +233,14 @@ export function AssessmentDetailSheet({
       setPendingDeleteQuestionId(null);
       setDeletingQuestionId(null);
       setEditingQuestion(null);
+      setImportDialogOpen(false);
+      setSelectedQuestionIds([]);
+      setCourses([]);
+      setCourseLinks([]);
+      setSelectedCourseId("");
+      setAssignAsRequired(false);
+      setIsLoadingAssignments(false);
+      setIsSavingAssignment(false);
       setMetadataErrors({});
     }
   }, [open, poolId]);
@@ -178,6 +253,26 @@ export function AssessmentDetailSheet({
     const nextEditingQuestion = detail.questions.find((question) => question.id === editingQuestion.id) ?? null;
     setEditingQuestion(nextEditingQuestion);
   }, [detail, editingQuestion?.id]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    setSelectedQuestionIds((current) => current.filter((questionId) => detail.questions.some((question) => question.id === questionId)));
+  }, [detail]);
+
+  const availableCourses = courses.filter((course) => !courseLinks.some((link) => link.courseId === course.id));
+
+  useEffect(() => {
+    setSelectedCourseId((current) => {
+      if (current && availableCourses.some((course) => course.id === current)) {
+        return current;
+      }
+
+      return availableCourses[0]?.id ?? "";
+    });
+  }, [courseLinks, courses]);
 
   const handleStartMetadataEdit = () => {
     if (!detail) {
@@ -294,6 +389,135 @@ export function AssessmentDetailSheet({
     onUpdated?.();
   };
 
+  const toggleQuestionSelection = (questionId: string) => {
+    setSelectedQuestionIds((current) => (
+      current.includes(questionId)
+        ? current.filter((item) => item !== questionId)
+        : [...current, questionId]
+    ));
+  };
+
+  const handleSelectAllQuestions = () => {
+    if (!detail) {
+      return;
+    }
+
+    setSelectedQuestionIds(detail.questions.map((question) => question.id));
+  };
+
+  const handleClearQuestionSelection = () => {
+    setSelectedQuestionIds([]);
+  };
+
+  const handleDuplicateSelectedToBank = async () => {
+    if (!detail || selectedQuestionIds.length === 0) {
+      toast.info("Select at least one question to duplicate.");
+      return;
+    }
+
+    setIsDuplicatingToBank(true);
+
+    try {
+      const response = await fetch("/api/question-bank/from-assessment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentPoolId: detail.id,
+          questionIds: selectedQuestionIds,
+          tags: [],
+        }),
+      });
+
+      const payload = (await response.json()) as { data?: { affectedCount: number }; error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to duplicate questions to the bank.");
+      }
+
+      const affectedCount = payload.data?.affectedCount ?? selectedQuestionIds.length;
+      toast.success(`${affectedCount} question${affectedCount === 1 ? "" : "s"} duplicated to the Question Bank.`);
+      setSelectedQuestionIds([]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to duplicate questions to the bank.");
+    } finally {
+      setIsDuplicatingToBank(false);
+    }
+  };
+
+  const handleQuestionsImported = () => {
+    setImportDialogOpen(false);
+    void fetchDetail();
+    onUpdated?.();
+  };
+
+  const handleAssignToCourse = async () => {
+    if (!detail || !selectedCourseId) {
+      toast.info("Select a course to link this assessment.");
+      return;
+    }
+
+    setIsSavingAssignment(true);
+
+    try {
+      const response = await fetch("/api/course-assessment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId: selectedCourseId,
+          assessmentPoolId: detail.id,
+          sortOrder: courseLinks.length,
+          isRequired: assignAsRequired,
+        }),
+      });
+
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to assign assessment to course.");
+      }
+
+      toast.success("Assessment linked to course.");
+      setAssignAsRequired(false);
+      await Promise.all([fetchCourseAssignments(), fetchDetail()]);
+      onUpdated?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to assign assessment to course.");
+    } finally {
+      setIsSavingAssignment(false);
+    }
+  };
+
+  const handleRemoveCourseLink = async (courseId: string) => {
+    if (!detail) {
+      return;
+    }
+
+    setIsSavingAssignment(true);
+
+    try {
+      const response = await fetch("/api/course-assessment-link", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId,
+          assessmentPoolId: detail.id,
+        }),
+      });
+
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to remove assessment course link.");
+      }
+
+      toast.success("Assessment unlinked from course.");
+      await Promise.all([fetchCourseAssignments(), fetchDetail()]);
+      onUpdated?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to remove assessment course link.");
+    } finally {
+      setIsSavingAssignment(false);
+    }
+  };
+
   const handleDeleteAssessment = async () => {
     if (!poolId || !detail) {
       return;
@@ -338,7 +562,6 @@ export function AssessmentDetailSheet({
               </div>
               <SheetDescription>
                 <span className="font-mono text-xs">{detail.code}</span>
-                {detail.courseName && <span> · {detail.courseName}</span>}
                 {detail.createdByName && <span> · Created by {detail.createdByName}</span>}
               </SheetDescription>
             </SheetHeader>
@@ -505,6 +728,101 @@ export function AssessmentDetailSheet({
                 </div>
               </div>
 
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Course Assignments</h4>
+                    <p className="mt-1 text-sm text-slate-500">Assessments are created in the shared pool first, then linked to courses here.</p>
+                  </div>
+                  <Badge variant="info">{courseLinks.length} linked</Badge>
+                </div>
+
+                {isLoadingAssignments ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </div>
+                ) : courseLinks.length > 0 ? (
+                  <div className="space-y-2">
+                    {courseLinks.map((link) => (
+                      <div key={link.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{link.course.name}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <Badge variant="info">Sort {link.sortOrder + 1}</Badge>
+                            <Badge variant={link.isRequired ? "accent" : "default"}>
+                              {link.isRequired ? "Required in course" : "Optional in course"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <CanAccess permission="assessment_pool.edit">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                            onClick={() => void handleRemoveCourseLink(link.courseId)}
+                            disabled={isSavingAssignment}
+                          >
+                            Remove link
+                          </Button>
+                        </CanAccess>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">
+                    This assessment is not linked to any course yet.
+                  </div>
+                )}
+
+                {detail.status !== "ARCHIVED" ? (
+                  <CanAccess permission="assessment_pool.edit">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Assign to course</label>
+                          <select
+                            value={selectedCourseId}
+                            onChange={(event) => setSelectedCourseId(event.target.value)}
+                            disabled={isSavingAssignment || availableCourses.length === 0}
+                            className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
+                          >
+                            <option value="">Select a course</option>
+                            {availableCourses.map((course) => (
+                              <option key={course.id} value={course.id}>{course.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <Button
+                          type="button"
+                          onClick={() => void handleAssignToCourse()}
+                          disabled={!selectedCourseId || isSavingAssignment}
+                        >
+                          {isSavingAssignment ? "Saving..." : "Assign to course"}
+                        </Button>
+                      </div>
+
+                      <label className="flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={assignAsRequired}
+                          onChange={(event) => setAssignAsRequired(event.target.checked)}
+                          disabled={!selectedCourseId || isSavingAssignment}
+                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-[#0d3b84]"
+                        />
+                        Mark this assessment as required for the selected course.
+                      </label>
+
+                      {availableCourses.length === 0 ? (
+                        <p className="text-xs text-slate-500">This assessment is already linked to every active course.</p>
+                      ) : null}
+                    </div>
+                  </CanAccess>
+                ) : null}
+              </section>
+
               {/* Actions */}
               <div className="space-y-2">
                 {detail.status === "DRAFT" ? (
@@ -538,9 +856,35 @@ export function AssessmentDetailSheet({
 
               {/* Question List */}
               <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h4 className="text-sm font-medium">Questions ({detail.questions.length})</h4>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-sm font-medium">Questions ({detail.questions.length})</h4>
+                    {selectedQuestionIds.length > 0 ? <p className="mt-1 text-xs text-slate-500">{selectedQuestionIds.length} selected for bulk actions.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" size="sm" variant="ghost" onClick={handleSelectAllQuestions} disabled={detail.questions.length === 0}>
+                      Select all
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={handleClearQuestionSelection} disabled={selectedQuestionIds.length === 0}>
+                      Clear
+                    </Button>
+                    {detail.status !== "ARCHIVED" ? (
+                      <CanAccess permission="assessment_pool.edit">
+                        <>
+                          <Button type="button" size="sm" variant="secondary" onClick={() => void handleDuplicateSelectedToBank()} disabled={selectedQuestionIds.length === 0 || isDuplicatingToBank}>
+                            {isDuplicatingToBank ? "Duplicating..." : `Duplicate to Bank${selectedQuestionIds.length > 0 ? ` (${selectedQuestionIds.length})` : ""}`}
+                          </Button>
+                          <Button type="button" size="sm" variant="secondary" onClick={() => setImportDialogOpen(true)}>
+                            <ArrowDownToLine className="h-4 w-4" />
+                            Import from Question Bank
+                          </Button>
+                        </>
+                      </CanAccess>
+                    ) : null}
+                  </div>
+                </div>
                 {detail.questions.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No questions added yet. Use the builder below to add questions.</p>
+                  <p className="text-xs text-muted-foreground">No questions added yet. Use the builder below or import reusable questions from the Question Bank.</p>
                 ) : (
                   <div className="divide-y rounded-lg border">
                     {detail.questions.map((q, i) => (
@@ -548,7 +892,14 @@ export function AssessmentDetailSheet({
                         key={q.id}
                         className={`flex items-start justify-between gap-3 px-3 py-2 ${editingQuestion?.id === q.id ? "bg-slate-50" : ""}`}
                       >
-                        <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-1 gap-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedQuestionIds.includes(q.id)}
+                            onChange={() => toggleQuestionSelection(q.id)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-[#0d3b84]"
+                          />
+                          <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-muted-foreground">Q{i + 1}</span>
                             <Badge variant="info" className="text-[10px] px-1 py-0">
@@ -588,6 +939,7 @@ export function AssessmentDetailSheet({
                               </div>
                             </div>
                           ) : null}
+                          </div>
                         </div>
                         <CanAccess permission="assessment_pool.edit">
                           <div className="flex shrink-0 items-center gap-2">
@@ -636,6 +988,15 @@ export function AssessmentDetailSheet({
                   </CanAccess>
                 </section>
               )}
+
+              <ImportQuestionBankDialog
+                open={importDialogOpen}
+                onOpenChange={setImportDialogOpen}
+                assessmentPoolId={detail.id}
+                courseId={null}
+                defaultQuestionType={detail.questionType}
+                onImported={handleQuestionsImported}
+              />
             </div>
 
             {showDeleteConfirm ? (

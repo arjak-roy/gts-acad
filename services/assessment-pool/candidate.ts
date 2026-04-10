@@ -5,6 +5,11 @@ import { AssessmentMode, AssessmentType, EvaluationStatus, Prisma, QuestionType 
 import type { GradeSubmissionInput } from "@/lib/validation-schemas/assessment-pool";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { gradeSubmissionService } from "@/services/assessment-pool/grading";
+import {
+  markCurriculumAssessmentCompletedForLearnerService,
+  markCurriculumAssessmentInProgressForLearnerService,
+} from "@/services/curriculum/progress";
+import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import type {
   CandidateAssessmentAttemptSummary,
   CandidateAssessmentDetail,
@@ -37,7 +42,7 @@ type CandidateAssessmentContext = {
   batchId: string;
   batchMode: "ONLINE" | "OFFLINE";
   programId: string;
-  mappingId: string;
+  assignmentId: string;
   opensAt: Date | null;
   pool: {
     id: string;
@@ -184,6 +189,12 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     throw new Error("Assessment not found.");
   }
 
+  const batch = await getBatchCourseContext(batchId);
+
+  if (!batch) {
+    throw new Error("Assessment not found.");
+  }
+
   const mapping = await prisma.batchAssessmentMapping.findUnique({
     where: {
       batchId_assessmentPoolId: {
@@ -233,7 +244,61 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     },
   });
 
-  if (!mapping || mapping.assessmentPool.status !== "PUBLISHED") {
+  const courseLink = await prisma.courseAssessmentLink.findFirst({
+    where: {
+      courseId: batch.courseId,
+      assessmentPoolId,
+      assessmentPool: {
+        is: {
+          status: "PUBLISHED",
+        },
+      },
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      assessmentPool: {
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          description: true,
+          questionType: true,
+          difficultyLevel: true,
+          totalMarks: true,
+          passingMarks: true,
+          timeLimitMinutes: true,
+          questions: {
+            orderBy: {
+              sortOrder: "asc",
+            },
+            select: {
+              id: true,
+              questionText: true,
+              questionType: true,
+              options: true,
+              correctAnswer: true,
+              explanation: true,
+              marks: true,
+              sortOrder: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const pool = mapping?.assessmentPool.status === "PUBLISHED"
+    ? mapping.assessmentPool
+    : courseLink?.assessmentPool ?? null;
+
+  if (!pool) {
+    throw new Error("Assessment not found.");
+  }
+
+  const assignmentId = mapping?.id ?? courseLink?.id;
+
+  if (!assignmentId) {
     throw new Error("Assessment not found.");
   }
 
@@ -254,12 +319,12 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     },
   });
 
-  const opensAt = mapping.scheduledAt ?? linkedEvent?.startsAt ?? null;
+  const opensAt = mapping?.scheduledAt ?? linkedEvent?.startsAt ?? null;
   const fallbackAssessment = !linkedEvent?.linkedAssessmentId
     ? await prisma.assessment.findFirst({
         where: {
           batchId,
-          title: buildFallbackAssessmentTitle(mapping.id, mapping.assessmentPool.title),
+          title: buildFallbackAssessmentTitle(assignmentId, pool.title),
         },
         orderBy: {
           createdAt: "desc",
@@ -291,22 +356,22 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
   return {
     learnerId: learner.id,
     batchId,
-    batchMode: mapping.batch.mode,
-    programId: mapping.batch.programId,
-    mappingId: mapping.id,
+    batchMode: batch.batchMode,
+    programId: batch.programId,
+    assignmentId,
     opensAt,
     pool: {
-      id: mapping.assessmentPool.id,
-      code: mapping.assessmentPool.code,
-      title: mapping.assessmentPool.title,
-      description: mapping.assessmentPool.description,
-      questionType: mapping.assessmentPool.questionType,
-      difficultyLevel: mapping.assessmentPool.difficultyLevel,
-      totalMarks: mapping.assessmentPool.totalMarks,
-      passingMarks: mapping.assessmentPool.passingMarks,
-      timeLimitMinutes: mapping.assessmentPool.timeLimitMinutes,
+      id: pool.id,
+      code: pool.code,
+      title: pool.title,
+      description: pool.description,
+      questionType: pool.questionType,
+      difficultyLevel: pool.difficultyLevel,
+      totalMarks: pool.totalMarks,
+      passingMarks: pool.passingMarks,
+      timeLimitMinutes: pool.timeLimitMinutes,
     },
-    questions: mapping.assessmentPool.questions as QuestionDetail[],
+    questions: pool.questions as QuestionDetail[],
     linkedAssessmentId: linkedEvent?.linkedAssessmentId ?? null,
     linkedEventType: linkedEvent?.type === "TEST" || linkedEvent?.type === "QUIZ" ? linkedEvent.type : null,
     linkedClassMode: linkedEvent?.classMode ?? null,
@@ -317,11 +382,11 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
           gradedAt: score.gradedAt,
           storedScore: score.score,
           storedFeedback: score.feedback,
-          passingMarks: mapping.assessmentPool.passingMarks,
-          totalMarks: mapping.assessmentPool.totalMarks,
+          passingMarks: pool.passingMarks,
+          totalMarks: pool.totalMarks,
         })
       : null,
-    supportsInAppAttempt: mapping.assessmentPool.questions.every((question) => AUTO_GRADABLE_QUESTION_TYPES.has(question.questionType)),
+    supportsInAppAttempt: pool.questions.every((question) => AUTO_GRADABLE_QUESTION_TYPES.has(question.questionType)),
   };
 }
 
@@ -350,10 +415,22 @@ export async function getCandidateAssessmentDetailService(options: {
   const now = Date.now();
   const isOpen = Boolean(context.opensAt && context.opensAt.getTime() <= now);
 
+  if (isOpen && context.supportsInAppAttempt && !context.attempt) {
+    try {
+      await markCurriculumAssessmentInProgressForLearnerService({
+        learnerId: context.learnerId,
+        batchId: context.batchId,
+        assessmentPoolId: context.pool.id,
+      });
+    } catch (error) {
+      console.warn("Candidate assessment detail loaded, but curriculum progress sync failed", error);
+    }
+  }
+
   return {
     batchId: context.batchId,
     assessmentPoolId: context.pool.id,
-    mappingId: context.mappingId,
+    mappingId: context.assignmentId,
     assessmentTitle: context.pool.title,
     assessmentCode: context.pool.code,
     description: context.pool.description,
@@ -422,7 +499,7 @@ export async function submitCandidateAssessmentService(options: {
   );
 
   const feedback = buildCandidateAttemptFeedback(report);
-  const fallbackTitle = buildFallbackAssessmentTitle(context.mappingId, context.pool.title);
+  const fallbackTitle = buildFallbackAssessmentTitle(context.assignmentId, context.pool.title);
   const gradedAt = new Date();
 
   try {
@@ -493,6 +570,16 @@ export async function submitCandidateAssessmentService(options: {
 
       return resolvedAssessmentId;
     });
+
+    try {
+      await markCurriculumAssessmentCompletedForLearnerService({
+        learnerId: context.learnerId,
+        batchId: context.batchId,
+        assessmentPoolId: context.pool.id,
+      });
+    } catch (error) {
+      console.warn("Candidate assessment submission saved, but curriculum completion sync failed", error);
+    }
 
     try {
       await recomputeLearnerReadiness(context.learnerId);

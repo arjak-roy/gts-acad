@@ -5,6 +5,7 @@ export {
 	createCurriculumModuleService,
 	createCurriculumService,
 	createCurriculumStageItemService,
+	createCurriculumStageItemsService,
 	createCurriculumStageService,
 	deleteCurriculumModuleService,
 	deleteCurriculumService,
@@ -20,13 +21,21 @@ export {
 	updateCurriculumStageService,
 } from "@/services/curriculum/commands";
 export {
+	getCandidateCurriculaForBatchService,
 	getCurriculaForBatchService,
 	getCurriculumBatchMappingsService,
 	getCurriculumByIdService,
 	listCurriculaByCourseService,
 } from "@/services/curriculum/queries";
+export {
+	listCurriculumItemProgressForLearnerService,
+	markCurriculumAssessmentCompletedForLearnerService,
+	markCurriculumAssessmentInProgressForLearnerService,
+	markCurriculumContentInProgressForLearnerService,
+} from "@/services/curriculum/progress";
 
 export type {
+	CurriculumAssignmentSource,
 	BatchAssignedCurriculumDetail,
 	BatchCurriculumWorkspace,
 	CurriculumBatchMappingItem,

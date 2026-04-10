@@ -8,8 +8,13 @@ import { getDashboardStatsService } from "@/services/dashboard-service";
 export async function GET(request: NextRequest) {
   try {
     await requirePermission(request, "dashboard.view");
-    getDashboardStatsSchema.parse({});
-    const stats = await getDashboardStatsService();
+    const input = getDashboardStatsSchema.parse({
+      programType: String(request.nextUrl.searchParams.get("programType") ?? "").trim() || undefined,
+      courseId: String(request.nextUrl.searchParams.get("courseId") ?? "").trim() || undefined,
+      programId: String(request.nextUrl.searchParams.get("programId") ?? "").trim() || undefined,
+      batchId: String(request.nextUrl.searchParams.get("batchId") ?? "").trim() || undefined,
+    });
+    const stats = await getDashboardStatsService(input);
     return apiSuccess(stats);
   } catch (error) {
     return apiError(error);

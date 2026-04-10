@@ -25,6 +25,17 @@ type EditableQuestion = {
   sortOrder?: number;
 };
 
+type QuestionBuilderPayload = {
+  questionText: string;
+  questionType: string;
+  options: unknown;
+  correctAnswer: unknown;
+  explanation: string;
+  marks: number;
+};
+
+type QuestionBuilderContext = "assessment" | "question-bank";
+
 const QUESTION_TYPES = [
   { value: "MCQ", label: "MCQ" },
   { value: "NUMERIC", label: "Numeric" },
@@ -435,14 +446,22 @@ export function QuestionBuilder({
   questionCount,
   mode = "create",
   initialQuestion = null,
+  context = "assessment",
+  createEndpoint,
+  getUpdateEndpoint,
+  requestTransform,
   onSaved,
   onCancel,
 }: {
-  poolId: string;
+  poolId?: string;
   defaultType: string;
   questionCount?: number;
   mode?: "create" | "edit";
   initialQuestion?: EditableQuestion | null;
+  context?: QuestionBuilderContext;
+  createEndpoint?: string;
+  getUpdateEndpoint?: (questionId: string) => string;
+  requestTransform?: (payload: QuestionBuilderPayload) => Record<string, unknown>;
   onSaved: () => void;
   onCancel?: () => void;
 }) {
@@ -462,6 +481,39 @@ export function QuestionBuilder({
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const isEditMode = mode === "edit" && Boolean(initialQuestion?.id);
+  const createUrl = createEndpoint ?? (poolId ? `/api/assessment-pool/${poolId}/questions` : "");
+  const updateUrl = initialQuestion?.id
+    ? (getUpdateEndpoint?.(initialQuestion.id) ?? (poolId ? `/api/assessment-pool/${poolId}/questions/${initialQuestion.id}` : ""))
+    : "";
+  const createTitle = context === "question-bank" ? "Add Bank Question" : "Add Question";
+  const editTitle = context === "question-bank" ? "Edit Bank Question" : "Edit Question";
+  const addButtonLabel = context === "question-bank" ? "Save to Bank" : "Add Question";
+  const savingButtonLabel = context === "question-bank" ? "Saving..." : "Adding...";
+  const successCreateMessage = context === "question-bank" ? "Question saved to bank." : "Question added.";
+  const successUpdateMessage = context === "question-bank" ? "Bank question updated." : "Question updated.";
+  const errorCreateMessage = context === "question-bank" ? "Failed to save question to bank." : "Failed to add question.";
+  const errorUpdateMessage = context === "question-bank" ? "Failed to update bank question." : "Failed to update question.";
+  const createHint = context === "question-bank"
+    ? questionCount && questionCount > 0
+      ? `${questionCount} reusable question${questionCount === 1 ? "" : "s"} already in the bank.`
+      : "Add your first reusable question to start the bank."
+    : questionCount && questionCount > 0
+      ? `${questionCount} question${questionCount === 1 ? "" : "s"} already in this assessment.`
+      : "Add your first question to unlock publishing.";
+  const createBadgeLabel = context === "question-bank"
+    ? questionCount && questionCount > 0
+      ? "Reusable"
+      : "Start Bank"
+    : questionCount && questionCount > 0
+      ? "Publish Ready"
+      : "Needs Questions";
+  const createBadgeVariant = context === "question-bank"
+    ? questionCount && questionCount > 0
+      ? "info"
+      : "warning"
+    : questionCount && questionCount > 0
+      ? "success"
+      : "warning";
 
   useEffect(() => {
     if (mode === "edit" && initialQuestion) {
@@ -619,32 +671,37 @@ export function QuestionBuilder({
     const { options, correctAnswer } = buildPayload();
     setValidationError(null);
 
+    const payload: QuestionBuilderPayload = {
+      questionText: form.questionText,
+      questionType: form.questionType,
+      options,
+      correctAnswer,
+      explanation: form.explanation,
+      marks: form.marks,
+    };
+
+    const body = requestTransform ? requestTransform(payload) : payload;
+    const requestUrl = isEditMode ? updateUrl : createUrl;
+
+    if (!requestUrl) {
+      toast.error("Question builder endpoint is not configured.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const response = await fetch(
-        isEditMode
-          ? `/api/assessment-pool/${poolId}/questions/${initialQuestion?.id}`
-          : `/api/assessment-pool/${poolId}/questions`,
-        {
-          method: isEditMode ? "PATCH" : "POST",
+      const response = await fetch(requestUrl, {
+        method: isEditMode ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          questionText: form.questionText,
-          questionType: form.questionType,
-          options,
-          correctAnswer,
-          explanation: form.explanation,
-          marks: form.marks,
-        }),
-        },
-      );
+        body: JSON.stringify(body),
+      });
 
       if (!response.ok) {
         const errData = (await response.json()) as { error?: string };
-        throw new Error(errData.error || (isEditMode ? "Failed to update question." : "Failed to add question."));
+        throw new Error(errData.error || (isEditMode ? errorUpdateMessage : errorCreateMessage));
       }
 
-      toast.success(isEditMode ? "Question updated." : "Question added.");
+      toast.success(isEditMode ? successUpdateMessage : successCreateMessage);
 
       if (!isEditMode) {
         setForm((prev) => ({
@@ -667,7 +724,7 @@ export function QuestionBuilder({
       setValidationError(null);
       onSaved();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : (isEditMode ? "Failed to update question." : "Failed to add question."));
+      toast.error(error instanceof Error ? error.message : (isEditMode ? errorUpdateMessage : errorCreateMessage));
     } finally {
       setIsSubmitting(false);
     }
@@ -677,17 +734,15 @@ export function QuestionBuilder({
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
-          <h4 className="text-sm font-medium">{isEditMode ? "Edit Question" : "Add Question"}</h4>
+          <h4 className="text-sm font-medium">{isEditMode ? editTitle : createTitle}</h4>
           <p className="text-xs text-muted-foreground">
             {isEditMode
               ? "Update the question content, answers, and marks, then save your changes."
-              : questionCount && questionCount > 0
-                ? `${questionCount} question${questionCount === 1 ? "" : "s"} already in this assessment.`
-                : "Add your first question to unlock publishing."}
+              : createHint}
           </p>
         </div>
-        <Badge variant={isEditMode ? "info" : questionCount && questionCount > 0 ? "success" : "warning"}>
-          {isEditMode ? "Editing" : questionCount && questionCount > 0 ? "Publish Ready" : "Needs Questions"}
+        <Badge variant={isEditMode ? "info" : createBadgeVariant}>
+          {isEditMode ? "Editing" : createBadgeLabel}
         </Badge>
       </div>
 
@@ -808,7 +863,7 @@ export function QuestionBuilder({
             </Button>
           ) : null}
           <Button type="submit" size="sm" disabled={isSubmitting || !form.questionText.trim()}>
-            {isSubmitting ? (isEditMode ? "Saving..." : "Adding...") : (isEditMode ? "Save Changes" : "Add Question")}
+            {isSubmitting ? (isEditMode ? "Saving..." : savingButtonLabel) : (isEditMode ? "Save Changes" : addButtonLabel)}
           </Button>
         </div>
       </div>

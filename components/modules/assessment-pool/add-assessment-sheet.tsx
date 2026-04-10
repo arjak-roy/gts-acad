@@ -26,7 +26,6 @@ const DIFFICULTY_LEVELS = [
 type AddAssessmentForm = {
   title: string;
   description: string;
-  courseId: string;
   questionType: string;
   difficultyLevel: string;
   totalMarks: number;
@@ -54,7 +53,6 @@ type CreatedAssessmentPayload = {
 const initialForm: AddAssessmentForm = {
   title: "",
   description: "",
-  courseId: "",
   questionType: "MCQ",
   difficultyLevel: "MEDIUM",
   totalMarks: 100,
@@ -68,10 +66,9 @@ const STEP_SEQUENCE: { id: AssessmentCreateStep; label: string; helper: string }
   { id: "REVIEW", label: "Review", helper: "Confirm and continue" },
 ];
 
-function createInitialForm(courseId?: string): AddAssessmentForm {
+function createInitialForm(): AddAssessmentForm {
   return {
     ...initialForm,
-    courseId: courseId || "",
   };
 }
 
@@ -129,15 +126,13 @@ function validateQuestionSetup(form: AddAssessmentForm): FormErrors {
 export function AddAssessmentSheet({
   open,
   onOpenChange,
-  courseId,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  courseId?: string;
   onCreated: (poolId: string) => void;
 }) {
-  const [form, setForm] = useState<AddAssessmentForm>(createInitialForm(courseId));
+  const [form, setForm] = useState<AddAssessmentForm>(createInitialForm());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState<AssessmentCreateStep>("BASICS");
   const [showStepErrors, setShowStepErrors] = useState(false);
@@ -145,7 +140,7 @@ export function AddAssessmentSheet({
   const [touchedFields, setTouchedFields] = useState<Partial<Record<FormErrorKey, boolean>>>({});
   const wasOpenRef = useRef(false);
 
-  const initialSnapshot = useMemo(() => createInitialForm(courseId), [courseId]);
+  const initialSnapshot = useMemo(() => createInitialForm(), []);
   const basicsErrors = useMemo(() => validateBasics(form), [form]);
   const questionSetupErrors = useMemo(() => validateQuestionSetup(form), [form]);
   const allErrors = useMemo(
@@ -157,7 +152,6 @@ export function AddAssessmentSheet({
     () => (
       form.title !== initialSnapshot.title
       || form.description !== initialSnapshot.description
-      || form.courseId !== initialSnapshot.courseId
       || form.questionType !== initialSnapshot.questionType
       || form.difficultyLevel !== initialSnapshot.difficultyLevel
       || form.totalMarks !== initialSnapshot.totalMarks
@@ -168,12 +162,12 @@ export function AddAssessmentSheet({
   );
 
   const resetWorkflow = useCallback(() => {
-    setForm(createInitialForm(courseId));
+    setForm(createInitialForm());
     setCurrentStep("BASICS");
     setShowStepErrors(false);
     setShowDiscardConfirm(false);
     setTouchedFields({});
-  }, [courseId]);
+  }, []);
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
@@ -182,12 +176,6 @@ export function AddAssessmentSheet({
 
     wasOpenRef.current = open;
   }, [open, resetWorkflow]);
-
-  useEffect(() => {
-    if (open && courseId && !form.courseId) {
-      setForm((prev) => ({ ...prev, courseId }));
-    }
-  }, [open, courseId, form.courseId]);
 
   const markTouched = (field: FormErrorKey) => {
     setTouchedFields((prev) => ({ ...prev, [field]: true }));
@@ -281,7 +269,6 @@ export function AddAssessmentSheet({
         body: JSON.stringify({
           title: form.title,
           description: form.description,
-          courseId: form.courseId || undefined,
           questionType: form.questionType,
           difficultyLevel: form.difficultyLevel,
           totalMarks: form.totalMarks,
@@ -412,9 +399,9 @@ export function AddAssessmentSheet({
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-                  <p className="text-xs font-semibold text-slate-700">Current Scope</p>
+                  <p className="text-xs font-semibold text-slate-700">Pool Placement</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {form.courseId ? "This assessment will inherit the selected course filter on create." : "This assessment will be created in pool view (all courses)."}
+                    This assessment will be created in the shared pool first, then linked to courses where it should be delivered.
                   </p>
                 </div>
               </>
@@ -512,7 +499,7 @@ export function AddAssessmentSheet({
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                   <p className="text-sm font-semibold text-slate-900">Ready to create</p>
                   <p className="mt-1 text-xs leading-5 text-slate-600">
-                    Once created, this sheet closes and the new assessment opens immediately in detail view so you can add questions without extra clicks.
+                    Once created, this sheet closes and the new assessment opens immediately in detail view so you can add or import questions without extra clicks.
                   </p>
                 </div>
 
@@ -522,8 +509,8 @@ export function AddAssessmentSheet({
                     <p className="mt-1 text-sm font-semibold text-slate-900">{form.title.trim() || "Untitled"}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Scope</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{form.courseId ? "Selected course" : "All courses pool"}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Placement</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">Shared assessment pool</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Question Type</p>

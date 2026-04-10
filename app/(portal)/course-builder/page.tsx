@@ -1,5 +1,11 @@
 import { redirect } from "next/navigation";
 
-export default function CourseBuilderPage() {
-  redirect("/course-builder/content");
+import { requireServerAnyPermission } from "@/lib/auth/server-page-guards";
+import { RESOURCE_REPOSITORY_ROUTE } from "@/lib/constants/resource-repository";
+
+const repositoryPermissions = ["course_content.view", "learning_resources.view"];
+
+export default async function CourseBuilderPage() {
+  await requireServerAnyPermission(repositoryPermissions);
+  redirect(RESOURCE_REPOSITORY_ROUTE);
 }

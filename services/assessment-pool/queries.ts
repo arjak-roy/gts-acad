@@ -14,7 +14,9 @@ export async function listAssessmentPoolsService(filters?: {
   }
 
   const where: Record<string, unknown> = {};
-  if (filters?.courseId) where.courseId = filters.courseId;
+  if (filters?.courseId) {
+    where.courseAssessmentLinks = { some: { courseId: filters.courseId } };
+  }
   if (filters?.questionType) where.questionType = filters.questionType;
   if (filters?.difficultyLevel) where.difficultyLevel = filters.difficultyLevel;
   if (filters?.status) where.status = filters.status;
@@ -27,7 +29,6 @@ export async function listAssessmentPoolsService(filters?: {
       code: true,
       title: true,
       description: true,
-      courseId: true,
       questionType: true,
       difficultyLevel: true,
       totalMarks: true,
@@ -36,7 +37,6 @@ export async function listAssessmentPoolsService(filters?: {
       status: true,
       isAiGenerated: true,
       createdAt: true,
-      course: { select: { name: true } },
       _count: { select: { questions: true, courseAssessmentLinks: true } },
     },
   });
@@ -46,8 +46,6 @@ export async function listAssessmentPoolsService(filters?: {
     code: p.code,
     title: p.title,
     description: p.description,
-    courseId: p.courseId,
-    courseName: p.course?.name ?? null,
     questionType: p.questionType,
     difficultyLevel: p.difficultyLevel,
     totalMarks: p.totalMarks,
@@ -73,7 +71,6 @@ export async function getAssessmentPoolByIdService(poolId: string): Promise<Asse
       code: true,
       title: true,
       description: true,
-      courseId: true,
       questionType: true,
       difficultyLevel: true,
       totalMarks: true,
@@ -83,7 +80,6 @@ export async function getAssessmentPoolByIdService(poolId: string): Promise<Asse
       isAiGenerated: true,
       createdAt: true,
       updatedAt: true,
-      course: { select: { name: true } },
       createdBy: { select: { name: true } },
       questions: {
         orderBy: { sortOrder: "asc" },
@@ -109,8 +105,6 @@ export async function getAssessmentPoolByIdService(poolId: string): Promise<Asse
     code: pool.code,
     title: pool.title,
     description: pool.description,
-    courseId: pool.courseId,
-    courseName: pool.course?.name ?? null,
     questionType: pool.questionType,
     difficultyLevel: pool.difficultyLevel,
     totalMarks: pool.totalMarks,

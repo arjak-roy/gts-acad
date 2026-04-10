@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EmailTemplatePreviewPanel } from "@/components/modules/email-templates/email-template-preview-panel";
 import { TipTapEmailEditor } from "@/components/ui/tiptap-email-editor";
 import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
 import { FloatingVariablePanel } from "@/components/modules/email-templates/floating-variable-panel";
@@ -223,7 +224,7 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent>
+      <SheetContent className="overflow-hidden sm:max-w-[1120px]">
         <SheetHeader>
           <SheetTitle>Edit Email Template</SheetTitle>
           <SheetDescription>Update the template content used by platform email flows.</SheetDescription>
@@ -235,85 +236,98 @@ export function EditEmailTemplateSheet({ templateId, open, onOpenChange, existin
               <SheetLoadingSkeleton isLoading={true} variant="form" />
             ) : (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TemplateKeyField
-                    value={form.key}
-                    onChange={(nextKey) => setForm((prev) => ({ ...prev, key: nextKey }))}
-                    unavailableKeys={existingTemplateKeys}
-                    disabled={isSystem}
-                    lockedMessage="System templates keep a fixed key so mail flows continue resolving correctly."
-                  />
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Name</label>
-                    <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</label>
-                  <Input value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
-                  <select
-                    className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
-                    value={form.categoryId}
-                    onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
-                  >
-                    <option value="">No Category</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Subject</label>
-                  <Input value={form.subject} onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))} />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">HTML Body</label>
-                  <TipTapEmailEditor
-                    value={form.htmlContent}
-                    onChange={(value) => setForm((prev) => ({ ...prev, htmlContent: value }))}
-                    placeholderVariables={detectedVariables}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Plain Text Fallback</label>
-                  <textarea
-                    className={textareaClassName}
-                    value={form.textContent}
-                    onChange={(event) => setForm((prev) => ({ ...prev, textContent: event.target.value }))}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    id="email-template-edit-active"
-                    type="checkbox"
-                    checked={form.isActive}
-                    onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
-                  />
-                  <label htmlFor="email-template-edit-active" className="text-sm text-slate-600">Template is active</label>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Detected Variables</p>
-                  {detectedVariables.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {detectedVariables.map((variable) => (
-                        <span key={variable} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                          {variable}
-                        </span>
-                      ))}
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <TemplateKeyField
+                        value={form.key}
+                        onChange={(nextKey) => setForm((prev) => ({ ...prev, key: nextKey }))}
+                        unavailableKeys={existingTemplateKeys}
+                        disabled={isSystem}
+                        lockedMessage="System templates keep a fixed key so mail flows continue resolving correctly."
+                      />
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Name</label>
+                        <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
+                      </div>
                     </div>
-                  ) : (
-                    <p className="mt-3 text-sm text-slate-500">No placeholder variables detected yet.</p>
-                  )}
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</label>
+                      <Input value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
+                      <select
+                        className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                        value={form.categoryId}
+                        onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+                      >
+                        <option value="">No Category</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Subject</label>
+                      <Input value={form.subject} onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))} />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">HTML Body</label>
+                      <TipTapEmailEditor
+                        key={`${templateId ?? "edit-email-template-editor"}:${open ? "open" : "closed"}`}
+                        value={form.htmlContent}
+                        onChange={(value) => setForm((prev) => ({ ...prev, htmlContent: value }))}
+                        placeholderVariables={detectedVariables}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Plain Text Fallback</label>
+                      <textarea
+                        className={textareaClassName}
+                        value={form.textContent}
+                        onChange={(event) => setForm((prev) => ({ ...prev, textContent: event.target.value }))}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="email-template-edit-active"
+                        type="checkbox"
+                        checked={form.isActive}
+                        onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
+                      />
+                      <label htmlFor="email-template-edit-active" className="text-sm text-slate-600">Template is active</label>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Detected Variables</p>
+                      {detectedVariables.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {detectedVariables.map((variable) => (
+                            <span key={variable} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                              {variable}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-slate-500">No placeholder variables detected yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <EmailTemplatePreviewPanel
+                    className="xl:sticky xl:top-0 xl:self-start"
+                    subject={form.subject}
+                    htmlContent={form.htmlContent}
+                    textContent={form.textContent}
+                    variables={detectedVariables}
+                  />
                 </div>
               </>
             )}

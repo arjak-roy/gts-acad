@@ -1,4 +1,4 @@
-import { ContentStatus, ContentType, UploadStorageProvider } from "@prisma/client";
+import { ContentStatus, ContentType, LearningResourceVisibility, UploadStorageProvider } from "@prisma/client";
 
 import type { AuthoredContentDocument } from "@/lib/authored-content";
 
@@ -59,6 +59,20 @@ export type ContentCreateResult = {
   contentType: ContentType;
   status: ContentStatus;
   fileName: string | null;
+};
+
+export type AssignedSharedContentListItem = ContentListItem & {
+  targetCourseId: string;
+  sourceCourseId: string;
+  sourceCourseName: string;
+  sourceFolderId: string | null;
+  sourceFolderName: string | null;
+  resourceId: string;
+  resourceStatus: ContentStatus;
+  resourceVisibility: LearningResourceVisibility;
+  assignedAt: Date;
+  isSharedAssignment: true;
+  shareKind: "COURSE_ASSIGNMENT";
 };
 
 export type CourseContentFolderListItem = {

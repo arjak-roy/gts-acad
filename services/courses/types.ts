@@ -1,4 +1,6 @@
-import { ProgramType } from "@prisma/client";
+import { CourseStatus, ProgramType } from "@prisma/client";
+
+import type { AssignedSharedContentListItem } from "@/services/course-content/types";
 
 export type CourseProgramSummary = {
   id: string;
@@ -7,10 +9,17 @@ export type CourseProgramSummary = {
   isActive: boolean;
 };
 
+export type CourseTrainerSummary = {
+  id: string;
+  fullName: string;
+  specialization: string;
+};
+
 export type CourseOption = {
   id: string;
   name: string;
   description: string | null;
+  status: CourseStatus;
   isActive: boolean;
   programCount: number;
 };
@@ -21,6 +30,9 @@ export type CourseDetail = {
   id: string;
   name: string;
   description: string | null;
+  status: CourseStatus;
   isActive: boolean;
   programs: CourseProgramSummary[];
+  trainers: CourseTrainerSummary[];
+  assignedSharedContents: AssignedSharedContentListItem[];
 };

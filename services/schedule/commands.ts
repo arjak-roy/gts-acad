@@ -37,8 +37,8 @@ async function syncLinkedAssessmentPoolForBatch(
       id: linkedAssessmentPoolId,
       status: "PUBLISHED",
       OR: [
-        { courseId: options.courseId },
         { courseAssessmentLinks: { some: { courseId: options.courseId } } },
+        { courseAssessmentLinks: { none: {} } },
       ],
     },
     select: { id: true },

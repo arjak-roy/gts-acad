@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EmailTemplatePreviewPanel } from "@/components/modules/email-templates/email-template-preview-panel";
 import { TipTapEmailEditor } from "@/components/ui/tiptap-email-editor";
 import { TemplateKeyField } from "@/components/modules/email-templates/template-key-field";
 import { FloatingVariablePanel } from "@/components/modules/email-templates/floating-variable-panel";
@@ -165,97 +166,110 @@ export function AddEmailTemplateSheet({ existingTemplateKeys = [] }: AddEmailTem
       <SheetTrigger asChild>
         <Button>Create Template</Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent className="overflow-hidden sm:max-w-[1120px]">
         <SheetHeader>
           <SheetTitle>Create Email Template</SheetTitle>
           <SheetDescription>Create a reusable HTML email template stored in the database.</SheetDescription>
         </SheetHeader>
 
         {step === "form" ? (
-          <form className="space-y-4 p-6" onSubmit={handleDone}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TemplateKeyField value={form.key} onChange={handleTemplateKeyChange} unavailableKeys={existingTemplateKeys} />
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Name</label>
-                <Input value={form.name} placeholder="Two-Factor Verification Code" onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</label>
-              <Input
-                value={form.description}
-                placeholder="What flow this template is used for"
-                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
-              <select
-                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
-                value={form.categoryId}
-                onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
-              >
-                <option value="">No Category</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Subject</label>
-              <Input
-                value={form.subject}
-                placeholder="{{appName}} verification code"
-                onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">HTML Body</label>
-              <TipTapEmailEditor
-                value={form.htmlContent}
-                onChange={(value) => setForm((prev) => ({ ...prev, htmlContent: value }))}
-                placeholder="Start writing your email template..."
-                placeholderVariables={detectedVariables}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Plain Text Fallback</label>
-              <textarea
-                className={textareaClassName}
-                placeholder="Optional. If left blank, plain text will be generated from the HTML body."
-                value={form.textContent}
-                onChange={(event) => setForm((prev) => ({ ...prev, textContent: event.target.value }))}
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                id="email-template-active"
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
-              />
-              <label htmlFor="email-template-active" className="text-sm text-slate-600">Template is active</label>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Detected Variables</p>
-              {detectedVariables.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {detectedVariables.map((variable) => (
-                    <span key={variable} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                      {variable}
-                    </span>
-                  ))}
+          <form className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden p-6" onSubmit={handleDone}>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <TemplateKeyField value={form.key} onChange={handleTemplateKeyChange} unavailableKeys={existingTemplateKeys} />
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Template Name</label>
+                    <Input value={form.name} placeholder="Two-Factor Verification Code" onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
+                  </div>
                 </div>
-              ) : (
-                <p className="mt-3 text-sm text-slate-500">No placeholder variables detected yet.</p>
-              )}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</label>
+                  <Input
+                    value={form.description}
+                    placeholder="What flow this template is used for"
+                    onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                    value={form.categoryId}
+                    onChange={(event) => setForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+                  >
+                    <option value="">No Category</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Subject</label>
+                  <Input
+                    value={form.subject}
+                    placeholder="{{appName}} verification code"
+                    onChange={(event) => setForm((prev) => ({ ...prev, subject: event.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">HTML Body</label>
+                  <TipTapEmailEditor
+                    key={open ? "add-email-template-editor-open" : "add-email-template-editor-closed"}
+                    value={form.htmlContent}
+                    onChange={(value) => setForm((prev) => ({ ...prev, htmlContent: value }))}
+                    placeholder="Start writing your email template..."
+                    placeholderVariables={detectedVariables}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Plain Text Fallback</label>
+                  <textarea
+                    className={textareaClassName}
+                    placeholder="Optional. If left blank, plain text will be generated from the HTML body."
+                    value={form.textContent}
+                    onChange={(event) => setForm((prev) => ({ ...prev, textContent: event.target.value }))}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="email-template-active"
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
+                  />
+                  <label htmlFor="email-template-active" className="text-sm text-slate-600">Template is active</label>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Detected Variables</p>
+                  {detectedVariables.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {detectedVariables.map((variable) => (
+                        <span key={variable} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                          {variable}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-slate-500">No placeholder variables detected yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <EmailTemplatePreviewPanel
+                className="xl:sticky xl:top-0 xl:self-start"
+                subject={form.subject}
+                htmlContent={form.htmlContent}
+                textContent={form.textContent}
+                variables={detectedVariables}
+              />
             </div>
 
             {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}

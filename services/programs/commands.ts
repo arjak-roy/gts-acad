@@ -34,7 +34,6 @@ export async function updateProgramService(input: UpdateProgramInput, actorUserI
   const normalizedName = input.name.trim();
   const normalizedCategory = input.category.trim() || null;
   const normalizedDescription = input.description.trim() || null;
-  const selectedTrainerIds = input.trainerIds ? Array.from(new Set(input.trainerIds.map((trainerId) => trainerId.trim()).filter(Boolean))) : null;
   const selectedBatchIds = input.batchIds ? Array.from(new Set(input.batchIds.map((batchId) => batchId.trim()).filter(Boolean))) : null;
 
   if (!isDatabaseConfigured) {
@@ -99,7 +98,7 @@ export async function updateProgramService(input: UpdateProgramInput, actorUserI
       ? existingProgram.slug
       : await resolveUniqueSlug(slugify(normalizedName));
 
-  if (!selectedTrainerIds && !selectedBatchIds) {
+  if (!selectedBatchIds) {
     const program = await prisma.program.update({
       where: { id: input.programId },
       data: {
@@ -136,59 +135,6 @@ export async function updateProgramService(input: UpdateProgramInput, actorUserI
   }
 
   const mappedProgram = await prisma.$transaction(async (tx) => {
-    if (selectedTrainerIds) {
-      const [selectedTrainers, currentlyAssigned] = await Promise.all([
-        selectedTrainerIds.length
-          ? tx.trainerProfile.findMany({
-              where: { id: { in: selectedTrainerIds } },
-              select: { id: true, programs: true },
-            })
-          : Promise.resolve([]),
-        tx.trainerProfile.findMany({
-          where: {
-            OR: [{ programs: { has: existingProgram.name } }, { programs: { has: normalizedName } }],
-          },
-          select: { id: true, programs: true },
-        }),
-      ]);
-
-      if (selectedTrainers.length !== selectedTrainerIds.length) {
-        throw new Error("One or more selected trainers were not found.");
-      }
-
-      const selectedSet = new Set(selectedTrainerIds);
-      const touched = new Map<string, string[]>();
-
-      for (const trainer of currentlyAssigned) {
-        touched.set(trainer.id, trainer.programs);
-      }
-
-      for (const trainer of selectedTrainers) {
-        if (!touched.has(trainer.id)) {
-          touched.set(trainer.id, trainer.programs);
-        }
-      }
-
-      const oldProgramLower = existingProgram.name.toLowerCase();
-      const newProgramLower = normalizedName.toLowerCase();
-
-      for (const [trainerId, trainerPrograms] of touched.entries()) {
-        const filteredPrograms = trainerPrograms.filter((program) => {
-          const lowerProgram = program.trim().toLowerCase();
-          return lowerProgram !== oldProgramLower && lowerProgram !== newProgramLower;
-        });
-
-        if (selectedSet.has(trainerId)) {
-          filteredPrograms.push(normalizedName);
-        }
-
-        await tx.trainerProfile.update({
-          where: { id: trainerId },
-          data: { programs: filteredPrograms },
-        });
-      }
-    }
-
     const updatedProgram = await tx.program.update({
       where: { id: input.programId },
       data: {
@@ -234,7 +180,6 @@ export async function updateProgramService(input: UpdateProgramInput, actorUserI
       courseId: mappedProgram.courseId,
       type: mappedProgram.type,
       isActive: mappedProgram.isActive,
-      trainerCount: selectedTrainerIds?.length ?? null,
       batchCount: selectedBatchIds?.length ?? null,
     },
     actorUserId: actorUserId ?? null,
@@ -314,7 +259,6 @@ export async function createProgramService(input: CreateProgramInput, actorUserI
   const normalizedName = input.name.trim();
   const normalizedCategory = input.category.trim() || null;
   const normalizedDescription = input.description.trim() || null;
-  const selectedTrainerIds = Array.from(new Set((input.trainerIds ?? []).map((trainerId) => trainerId.trim()).filter(Boolean)));
   const selectedBatchIds = Array.from(new Set((input.batchIds ?? []).map((batchId) => batchId.trim()).filter(Boolean)));
   let normalizedCode = input.code.trim().toUpperCase();
 
@@ -393,37 +337,6 @@ export async function createProgramService(input: CreateProgramInput, actorUserI
       select: selectProgramRecord(),
     });
 
-    if (selectedTrainerIds.length > 0) {
-      const trainers = await tx.trainerProfile.findMany({
-        where: { id: { in: selectedTrainerIds } },
-        select: { id: true, programs: true },
-      });
-
-      if (trainers.length !== selectedTrainerIds.length) {
-        throw new Error("One or more selected trainers were not found.");
-      }
-
-      const normalizedProgramName = normalizedName.toLowerCase();
-
-      await Promise.all(
-        trainers.map((trainer) => {
-          const hasProgram = trainer.programs.some((programName) => programName.trim().toLowerCase() === normalizedProgramName);
-          if (hasProgram) {
-            return Promise.resolve();
-          }
-
-          return tx.trainerProfile.update({
-            where: { id: trainer.id },
-            data: {
-              programs: {
-                push: normalizedName,
-              },
-            },
-          });
-        }),
-      );
-    }
-
     if (selectedBatchIds.length > 0) {
       const batches = await tx.batch.findMany({
         where: { id: { in: selectedBatchIds } },
@@ -454,7 +367,6 @@ export async function createProgramService(input: CreateProgramInput, actorUserI
       courseId: createdProgram.courseId,
       type: createdProgram.type,
       isActive: createdProgram.isActive,
-      trainerCount: selectedTrainerIds.length,
       batchCount: selectedBatchIds.length,
     },
     actorUserId: actorUserId ?? null,

@@ -4,7 +4,7 @@ export type TrainerOption = {
   email: string;
   specialization: string;
   isActive: boolean;
-  programs: string[];
+  courses: string[];
 };
 
 export type TrainerCreateResult = {
@@ -17,7 +17,7 @@ export type TrainerCreateResult = {
   bio: string | null;
   capacity: number;
   status: "ACTIVE" | "INACTIVE";
-  programs: string[];
+  courses: string[];
 };
 
 export type TrainerDetail = {
@@ -30,5 +30,5 @@ export type TrainerDetail = {
   bio: string | null;
   capacity: number;
   status: "ACTIVE" | "INACTIVE";
-  programs: string[];
+  courses: string[];
 };

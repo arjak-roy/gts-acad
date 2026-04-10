@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ClipboardList, ExternalLink } from "lucide-react";
+import { BookOpen, ClipboardList, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddAssessmentSheet } from "@/components/modules/assessment-pool/add-assessment-sheet";
@@ -40,7 +40,20 @@ export default function AssessmentsPage() {
       }
 
       const result = (await response.json()) as { data?: CourseOption[] };
-      setCourses((result.data ?? []).filter((course) => course.isActive));
+      const activeCourses = (result.data ?? []).filter((course) => course.isActive);
+      const requestedCourseId = typeof window === "undefined"
+        ? ""
+        : new URLSearchParams(window.location.search).get("courseId")?.trim() ?? "";
+      const preferredCourseId = activeCourses.some((course) => course.id === requestedCourseId) ? requestedCourseId : "";
+
+      setCourses(activeCourses);
+      setSelectedCourseId((current) => {
+        if (current && activeCourses.some((course) => course.id === current)) {
+          return current;
+        }
+
+        return preferredCourseId;
+      });
     } catch {
       toast.error("Failed to load courses.");
     } finally {
@@ -74,7 +87,7 @@ export default function AssessmentsPage() {
                   </div>
                   <h1 className="text-xl font-semibold tracking-tight text-slate-950">Assessment Builder</h1>
                   <Badge variant={selectedCourseId ? "info" : "default"} className="px-2 py-0.5 text-[9px] tracking-[0.16em]">
-                    {selectedCourseId ? "Course Filter" : "Pool View"}
+                    {selectedCourseId ? "Course Links" : "Pool View"}
                   </Badge>
                   <div className="group relative">
                     <button
@@ -94,21 +107,21 @@ export default function AssessmentsPage() {
                   </div>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Build, review, and publish reusable assessments in one place.
+                  Build, review, and publish reusable assessments in one place, then assign them to courses separately.
                 </p>
               </div>
 
               <div className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 p-3 xl:max-w-3xl">
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-end">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Filter by course</label>
+                    <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Show linked course</label>
                     <select
                       value={selectedCourseId}
                       onChange={(event) => setSelectedCourseId(event.target.value)}
                       className={selectClassName}
                       disabled={isLoadingCourses}
                     >
-                      <option value="">All Courses (Pool View)</option>
+                      <option value="">All Assessments (Pool View)</option>
                       {courses.map((course) => (
                         <option key={course.id} value={course.id}>{course.name}</option>
                       ))}
@@ -116,6 +129,12 @@ export default function AssessmentsPage() {
                   </div>
                   <Button type="button" variant="secondary" onClick={() => setSelectedCourseId("")} disabled={!selectedCourseId || isLoadingCourses}>
                     Clear
+                  </Button>
+                  <Button asChild variant="ghost">
+                    <Link href={selectedCourseId ? `/assessments/question-bank?courseId=${encodeURIComponent(selectedCourseId)}` : "/assessments/question-bank"}>
+                      <BookOpen className="h-4 w-4" />
+                      Question Bank
+                    </Link>
                   </Button>
                   <Button asChild variant="ghost">
                     <Link href="/course-builder/content">
@@ -128,8 +147,8 @@ export default function AssessmentsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="default" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">Scope: {selectedCourse ? selectedCourse.name : "All active courses"}</Badge>
-              <Badge variant="default" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">Mode: {selectedCourseId ? "Course-specific" : "Pool-wide"}</Badge>
+              <Badge variant="default" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">View: {selectedCourse ? `${selectedCourse.name} links` : "Shared assessment pool"}</Badge>
+              <Badge variant="default" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">Create mode: Pool-first</Badge>
               <Badge variant="default" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">Status: {isLoadingCourses ? "Loading courses" : "Ready"}</Badge>
             </div>
           </div>
@@ -142,11 +161,11 @@ export default function AssessmentsPage() {
             <div>
               <CardTitle>Reusable Assessments</CardTitle>
               <CardDescription>
-                Review the active pool, open a saved assessment for detail, or create a new one within the current course scope.
+                Review the shared pool, open a saved assessment for detail, or create a new one before linking it into course delivery.
               </CardDescription>
             </div>
             <Badge variant="info" className="self-start px-2.5 py-1 text-[9px] tracking-[0.16em]">
-              {selectedCourse ? `Scoped: ${selectedCourse.name}` : "Scoped: All Courses"}
+              {selectedCourse ? `Linked: ${selectedCourse.name}` : "Linked: All Courses"}
             </Badge>
           </div>
         </CardHeader>
@@ -168,7 +187,6 @@ export default function AssessmentsPage() {
       <AddAssessmentSheet
         open={addSheetOpen}
         onOpenChange={setAddSheetOpen}
-        courseId={selectedCourseId || undefined}
         onCreated={handleCreated}
       />
 

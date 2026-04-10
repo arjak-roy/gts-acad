@@ -1,4 +1,5 @@
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { sanitizeEmailTemplateHtml } from "@/services/email-templates/html";
 import {
   getDefaultEmailTemplate,
   isMissingEmailTemplateTable,
@@ -107,8 +108,12 @@ export async function renderEmailTemplateSourceWithBrandingService(
     ...brandingVariables,
     ...variables,
   };
+  const sanitizedTemplate = {
+    ...template,
+    htmlContent: sanitizeEmailTemplateHtml(template.htmlContent),
+  };
 
-  const rendered = renderEmailTemplateSource(template, mergedVariables);
+  const rendered = renderEmailTemplateSource(sanitizedTemplate, mergedVariables);
   const logoUrl = brandingVariables._brandLogoAbsoluteUrl;
 
   if (!logoUrl) {

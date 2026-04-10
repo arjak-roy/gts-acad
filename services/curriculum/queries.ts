@@ -1,14 +1,21 @@
 import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { listCurriculumItemProgressForLearnerService } from "@/services/curriculum/progress";
+import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import { MOCK_BATCHES } from "@/services/batches/mock-data";
 import type {
   BatchAssignedCurriculumDetail,
   BatchCurriculumWorkspace,
+  CurriculumAssignmentSource,
   CurriculumBatchMappingItem,
   CurriculumDetail,
   CurriculumSummary,
 } from "@/services/curriculum/types";
+
+type GetCurriculaForBatchOptions = {
+  publishedOnly?: boolean;
+};
 
 type CurriculumSummaryRecord = {
   id: string;
@@ -75,7 +82,6 @@ type CurriculumDetailRecord = {
           questionType: "MCQ" | "NUMERIC" | "ESSAY" | "FILL_IN_THE_BLANK" | "MULTI_INPUT_REASONING" | "TWO_PART_ANALYSIS";
           difficultyLevel: "EASY" | "MEDIUM" | "HARD";
           status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
-          course: { name: string } | null;
         } | null;
       }>;
     }>;
@@ -104,6 +110,65 @@ function buildCurriculumCounts(modules: CurriculumSummaryRecord["modules"] | Cur
     stageCount,
     itemCount,
   };
+}
+
+function resolveCurriculumAssignmentSource(options: {
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+}): CurriculumAssignmentSource {
+  if (options.isInheritedFromCourse && options.isBatchMapped) {
+    return "COURSE_AND_BATCH";
+  }
+
+  if (options.isBatchMapped) {
+    return "BATCH";
+  }
+
+  return "COURSE";
+}
+
+function buildSyntheticCurriculumMappingId(batchId: string, curriculumId: string) {
+  return `course:${batchId}:${curriculumId}`;
+}
+
+function collectCurriculumStageItemIds(curriculum: CurriculumDetail) {
+  return curriculum.modules.flatMap((moduleRecord) =>
+    moduleRecord.stages.flatMap((stage) => stage.items.map((item) => item.id)),
+  );
+}
+
+function applyProgressToCurriculum(
+  curriculum: CurriculumDetail,
+  progressByStageItemId: Map<string, { status: string }>,
+): CurriculumDetail {
+  return {
+    ...curriculum,
+    modules: curriculum.modules.map((moduleRecord) => ({
+      ...moduleRecord,
+      stages: moduleRecord.stages.map((stage) => ({
+        ...stage,
+        items: stage.items.map((item) => ({
+          ...item,
+          status: progressByStageItemId.get(item.id)?.status ?? "NOT_STARTED",
+        })),
+      })),
+    })),
+  };
+}
+
+async function getCurriculumDetailMap(curriculumIds: string[]) {
+  const uniqueCurriculumIds = Array.from(new Set(curriculumIds));
+
+  if (uniqueCurriculumIds.length === 0) {
+    return new Map<string, CurriculumDetail>();
+  }
+
+  const curricula = await Promise.all(uniqueCurriculumIds.map(async (curriculumId) => {
+    const curriculum = await getCurriculumByIdService(curriculumId);
+    return curriculum ? [curriculumId, curriculum] as const : null;
+  }));
+
+  return new Map(curricula.filter((entry): entry is readonly [string, CurriculumDetail] => Boolean(entry)));
 }
 
 function mapCurriculumSummary(summary: CurriculumSummaryRecord): CurriculumSummary {
@@ -144,7 +209,7 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
         referenceCode: item.assessmentPool?.code ?? null,
         referenceTitle: item.content?.title ?? item.assessmentPool?.title ?? "Untitled item",
         referenceDescription: item.content?.description ?? item.assessmentPool?.description ?? null,
-        courseName: item.content?.course.name ?? item.assessmentPool?.course?.name ?? null,
+        courseName: item.content?.course.name ?? detail.course.name,
         status: item.content?.status ?? item.assessmentPool?.status ?? null,
         contentType: item.content?.contentType ?? null,
         questionType: item.assessmentPool?.questionType ?? null,
@@ -282,7 +347,6 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
                       questionType: true,
                       difficultyLevel: true,
                       status: true,
-                      course: { select: { name: true } },
                     },
                   },
                 },
@@ -312,6 +376,7 @@ export async function getCurriculumBatchMappingsService(curriculumId: string): P
     select: {
       id: true,
       courseId: true,
+      status: true,
     },
   });
 
@@ -360,6 +425,12 @@ export async function getCurriculumBatchMappingsService(curriculumId: string): P
 
   return batches.map((batch) => {
     const mapping = batch.batchCurriculumMappings[0] ?? null;
+    const isInheritedFromCourse = curriculum.status === "PUBLISHED";
+    const isBatchMapped = Boolean(mapping);
+    const assignmentSource = resolveCurriculumAssignmentSource({
+      isInheritedFromCourse,
+      isBatchMapped,
+    });
 
     return {
       mappingId: mapping?.id ?? null,
@@ -372,14 +443,19 @@ export async function getCurriculumBatchMappingsService(curriculumId: string): P
       status: batch.status,
       startDate: batch.startDate,
       endDate: batch.endDate,
-      isMapped: Boolean(mapping),
+      isMapped: isBatchMapped,
+      hasEffectiveAccess: isInheritedFromCourse || isBatchMapped,
       assignedAt: mapping?.assignedAt ?? null,
       assignedByName: mapping?.assignedBy?.name ?? null,
+      assignmentSource,
+      isInheritedFromCourse,
+      canRemoveBatchMapping: isBatchMapped,
+      canAddBatchMapping: !isInheritedFromCourse && !isBatchMapped,
     };
   });
 }
 
-export async function getCurriculaForBatchService(batchId: string): Promise<BatchCurriculumWorkspace> {
+export async function getCurriculaForBatchService(batchId: string, options?: GetCurriculaForBatchOptions): Promise<BatchCurriculumWorkspace> {
   if (!isDatabaseConfigured) {
     const batch = MOCK_BATCHES.find((item) => item.id === batchId);
 
@@ -401,52 +477,77 @@ export async function getCurriculaForBatchService(batchId: string): Promise<Batc
     };
   }
 
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      program: {
-        select: {
-          id: true,
-          name: true,
-          course: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-            },
-          },
-        },
-      },
-      batchCurriculumMappings: {
-        orderBy: [{ assignedAt: "desc" }],
-        select: {
-          id: true,
-          assignedAt: true,
-          assignedBy: {
-            select: {
-              name: true,
-            },
-          },
-          curriculum: {
-            select: {
-              id: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const batch = await getBatchCourseContext(batchId);
 
   if (!batch) {
     throw new Error("Batch not found.");
   }
 
-  const assignedCurricula = (await Promise.all(
-    batch.batchCurriculumMappings.map(async (mapping): Promise<BatchAssignedCurriculumDetail | null> => {
-      const curriculum = await getCurriculumByIdService(mapping.curriculum.id);
+  const [mappedCurricula, courseCurricula] = await Promise.all([
+    prisma.batchCurriculumMapping.findMany({
+      where: {
+        batchId,
+        ...(options?.publishedOnly ? { curriculum: { is: { status: "PUBLISHED" } } } : {}),
+      },
+      orderBy: [{ assignedAt: "desc" }],
+      select: {
+        id: true,
+        assignedAt: true,
+        assignedBy: {
+          select: {
+            name: true,
+          },
+        },
+        curriculum: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    }),
+    listCurriculaByCourseService(batch.courseId),
+  ]);
+
+  const mappedByCurriculumId = new Map(mappedCurricula.map((mapping) => [mapping.curriculum.id, mapping]));
+  const inheritedCurricula = courseCurricula.filter((curriculum) => curriculum.status === "PUBLISHED");
+  const detailMap = await getCurriculumDetailMap([
+    ...inheritedCurricula.map((curriculum) => curriculum.id),
+    ...mappedCurricula.map((mapping) => mapping.curriculum.id),
+  ]);
+
+  const inheritedAssignments = inheritedCurricula
+    .map((curriculumSummary): BatchAssignedCurriculumDetail | null => {
+      const curriculum = detailMap.get(curriculumSummary.id);
+
+      if (!curriculum) {
+        return null;
+      }
+
+      const mapping = mappedByCurriculumId.get(curriculumSummary.id);
+
+      if (mapping) {
+        mappedByCurriculumId.delete(curriculumSummary.id);
+      }
+
+      return {
+        mappingId: mapping?.id ?? buildSyntheticCurriculumMappingId(batch.batchId, curriculum.id),
+        assignedAt: mapping?.assignedAt ?? curriculum.createdAt,
+        assignedByName: mapping?.assignedBy?.name ?? null,
+        assignmentSource: resolveCurriculumAssignmentSource({
+          isInheritedFromCourse: true,
+          isBatchMapped: Boolean(mapping),
+        }),
+        isInheritedFromCourse: true,
+        isBatchMapped: Boolean(mapping),
+        canRemoveBatchMapping: Boolean(mapping),
+        curriculum,
+      };
+    })
+    .filter((item): item is BatchAssignedCurriculumDetail => Boolean(item));
+
+  const batchOnlyAssignments = Array.from(mappedByCurriculumId.values())
+    .map((mapping): BatchAssignedCurriculumDetail | null => {
+      const curriculum = detailMap.get(mapping.curriculum.id);
 
       if (!curriculum) {
         return null;
@@ -456,26 +557,67 @@ export async function getCurriculaForBatchService(batchId: string): Promise<Batc
         mappingId: mapping.id,
         assignedAt: mapping.assignedAt,
         assignedByName: mapping.assignedBy?.name ?? null,
+        assignmentSource: resolveCurriculumAssignmentSource({
+          isInheritedFromCourse: false,
+          isBatchMapped: true,
+        }),
+        isInheritedFromCourse: false,
+        isBatchMapped: true,
+        canRemoveBatchMapping: true,
         curriculum,
       };
-    }),
-  )).filter((item): item is BatchAssignedCurriculumDetail => Boolean(item));
+    })
+    .filter((item): item is BatchAssignedCurriculumDetail => Boolean(item));
 
-  const assignedIds = new Set(assignedCurricula.map((item) => item.curriculum.id));
-  const availableCurricula = (await listCurriculaByCourseService(batch.program.course.id)).filter(
-    (curriculum) => !assignedIds.has(curriculum.id),
-  );
+  const mappedCurriculumIds = new Set(mappedCurricula.map((mapping) => mapping.curriculum.id));
+  const availableCurricula = options?.publishedOnly
+    ? []
+    : courseCurricula.filter((curriculum) => curriculum.status !== "PUBLISHED" && !mappedCurriculumIds.has(curriculum.id));
 
   return {
-    batchId: batch.id,
-    batchCode: batch.code,
-    batchName: batch.name,
-    programId: batch.program.id,
-    programName: batch.program.name,
-    courseId: batch.program.course.id,
-    courseCode: batch.program.course.code,
-    courseName: batch.program.course.name,
-    assignedCurricula,
+    batchId: batch.batchId,
+    batchCode: batch.batchCode,
+    batchName: batch.batchName,
+    programId: batch.programId,
+    programName: batch.programName ?? null,
+    courseId: batch.courseId,
+    courseCode: batch.courseCode,
+    courseName: batch.courseName,
+    assignedCurricula: [...inheritedAssignments, ...batchOnlyAssignments],
     availableCurricula,
+  };
+}
+
+export async function getCandidateCurriculaForBatchService(options: {
+  batchId: string;
+  learnerId: string;
+}): Promise<BatchCurriculumWorkspace> {
+  const workspace = await getCurriculaForBatchService(options.batchId, { publishedOnly: true });
+  const stageItemIds = Array.from(new Set(
+    workspace.assignedCurricula.flatMap((assignment) => collectCurriculumStageItemIds(assignment.curriculum)),
+  ));
+
+  if (stageItemIds.length === 0) {
+    return {
+      ...workspace,
+      availableCurricula: [],
+    };
+  }
+
+  const progressRecords = await listCurriculumItemProgressForLearnerService({
+    learnerId: options.learnerId,
+    batchId: options.batchId,
+    stageItemIds,
+  });
+
+  const progressByStageItemId = new Map(progressRecords.map((record) => [record.stageItemId, record]));
+
+  return {
+    ...workspace,
+    availableCurricula: [],
+    assignedCurricula: workspace.assignedCurricula.map((assignment) => ({
+      ...assignment,
+      curriculum: applyProgressToCurriculum(assignment.curriculum, progressByStageItemId),
+    })),
   };
 }

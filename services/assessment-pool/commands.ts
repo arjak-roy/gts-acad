@@ -63,7 +63,6 @@ export async function createAssessmentPoolService(
       code: normalizedCode,
       title: normalizedTitle,
       description: input.description?.trim() || null,
-      courseId: input.courseId || null,
       questionType: input.questionType as AssessmentPoolCreateResult["questionType"],
       difficultyLevel: (input.difficultyLevel ?? "MEDIUM") as "EASY" | "MEDIUM" | "HARD",
       totalMarks: input.totalMarks ?? 100,

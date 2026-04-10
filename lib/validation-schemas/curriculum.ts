@@ -106,6 +106,50 @@ export const createCurriculumStageItemSchema = z.object({
   }
 });
 
+export const createCurriculumStageItemsSchema = z.object({
+  stageId: z.string().trim().min(1, "Stage ID is required."),
+  itemType: curriculumItemTypeEnum,
+  contentIds: z.array(z.string().trim().min(1)).optional().default([]),
+  assessmentPoolIds: z.array(z.string().trim().min(1)).optional().default([]),
+  isRequired: z.coerce.boolean().optional().default(false),
+}).superRefine((value, context) => {
+  if (value.itemType === "CONTENT") {
+    if (value.contentIds.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["contentIds"],
+        message: "Select at least one content item.",
+      });
+    }
+
+    if (value.assessmentPoolIds.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assessmentPoolIds"],
+        message: "Assessment selections cannot be provided for content items.",
+      });
+    }
+  }
+
+  if (value.itemType === "ASSESSMENT") {
+    if (value.assessmentPoolIds.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assessmentPoolIds"],
+        message: "Select at least one assessment.",
+      });
+    }
+
+    if (value.contentIds.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["contentIds"],
+        message: "Content selections cannot be provided for assessment items.",
+      });
+    }
+  }
+});
+
 export const stageItemIdSchema = z.object({
   itemId: z.string().trim().min(1, "Item ID is required."),
 });
@@ -136,6 +180,7 @@ export type CreateCurriculumStageInput = z.infer<typeof createCurriculumStageSch
 export type UpdateCurriculumStageInput = z.infer<typeof updateCurriculumStageSchema>;
 export type ReorderCurriculumStagesInput = z.infer<typeof reorderCurriculumStagesSchema>;
 export type CreateCurriculumStageItemInput = z.infer<typeof createCurriculumStageItemSchema>;
+export type CreateCurriculumStageItemsInput = z.infer<typeof createCurriculumStageItemsSchema>;
 export type UpdateCurriculumStageItemInput = z.infer<typeof updateCurriculumStageItemSchema>;
 export type ReorderCurriculumStageItemsInput = z.infer<typeof reorderCurriculumStageItemsSchema>;
 export type AssignCurriculumToBatchInput = z.infer<typeof assignCurriculumToBatchSchema>;

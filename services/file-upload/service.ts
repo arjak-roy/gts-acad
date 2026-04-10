@@ -16,8 +16,12 @@ import { getBrandingAssetSlot, getBrandingCanonicalStoragePath, getFileUploadSer
 import {
   buildCourseContentStorageScope,
   buildLocalCourseContentStoragePath,
+  buildLocalEmailTemplateStoragePath,
+  buildLocalLearningResourceStoragePath,
   buildLocalSettingsStoragePath,
   buildS3CourseContentStoragePath,
+  buildS3EmailTemplateStoragePath,
+  buildS3LearningResourceStoragePath,
   buildS3TemporaryStoragePath,
   getNormalizedFileExtension,
 } from "@/services/file-upload/naming";
@@ -35,7 +39,7 @@ type StoredUploadAsset = {
   uploadedAt: string;
 };
 
-const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/"];
+const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/", "email-templates/", "learning-resources/"];
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 function getPublicUploadDirectory() {
@@ -81,6 +85,10 @@ function inferContentType(storagePath: string) {
       return "image/x-icon";
     case "pdf":
       return "application/pdf";
+    case "ppt":
+      return "application/vnd.ms-powerpoint";
+    case "pptx":
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     case "docx":
       return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     case "csv":
@@ -237,6 +245,20 @@ export async function storeUploadedCourseContentAsset(
   return storeUploadedFile(file, {
     buildLocalStoragePath: () => buildLocalCourseContentStoragePath(file.name, courseScope),
     buildS3StoragePath: (config) => buildS3CourseContentStoragePath(file.name, config.s3.namingStrategy, courseScope),
+  });
+}
+
+export async function storeUploadedLearningResourceAsset(file: File): Promise<StoredUploadAsset> {
+  return storeUploadedFile(file, {
+    buildLocalStoragePath: () => buildLocalLearningResourceStoragePath(file.name),
+    buildS3StoragePath: (config) => buildS3LearningResourceStoragePath(file.name, config.s3.namingStrategy),
+  });
+}
+
+export async function storeUploadedEmailTemplateAsset(file: File): Promise<StoredUploadAsset> {
+  return storeUploadedFile(file, {
+    buildLocalStoragePath: () => buildLocalEmailTemplateStoragePath(file.name),
+    buildS3StoragePath: (config) => buildS3EmailTemplateStoragePath(file.name, config.s3.namingStrategy),
   });
 }
 

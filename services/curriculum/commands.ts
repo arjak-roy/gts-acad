@@ -9,6 +9,7 @@ import type {
   CreateCurriculumModuleInput,
   CreateCurriculumStageInput,
   CreateCurriculumStageItemInput,
+  CreateCurriculumStageItemsInput,
   RemoveCurriculumFromBatchInput,
   ReorderCurriculumModulesInput,
   ReorderCurriculumStageItemsInput,
@@ -141,6 +142,14 @@ async function getNextStageItemSortOrder(tx: DbClient, stageId: string) {
   });
 
   return (lastItem?.sortOrder ?? -1) + 1;
+}
+
+function normalizeReferenceIds(values: Array<string | null | undefined>) {
+  return Array.from(new Set(
+    values
+      .map((value) => value?.trim() ?? "")
+      .filter(Boolean),
+  ));
 }
 
 async function ensureUniqueModuleTitle(tx: DbClient, curriculumId: string, title: string, excludeId?: string) {
@@ -628,82 +637,112 @@ export async function createCurriculumStageItemService(
   input: CreateCurriculumStageItemInput,
   options?: { actorUserId?: string },
 ): Promise<CurriculumStageItemMutationResult> {
+  const [stageItem] = await createCurriculumStageItemsService({
+    stageId: input.stageId,
+    itemType: input.itemType,
+    contentIds: input.contentId ? [input.contentId] : [],
+    assessmentPoolIds: input.assessmentPoolId ? [input.assessmentPoolId] : [],
+    isRequired: input.isRequired ?? false,
+  }, options);
+
+  return stageItem;
+}
+
+export async function createCurriculumStageItemsService(
+  input: CreateCurriculumStageItemsInput,
+  options?: { actorUserId?: string },
+): Promise<CurriculumStageItemMutationResult[]> {
   if (!isDatabaseConfigured) {
-    return {
-      id: `mock-stage-item-${Date.now()}`,
+    const referenceIds = input.itemType === "CONTENT"
+      ? normalizeReferenceIds(input.contentIds)
+      : normalizeReferenceIds(input.assessmentPoolIds);
+
+    return referenceIds.map((referenceId, index) => ({
+      id: `mock-stage-item-${Date.now()}-${index}`,
       stageId: input.stageId,
       itemType: input.itemType,
-      contentId: input.contentId ?? null,
-      assessmentPoolId: input.assessmentPoolId ?? null,
-      sortOrder: 0,
+      contentId: input.itemType === "CONTENT" ? referenceId : null,
+      assessmentPoolId: input.itemType === "ASSESSMENT" ? referenceId : null,
+      sortOrder: index,
       isRequired: input.isRequired ?? false,
-    };
+    }));
   }
 
-  const stageItem = await prisma.$transaction(async (tx) => {
+  const stageItems = await prisma.$transaction(async (tx) => {
     const stage = await ensureStageExists(tx, input.stageId);
     const courseId = stage.module.curriculum.courseId;
+    const contentIds = input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [];
+    const assessmentPoolIds = input.itemType === "ASSESSMENT" ? normalizeReferenceIds(input.assessmentPoolIds) : [];
+    const referenceIds = input.itemType === "CONTENT" ? contentIds : assessmentPoolIds;
 
     if (input.itemType === "CONTENT") {
-      const content = await tx.courseContent.findFirst({
-        where: { id: input.contentId ?? undefined, courseId },
+      const contents = await tx.courseContent.findMany({
+        where: {
+          id: { in: contentIds },
+          courseId,
+        },
         select: { id: true },
       });
 
-      if (!content) {
-        throw new Error("Selected content does not belong to this curriculum course.");
+      if (contents.length !== contentIds.length) {
+        throw new Error("One or more selected content items do not belong to this curriculum course.");
       }
     }
 
     if (input.itemType === "ASSESSMENT") {
-      const pool = await tx.assessmentPool.findUnique({
-        where: { id: input.assessmentPoolId ?? undefined },
+      const pools = await tx.assessmentPool.findMany({
+        where: { id: { in: assessmentPoolIds } },
         select: { id: true },
       });
 
-      if (!pool) {
-        throw new Error("Assessment pool not found.");
+      if (pools.length !== assessmentPoolIds.length) {
+        throw new Error("One or more selected assessments could not be found.");
       }
     }
 
-    const sortOrder = await getNextStageItemSortOrder(tx, input.stageId);
+    const nextSortOrder = await getNextStageItemSortOrder(tx, input.stageId);
+    const createdItems: CurriculumStageItemMutationResult[] = [];
 
-    return tx.curriculumStageItem.create({
-      data: {
-        stageId: input.stageId,
-        itemType: input.itemType,
-        contentId: input.itemType === "CONTENT" ? input.contentId ?? null : null,
-        assessmentPoolId: input.itemType === "ASSESSMENT" ? input.assessmentPoolId ?? null : null,
-        sortOrder,
-        isRequired: input.isRequired ?? false,
-      },
-      select: {
-        id: true,
-        stageId: true,
-        itemType: true,
-        contentId: true,
-        assessmentPoolId: true,
-        sortOrder: true,
-        isRequired: true,
-      },
-    });
+    for (const [index, referenceId] of referenceIds.entries()) {
+      createdItems.push(await tx.curriculumStageItem.create({
+        data: {
+          stageId: input.stageId,
+          itemType: input.itemType,
+          contentId: input.itemType === "CONTENT" ? referenceId : null,
+          assessmentPoolId: input.itemType === "ASSESSMENT" ? referenceId : null,
+          sortOrder: nextSortOrder + index,
+          isRequired: input.isRequired ?? false,
+        },
+        select: {
+          id: true,
+          stageId: true,
+          itemType: true,
+          contentId: true,
+          assessmentPoolId: true,
+          sortOrder: true,
+          isRequired: true,
+        },
+      }));
+    }
+
+    return createdItems;
   });
 
   await createAuditLogEntry({
     entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
-    entityId: stageItem.stageId,
+    entityId: input.stageId,
     action: AUDIT_ACTION_TYPE.UPDATED,
-    message: `Curriculum item added to stage.`,
+    message: `${stageItems.length} curriculum item${stageItems.length === 1 ? "" : "s"} added to stage.`,
     actorUserId: options?.actorUserId,
     metadata: {
-      itemId: stageItem.id,
-      itemType: stageItem.itemType,
-      contentId: stageItem.contentId,
-      assessmentPoolId: stageItem.assessmentPoolId,
+      itemIds: stageItems.map((item) => item.id),
+      itemType: input.itemType,
+      contentIds: input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [],
+      assessmentPoolIds: input.itemType === "ASSESSMENT" ? normalizeReferenceIds(input.assessmentPoolIds) : [],
     },
   });
 
-  return stageItem;
+  return stageItems;
 }
 
 export async function updateCurriculumStageItemService(

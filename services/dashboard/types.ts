@@ -1,45 +1,125 @@
-import { DashboardStats, DashboardTrendPoint } from "@/types";
-
-export type DashboardSummaryRow = {
-  activeLearners: number;
-  liveBatches: number;
-  averageAttendance: number;
-  averageAssessmentScore: number;
-  certificatesIssuedYtd: number;
-  placementReady: number;
-  capacityUtilization: number;
-  totalEnrolled: number;
-  activeLearning: number;
-  assessmentCleared: number;
-};
-
-export type DashboardTrendRow = DashboardTrendPoint;
+import { getCourseStatusAccent, getCourseStatusLabel } from "@/lib/course-status";
+import { CourseStatus, DashboardStats } from "@/types";
 
 export const DEFAULT_DASHBOARD_STATS: DashboardStats = {
-  activeLearners: 3,
+  filters: {
+    programType: null,
+    courseId: null,
+    programId: null,
+    batchId: null,
+  },
+  scope: {
+    viewMode: "GLOBAL",
+    programTypeLabel: null,
+    courseName: null,
+    programName: null,
+    batchName: null,
+  },
+  activeCourses: 3,
+  activePrograms: 5,
   liveBatches: 2,
+  publishedCurricula: 3,
+  publishedResources: 18,
+  publishedAssessments: 6,
+  totalEnrolled: 132,
+  activeLearners: 118,
+  assessmentCleared: 84,
+  placementReady: 27,
+  learnersStarted: 96,
+  learnersInProgress: 48,
+  learnersCompletedRequired: 32,
+  overallCompletionRate: 61.5,
   averageAttendance: 93.1,
   averageAssessmentScore: 81,
-  certificatesIssuedYtd: 0,
-  placementReady: 2,
-  capacityUtilization: 41,
+  totalCourses: 4,
+  publishedCourses: 2,
+  draftCourses: 1,
+  archivedCourses: 1,
+  totalQuizzes: 8,
+  totalTrainers: 9,
+  pendingCourseApprovals: 1,
+  overdueAssignments: 2,
+  courseStatusBreakdown: [
+    CourseStatus.PUBLISHED,
+    CourseStatus.IN_REVIEW,
+    CourseStatus.DRAFT,
+    CourseStatus.ARCHIVED,
+  ].map((status, index) => ({
+    status,
+    label: getCourseStatusLabel(status),
+    value: [2, 1, 1, 1][index] ?? 0,
+    accent: getCourseStatusAccent(status),
+  })),
+  learnerProgress: [
+    {
+      key: "not_started",
+      label: "Not Started",
+      value: 22,
+      helper: "Active learners still waiting for first curriculum activity.",
+      accent: "bg-slate-400",
+    },
+    {
+      key: "in_progress",
+      label: "In Progress",
+      value: 64,
+      helper: "Learners actively moving through required curriculum items.",
+      accent: "bg-blue-600",
+    },
+    {
+      key: "completed",
+      label: "Completed",
+      value: 32,
+      helper: "Learners who completed every required published item.",
+      accent: "bg-emerald-500",
+    },
+  ],
+  trainerWorkload: [
+    { id: "trainer-1", name: "Maria Joseph", specialization: "German Language", activeBatches: 2, activeLearners: 41, upcomingSessions: 8, capacity: 50 },
+    { id: "trainer-2", name: "Rahul Menon", specialization: "Clinical Bridging", activeBatches: 1, activeLearners: 29, upcomingSessions: 5, capacity: 35 },
+    { id: "trainer-3", name: "Anita George", specialization: "NCLEX Prep", activeBatches: 2, activeLearners: 48, upcomingSessions: 11, capacity: 60 },
+  ],
+  recentActivity: [
+    { id: "activity-1", title: "Clinical Career Track moved to review", detail: "Course lifecycle updated by Academy Admin.", occurredAt: new Date().toISOString(), tone: "warning" },
+    { id: "activity-2", title: "Medication Safety Quiz published", detail: "Assessment pool is now available for batch scheduling.", occurredAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), tone: "info" },
+    { id: "activity-3", title: "32 learners completed required items", detail: "Required curriculum completion increased this week.", occurredAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), tone: "default" },
+  ],
+  pendingActions: [
+    { id: "pending-review", title: "Course approvals", detail: "Courses waiting for approval before publishing.", count: 1, tone: "warning", href: "/courses" },
+    { id: "pending-overdue", title: "Overdue quiz schedules", detail: "Scheduled quizzes that have crossed their planned start time.", count: 2, tone: "danger", href: "/schedule" },
+    { id: "pending-drafts", title: "Draft courses", detail: "Course shells that still need content, curriculum, or publishing review.", count: 1, tone: "info", href: "/courses" },
+  ],
   readinessFunnel: [
-    { label: "Total Enrolled", value: 3, accent: "bg-slate-900" },
-    { label: "Active Learning", value: 3, accent: "bg-blue-700" },
-    { label: "Assessment Cleared", value: 3, accent: "bg-blue-500" },
-    { label: "Placement Ready", value: 2, accent: "bg-[var(--accent-orange)]" },
+    { label: "Total Enrolled", value: 132, accent: "bg-slate-900" },
+    { label: "Active Learning", value: 118, accent: "bg-blue-700" },
+    { label: "Assessment Cleared", value: 84, accent: "bg-blue-500" },
+    { label: "Placement Ready", value: 27, accent: "bg-[var(--accent-orange)]" },
   ],
   operationsSnapshot: [
     {
-      id: "data-seeded",
-      title: "Data Ready",
-      message: "Using seeded development database.",
-      tone: "info" as const,
+      id: "approvals",
+      title: "Approvals Queue",
+      message: "1 course is currently waiting for publishing approval.",
+      tone: "info",
+    },
+    {
+      id: "overdue-schedules",
+      title: "Scheduling Risk",
+      message: "2 scheduled quizzes have crossed their planned start time.",
+      tone: "danger",
+    },
+    {
+      id: "lms-coverage",
+      title: "LMS Coverage",
+      message: "2 published courses, 3 curricula, and 6 published quiz pools are ready for delivery.",
+      tone: "info",
     },
   ],
   trends: [
-    { label: "Jan", activeLearners: 1, placementReady: 0 },
-    { label: "Feb", activeLearners: 2, placementReady: 1 },
-    { label: "Mar", activeLearners: 3, placementReady: 2 },
+    { label: "Jan", startedLearners: 12, completedLearners: 5 },
+    { label: "Feb", startedLearners: 16, completedLearners: 7 },
+    { label: "Mar", startedLearners: 18, completedLearners: 11 },
+    { label: "Apr", startedLearners: 19, completedLearners: 13 },
+    { label: "May", startedLearners: 14, completedLearners: 17 },
+    { label: "Jun", startedLearners: 17, completedLearners: 21 },
   ],
 };

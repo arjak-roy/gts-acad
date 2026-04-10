@@ -7,7 +7,7 @@ export const createTrainerSchema = z.object({
   specialization: z.string().trim().min(2).max(255),
   capacity: z.coerce.number().int().min(0).max(100).optional().default(0),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
-  programs: z.array(z.string().trim().min(2).max(255)).min(1, "Select at least one program."),
+  courses: z.array(z.string().trim().min(2).max(255)).min(1, "Select at least one course."),
   bio: z.string().trim().max(2000).optional().default(""),
 });
 

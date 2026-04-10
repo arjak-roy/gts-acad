@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import type { AssignContentToBatchInput, RemoveContentFromBatchInput, AssignAssessmentToBatchInput, RemoveAssessmentFromBatchInput } from "@/lib/validation-schemas/batch-content";
 
 export async function assignContentToBatchService(
@@ -11,16 +12,20 @@ export async function assignContentToBatchService(
     throw new Error("Database not configured.");
   }
 
-  const batch = await prisma.batch.findUnique({ where: { id: input.batchId }, select: { id: true } });
+  const batch = await getBatchCourseContext(input.batchId);
   if (!batch) throw new Error("Batch not found.");
 
   const validContent = await prisma.courseContent.findMany({
-    where: { id: { in: input.contentIds }, status: "PUBLISHED" },
+    where: {
+      id: { in: input.contentIds },
+      status: "PUBLISHED",
+      courseId: batch.courseId,
+    },
     select: { id: true },
   });
 
   if (validContent.length === 0) {
-    throw new Error("No valid published content items found.");
+    throw new Error("No valid published content items found for this batch's course.");
   }
 
   const result = await prisma.batchContentMapping.createMany({
@@ -53,16 +58,23 @@ export async function assignAssessmentToBatchService(
     throw new Error("Database not configured.");
   }
 
-  const batch = await prisma.batch.findUnique({ where: { id: input.batchId }, select: { id: true } });
+  const batch = await getBatchCourseContext(input.batchId);
   if (!batch) throw new Error("Batch not found.");
 
   const validPools = await prisma.assessmentPool.findMany({
-    where: { id: { in: input.assessmentPoolIds }, status: "PUBLISHED" },
+    where: {
+      id: { in: input.assessmentPoolIds },
+      status: "PUBLISHED",
+      OR: [
+        { courseAssessmentLinks: { some: { courseId: batch.courseId } } },
+        { courseAssessmentLinks: { none: {} } },
+      ],
+    },
     select: { id: true },
   });
 
   if (validPools.length === 0) {
-    throw new Error("No valid published assessments found.");
+    throw new Error("No valid published assessments found for this batch's course.");
   }
 
   const result = await prisma.batchAssessmentMapping.createMany({

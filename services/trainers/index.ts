@@ -3,7 +3,7 @@ import "server-only";
 export { archiveTrainerService, createTrainerService, updateTrainerService } from "@/services/trainers/commands";
 export {
   getTrainerByIdService,
-  getTrainersForProgramService,
+  getTrainersForCourseService,
   listTrainersService,
   searchTrainersService,
 } from "@/services/trainers/queries";

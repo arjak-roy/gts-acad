@@ -10,16 +10,28 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
 import { useRbac } from "@/lib/rbac-context";
-import { routePermissionMap } from "@/lib/rbac-config";
+import { routePermissionMap, type PermissionRequirement } from "@/lib/rbac-config";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
-  requiredPermission?: string;
+  requiredPermission?: PermissionRequirement;
   matchMode?: "exact" | "prefix";
 };
+
+function canAccessRequirement(
+  requirement: PermissionRequirement | undefined,
+  can: (permissionKey: string) => boolean,
+  canAny: (permissionKeys: string[]) => boolean,
+) {
+  if (!requirement) {
+    return true;
+  }
+
+  return Array.isArray(requirement) ? canAny(requirement) : can(requirement);
+}
 
 type NavGroup = {
   label: string;
@@ -43,7 +55,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Academics",
     items: [
-      { href: "/course-builder", label: "Content Manager", icon: FolderKanban, requiredPermission: routePermissionMap["/course-builder"] },
+      { href: "/course-builder", label: "Resource Repository", icon: FolderKanban, requiredPermission: routePermissionMap["/course-builder"] },
       { href: "/curriculum-builder", label: "Curriculum Builder", icon: Layers, requiredPermission: routePermissionMap["/curriculum-builder"] },
       { href: "/schedule", label: "Schedule", icon: CalendarCheck, requiredPermission: routePermissionMap["/schedule"] },
       { href: "/attendance", label: "Attendance", icon: CalendarCheck, requiredPermission: routePermissionMap["/attendance"] },
@@ -119,7 +131,7 @@ export function SidebarNav() {
   const pathname = usePathname() ?? "/dashboard";
   const setMobileSidebarOpen = useDashboardUI((state) => state.setMobileSidebarOpen);
   const previousPathnameRef = useRef(pathname);
-  const { can, isLoading, roles, user } = useRbac();
+  const { can, canAny, isLoading, roles, user } = useRbac();
 
   useEffect(() => {
     if (previousPathnameRef.current !== pathname) {
@@ -159,7 +171,7 @@ export function SidebarNav() {
 
       <nav className="mt-4 flex-1 space-y-6 overflow-y-auto px-3">
         {navGroups.map((group) => {
-          const visibleItems = group.items.filter((item) => !item.requiredPermission || can(item.requiredPermission));
+          const visibleItems = group.items.filter((item) => canAccessRequirement(item.requiredPermission, can, canAny));
 
           if (visibleItems.length === 0) {
             return null;

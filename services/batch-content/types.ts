@@ -1,5 +1,7 @@
 import { ContentType, ContentStatus, QuestionType, DifficultyLevel, AssessmentPoolStatus } from "@prisma/client";
 
+export type BatchAssignmentSource = "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+
 export type BatchContentItem = {
   id: string;
   batchId: string;
@@ -16,6 +18,10 @@ export type BatchContentItem = {
   mimeType: string | null;
   assignedByName: string | null;
   assignedAt: Date;
+  assignmentSource: BatchAssignmentSource;
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
 };
 
 export type BatchAssessmentItem = {
@@ -32,4 +38,8 @@ export type BatchAssessmentItem = {
   assignedByName: string | null;
   scheduledAt: Date | null;
   assignedAt: Date;
+  assignmentSource: BatchAssignmentSource;
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
 };

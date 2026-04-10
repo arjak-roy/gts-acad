@@ -15,8 +15,63 @@ import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerCreateResult, TrainerOption } from "@/services/trainers/types";
 import { CreateTrainerInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
 
-function normalizeProgramList(programs: string[]) {
-  return Array.from(new Set(programs.map((program) => program.trim()).filter(Boolean)));
+function normalizeCourseList(courses: string[]) {
+  return Array.from(new Set(courses.map((course) => course.trim()).filter(Boolean)));
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value.trim());
+}
+
+async function resolveSelectedCourseNames(courseSelections: string[]) {
+  const normalizedSelections = normalizeCourseList(courseSelections);
+
+  if (normalizedSelections.length === 0) {
+    return [];
+  }
+
+  const matchingCourses = await prisma.course.findMany({
+    where: {
+      OR: normalizedSelections.flatMap((courseSelection) => {
+        const courseFilters: Prisma.CourseWhereInput[] = [
+          {
+            name: {
+              equals: courseSelection,
+              mode: "insensitive" as const,
+            },
+          },
+        ];
+
+        if (isUuidLike(courseSelection)) {
+          courseFilters.unshift({ id: courseSelection });
+        }
+
+        return courseFilters;
+      }),
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  const courseNamesById = new Map(matchingCourses.map((course) => [course.id, course.name]));
+  const courseNamesByNormalizedName = new Map(
+    matchingCourses.map((course) => [course.name.trim().toLowerCase(), course.name]),
+  );
+
+  const resolvedCourses = normalizedSelections.map((courseSelection) => {
+    const resolvedCourse = courseNamesById.get(courseSelection)
+      ?? courseNamesByNormalizedName.get(courseSelection.trim().toLowerCase());
+
+    if (!resolvedCourse) {
+      throw new Error("Invalid course selection.");
+    }
+
+    return resolvedCourse;
+  });
+
+  return Array.from(new Set(resolvedCourses));
 }
 
 function buildInternalLoginUrl(fallbackApplicationUrl?: string | null) {
@@ -81,7 +136,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
   const normalizedPhone = input.phone.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
   const normalizedBio = input.bio.trim() || null;
-  const normalizedPrograms = normalizeProgramList(input.programs);
+  const normalizedCourses = normalizeCourseList(input.courses);
   const isActive = input.status === "ACTIVE";
 
   if (!isDatabaseConfigured) {
@@ -96,36 +151,19 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
       bio: normalizedBio,
       capacity: input.capacity,
       status: input.status,
-      programs: normalizedPrograms,
+      courses: normalizedCourses,
     };
   }
 
-  const [existingUser, matchingPrograms] = await Promise.all([
+  const [existingUser, resolvedCourses] = await Promise.all([
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
-    prisma.program.findMany({
-      where: {
-        OR: normalizedPrograms.map((program) => ({
-          name: {
-            equals: program,
-            mode: "insensitive",
-          },
-        })),
-      },
-      select: {
-        name: true,
-      },
-    }),
+    resolveSelectedCourseNames(normalizedCourses),
   ]);
 
   if (existingUser) {
     throw new Error("Email already exists.");
   }
 
-  if (matchingPrograms.length !== normalizedPrograms.length) {
-    throw new Error("Invalid program selection.");
-  }
-
-  const resolvedPrograms = matchingPrograms.map((program) => program.name);
   const temporaryPassword = randomUUID();
   const hashedTemporaryPassword = await hashPassword(temporaryPassword);
   const issuedAt = new Date().toISOString();
@@ -162,7 +200,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         bio: normalizedBio,
         capacity: input.capacity,
         isActive,
-        programs: resolvedPrograms,
+        courses: resolvedCourses,
       },
       select: {
         id: true,
@@ -235,7 +273,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
     bio: trainer.profile.bio,
     capacity: trainer.profile.capacity,
     status: trainer.profile.isActive ? "ACTIVE" : "INACTIVE",
-    programs: resolvedPrograms,
+    courses: resolvedCourses,
   };
 }
 
@@ -245,7 +283,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
   const normalizedPhone = input.phone.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
   const normalizedBio = input.bio.trim() || null;
-  const normalizedPrograms = normalizeProgramList(input.programs);
+  const normalizedCourses = normalizeCourseList(input.courses);
   const isActive = input.status === "ACTIVE";
 
   if (!isDatabaseConfigured) {
@@ -259,7 +297,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       bio: normalizedBio,
       capacity: input.capacity,
       status: input.status,
-      programs: normalizedPrograms,
+      courses: normalizedCourses,
     };
   }
 
@@ -272,7 +310,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     throw new Error("Trainer not found.");
   }
 
-  const [existingUser, matchingPrograms] = await Promise.all([
+  const [existingUser, resolvedCourses] = await Promise.all([
     prisma.user.findFirst({
       where: {
         id: { not: trainer.userId },
@@ -280,30 +318,12 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       },
       select: { id: true },
     }),
-    prisma.program.findMany({
-      where: {
-        OR: normalizedPrograms.map((program) => ({
-          name: {
-            equals: program,
-            mode: "insensitive",
-          },
-        })),
-      },
-      select: {
-        name: true,
-      },
-    }),
+    resolveSelectedCourseNames(normalizedCourses),
   ]);
 
   if (existingUser) {
     throw new Error("Email already exists.");
   }
-
-  if (matchingPrograms.length !== normalizedPrograms.length) {
-    throw new Error("Invalid program selection.");
-  }
-
-  const resolvedPrograms = matchingPrograms.map((program) => program.name);
 
   const updated = await prisma.$transaction(async (tx) => {
     const user = await tx.user.update({
@@ -329,7 +349,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
         bio: normalizedBio,
         capacity: input.capacity,
         isActive,
-        programs: resolvedPrograms,
+        courses: resolvedCourses,
       },
       select: {
         id: true,
@@ -353,7 +373,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     bio: updated.profile.bio,
     capacity: updated.profile.capacity,
     status: updated.profile.isActive ? "ACTIVE" : "INACTIVE",
-    programs: resolvedPrograms,
+    courses: resolvedCourses,
   };
 }
 
@@ -407,6 +427,6 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
     email: updated.user.email,
     specialization: updated.specialization,
     isActive: updated.isActive,
-    programs: updated.programs,
+    courses: updated.courses,
   };
 }

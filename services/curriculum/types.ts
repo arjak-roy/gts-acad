@@ -1,5 +1,7 @@
 import { ContentStatus, ContentType, CurriculumItemType, CurriculumStatus, DifficultyLevel, QuestionType } from "@prisma/client";
 
+export type CurriculumAssignmentSource = "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+
 export type CurriculumStageItemDetail = {
   id: string;
   itemType: CurriculumItemType;
@@ -101,14 +103,23 @@ export type CurriculumBatchMappingItem = {
   startDate: Date;
   endDate: Date | null;
   isMapped: boolean;
+  hasEffectiveAccess: boolean;
   assignedAt: Date | null;
   assignedByName: string | null;
+  assignmentSource: CurriculumAssignmentSource;
+  isInheritedFromCourse: boolean;
+  canRemoveBatchMapping: boolean;
+  canAddBatchMapping: boolean;
 };
 
 export type BatchAssignedCurriculumDetail = {
   mappingId: string;
   assignedAt: Date;
   assignedByName: string | null;
+  assignmentSource: CurriculumAssignmentSource;
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
   curriculum: CurriculumDetail;
 };
 

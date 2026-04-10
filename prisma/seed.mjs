@@ -285,6 +285,11 @@ const PERMISSION_DEFINITIONS = [
   { module: "course_content", action: "create", key: "course_content.create", description: "Upload course content" },
   { module: "course_content", action: "edit", key: "course_content.edit", description: "Edit course content" },
   { module: "course_content", action: "delete", key: "course_content.delete", description: "Delete course content" },
+  { module: "learning_resources", action: "view", key: "learning_resources.view", description: "View learning resources" },
+  { module: "learning_resources", action: "create", key: "learning_resources.create", description: "Create learning resources" },
+  { module: "learning_resources", action: "edit", key: "learning_resources.edit", description: "Edit learning resources" },
+  { module: "learning_resources", action: "delete", key: "learning_resources.delete", description: "Delete learning resources" },
+  { module: "learning_resources", action: "assign", key: "learning_resources.assign", description: "Assign learning resources" },
   { module: "course_content_folder", action: "view", key: "course_content_folder.view", description: "View course content folders" },
   { module: "course_content_folder", action: "create", key: "course_content_folder.create", description: "Create course content folders" },
   { module: "course_content_folder", action: "edit", key: "course_content_folder.edit", description: "Edit course content folders" },
@@ -332,6 +337,7 @@ const ROLE_PERMISSION_MAP = {
     "settings.view", "settings.edit", "settings.manage",
     "email_templates.view", "email_templates.edit",
     "course_content.view", "course_content.create", "course_content.edit", "course_content.delete",
+    "learning_resources.view", "learning_resources.create", "learning_resources.edit", "learning_resources.delete", "learning_resources.assign",
     "course_content_folder.view", "course_content_folder.create", "course_content_folder.edit", "course_content_folder.delete",
     "assessment_pool.view", "assessment_pool.create", "assessment_pool.edit", "assessment_pool.delete", "assessment_pool.publish",
     "batch_content.view", "batch_content.assign", "batch_content.remove",
@@ -353,6 +359,7 @@ const ROLE_PERMISSION_MAP = {
     "lms.view",
     "quizzes.view", "quizzes.create", "quizzes.edit",
     "course_content.view",
+    "learning_resources.view",
     "course_content_folder.view",
     "assessment_pool.view",
     "batch_content.view", "batch_content.assign", "batch_content.remove",
@@ -369,6 +376,7 @@ const ROLE_PERMISSION_MAP = {
     "quizzes.view", "quizzes.create", "quizzes.edit", "quizzes.delete", "quizzes.publish",
     "email_templates.view", "email_templates.create", "email_templates.edit", "email_templates.delete",
     "course_content.view", "course_content.create", "course_content.edit", "course_content.delete",
+    "learning_resources.view", "learning_resources.create", "learning_resources.edit", "learning_resources.delete", "learning_resources.assign",
     "course_content_folder.view", "course_content_folder.create", "course_content_folder.edit", "course_content_folder.delete",
     "assessment_pool.view", "assessment_pool.create", "assessment_pool.edit", "assessment_pool.delete", "assessment_pool.publish",
     "batch_content.view", "batch_content.assign", "batch_content.remove",
@@ -771,7 +779,10 @@ async function seed() {
     });
     await assignUserRole(user.id, roleRecords.TRAINER.id);
 
-    const assignedPrograms = [programRecords[i % programRecords.length].name, programRecords[(i + 3) % programRecords.length].name];
+    const assignedCourses = [
+      courseByType.get(programRecords[i % programRecords.length].type)?.name,
+      courseByType.get(programRecords[(i + 3) % programRecords.length].type)?.name,
+    ].filter(Boolean);
 
     const trainer = await prisma.trainerProfile.upsert({
       where: { userId: user.id },
@@ -781,7 +792,7 @@ async function seed() {
         rating: profile.rating,
         capacity: 4,
         isActive: true,
-        programs: assignedPrograms,
+        courses: assignedCourses,
       },
       create: {
         userId: user.id,
@@ -790,7 +801,7 @@ async function seed() {
         rating: profile.rating,
         capacity: 4,
         isActive: true,
-        programs: assignedPrograms,
+        courses: assignedCourses,
       },
     });
 
@@ -801,8 +812,9 @@ async function seed() {
   for (let i = 0; i < programRecords.length; i += 1) {
     const program = programRecords[i];
     const centre = centreRecords[i % centreRecords.length];
+    const courseName = courseByType.get(program.type)?.name;
     const eligibleTrainers = trainerRecords.filter((trainer) =>
-      Array.isArray(trainer.programs) && trainer.programs.includes(program.name)
+      Array.isArray(trainer.courses) && courseName ? trainer.courses.includes(courseName) : false
     );
 
     const primaryTrainer = eligibleTrainers[0] ?? trainerRecords[i % trainerRecords.length];

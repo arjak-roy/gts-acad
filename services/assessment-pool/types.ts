@@ -5,8 +5,6 @@ export type AssessmentPoolListItem = {
   code: string;
   title: string;
   description: string | null;
-  courseId: string | null;
-  courseName: string | null;
   questionType: QuestionType;
   difficultyLevel: DifficultyLevel;
   totalMarks: number;

@@ -1,5 +1,6 @@
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import { mapCourseOption } from "@/services/courses/internal-helpers";
+import { listAssignedSharedCourseContentService } from "@/services/course-content-service";
+import { mapCourseOption, sortCoursesByLifecycle } from "@/services/courses/internal-helpers";
 import { MOCK_COURSES } from "@/services/courses/mock-data";
 import { CourseDetail, CourseOption } from "@/services/courses/types";
 
@@ -10,11 +11,12 @@ export async function listCoursesService(): Promise<CourseOption[]> {
 
   try {
     const courses = await prisma.course.findMany({
-      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      orderBy: [{ name: "asc" }],
       select: {
         id: true,
         name: true,
         description: true,
+        status: true,
         isActive: true,
         _count: { select: { programs: true } },
       },
@@ -24,9 +26,10 @@ export async function listCoursesService(): Promise<CourseOption[]> {
       id: course.id,
       name: course.name,
       description: course.description,
+      status: course.status,
       isActive: course.isActive,
       programCount: course._count.programs,
-    }));
+    })).sort(sortCoursesByLifecycle);
   } catch (error) {
     console.warn("Course list fallback activated", error);
     return MOCK_COURSES.map(mapCourseOption);
@@ -54,12 +57,13 @@ export async function searchCoursesService(query: string, limit: number): Promis
           { description: { contains: query, mode: "insensitive" } },
         ],
       },
-      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      orderBy: [{ name: "asc" }],
       take: limit,
       select: {
         id: true,
         name: true,
         description: true,
+        status: true,
         isActive: true,
         _count: { select: { programs: true } },
       },
@@ -69,9 +73,10 @@ export async function searchCoursesService(query: string, limit: number): Promis
       id: course.id,
       name: course.name,
       description: course.description,
+      status: course.status,
       isActive: course.isActive,
       programCount: course._count.programs,
-    }));
+    })).sort(sortCoursesByLifecycle);
   } catch (error) {
     console.warn("Course search fallback activated", error);
     return MOCK_COURSES.filter(
@@ -90,12 +95,13 @@ export async function getCourseByIdService(courseId: string): Promise<CourseDeta
   }
 
   try {
-    return await prisma.course.findUnique({
+    const course = await prisma.course.findUnique({
       where: { id: courseId },
       select: {
         id: true,
         name: true,
         description: true,
+        status: true,
         isActive: true,
         programs: {
           orderBy: [{ isActive: "desc" }, { name: "asc" }],
@@ -108,6 +114,39 @@ export async function getCourseByIdService(courseId: string): Promise<CourseDeta
         },
       },
     });
+
+    if (!course) {
+      return null;
+    }
+
+    const trainers = await prisma.trainerProfile.findMany({
+      where: {
+        isActive: true,
+        courses: {
+          has: course.name,
+        },
+      },
+      orderBy: [{ joinedAt: "desc" }],
+      select: {
+        id: true,
+        specialization: true,
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...course,
+      trainers: trainers.map((trainer) => ({
+        id: trainer.id,
+        fullName: trainer.user.name,
+        specialization: trainer.specialization,
+      })),
+      assignedSharedContents: await listAssignedSharedCourseContentService(courseId),
+    };
   } catch (error) {
     console.warn("Course detail fallback activated", error);
     return null;

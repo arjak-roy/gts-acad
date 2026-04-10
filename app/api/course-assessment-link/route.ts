@@ -8,10 +8,14 @@ export async function GET(request: NextRequest) {
   try {
     await requirePermission(request, "assessment_pool.view");
     const courseId = request.nextUrl.searchParams.get("courseId");
+    const assessmentPoolId = request.nextUrl.searchParams.get("assessmentPoolId");
 
     if (!isDatabaseConfigured) return apiSuccess([]);
 
-    const where = courseId ? { courseId } : {};
+    const where = {
+      ...(courseId ? { courseId } : {}),
+      ...(assessmentPoolId ? { assessmentPoolId } : {}),
+    };
     const links = await prisma.courseAssessmentLink.findMany({
       where,
       orderBy: { sortOrder: "asc" },
@@ -41,8 +45,18 @@ export async function POST(request: NextRequest) {
 
     if (!isDatabaseConfigured) throw new Error("Database not configured.");
 
-    const link = await prisma.courseAssessmentLink.create({
-      data: {
+    const link = await prisma.courseAssessmentLink.upsert({
+      where: {
+        courseId_assessmentPoolId: {
+          courseId: input.courseId,
+          assessmentPoolId: input.assessmentPoolId,
+        },
+      },
+      update: {
+        sortOrder: input.sortOrder,
+        isRequired: input.isRequired,
+      },
+      create: {
         courseId: input.courseId,
         assessmentPoolId: input.assessmentPoolId,
         sortOrder: input.sortOrder,

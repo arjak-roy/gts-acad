@@ -32,7 +32,6 @@ type BatchOption = {
   programName: string;
   campus: string | null;
   status: string;
-  trainerIds: string[];
   trainerNames: string[];
 };
 

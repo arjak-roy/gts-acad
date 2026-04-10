@@ -1,5 +1,6 @@
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateEmailTemplateInput, UpdateEmailTemplateInput } from "@/lib/validation-schemas/email-templates";
+import { sanitizeEmailTemplateHtml } from "@/services/email-templates/html";
 import { ensureDefaultEmailTemplates } from "@/services/email-templates/defaults";
 import {
   buildMockTemplateId,
@@ -20,7 +21,7 @@ export async function createEmailTemplateService(input: CreateEmailTemplateInput
   const name = input.name.trim();
   const description = input.description.trim() || null;
   const subject = input.subject.trim();
-  const htmlContent = input.htmlContent.trim();
+  const htmlContent = sanitizeEmailTemplateHtml(input.htmlContent);
   const textContent = resolveTextContent(htmlContent, input.textContent);
   const variables = extractTemplateVariables(subject, htmlContent, textContent);
 
@@ -92,7 +93,7 @@ export async function updateEmailTemplateService(input: UpdateEmailTemplateInput
   const name = input.name.trim();
   const description = input.description.trim() || null;
   const subject = input.subject.trim();
-  const htmlContent = input.htmlContent.trim();
+  const htmlContent = sanitizeEmailTemplateHtml(input.htmlContent);
   const textContent = resolveTextContent(htmlContent, input.textContent);
 
   if (!isDatabaseConfigured) {

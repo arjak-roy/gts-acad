@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { getProgramByIdService } from "@/services/programs-service";
-import { getTrainersForProgramService } from "@/services/trainers-service";
+import { getTrainersForCourseService } from "@/services/trainers-service";
 
 type RouteContext = {
   params: {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       throw new Error("Program not found.");
     }
 
-    const trainers = await getTrainersForProgramService(program.name);
+    const trainers = await getTrainersForCourseService(program.courseName);
     return apiSuccess(trainers);
   } catch (error) {
     return apiError(error);

@@ -6,7 +6,7 @@ import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateBatchInput, UpdateBatchInput } from "@/lib/validation-schemas/batches";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addLearnerEnrollmentService } from "@/services/learners-service";
-import { formatMockTrainerNames, mapBatchRecord, normalizeTrainerIds, resolveProgramAndTrainersWithAutoMapping } from "@/services/batches/internal-helpers";
+import { formatMockTrainerNames, mapBatchRecord, normalizeTrainerIds, resolveProgramAndTrainersWithAutoCourseMapping } from "@/services/batches/internal-helpers";
 import { MOCK_BATCHES } from "@/services/batches/mock-data";
 import { MOCK_CENTERS } from "@/services/centers/mock-data";
 import { BatchBulkEnrollmentResult, BatchCreateResult, BatchOption } from "@/services/batches/types";
@@ -126,7 +126,7 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
 
   const [existingCode, resolved, centre] = await Promise.all([
     prisma.batch.findUnique({ where: { code: normalizedCode }, select: { id: true } }),
-    resolveProgramAndTrainersWithAutoMapping(normalizedProgramName, normalizedTrainerIds),
+    resolveProgramAndTrainersWithAutoCourseMapping(normalizedProgramName, normalizedTrainerIds),
     normalizedCentreId
       ? prisma.trainingCentre.findFirst({
           where: { id: normalizedCentreId, isActive: true },
@@ -149,14 +149,14 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
 
   const normalizedCampus = centre?.name ?? null;
 
-  if (resolved.trainersToAddToProgram.length > 0) {
+  if (resolved.trainersToAddToCourse.length > 0) {
     await Promise.all(
-      resolved.trainersToAddToProgram.map((trainerId) =>
+      resolved.trainersToAddToCourse.map((trainerId) =>
         prisma.trainerProfile.update({
           where: { id: trainerId },
           data: {
-            programs: {
-              push: normalizedProgramName,
+            courses: {
+              push: resolved.courseName,
             },
           },
         }),
@@ -261,7 +261,7 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
 
   const [duplicateCode, resolved, centre] = await Promise.all([
     prisma.batch.findFirst({ where: { code: normalizedCode, NOT: { id: normalizedBatchId } }, select: { id: true } }),
-    resolveProgramAndTrainersWithAutoMapping(normalizedProgramName, normalizedTrainerIds),
+    resolveProgramAndTrainersWithAutoCourseMapping(normalizedProgramName, normalizedTrainerIds),
     normalizedCentreId
       ? prisma.trainingCentre.findFirst({
           where: { id: normalizedCentreId, isActive: true },
@@ -284,14 +284,14 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
 
   const normalizedCampus = centre?.name ?? null;
 
-  if (resolved.trainersToAddToProgram.length > 0) {
+  if (resolved.trainersToAddToCourse.length > 0) {
     await Promise.all(
-      resolved.trainersToAddToProgram.map((trainerId) =>
+      resolved.trainersToAddToCourse.map((trainerId) =>
         prisma.trainerProfile.update({
           where: { id: trainerId },
           data: {
-            programs: {
-              push: normalizedProgramName,
+            courses: {
+              push: resolved.courseName,
             },
           },
         }),

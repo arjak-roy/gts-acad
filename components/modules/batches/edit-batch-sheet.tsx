@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 
 type ProgramOption = {
   id: string;
+  courseId: string;
+  courseName: string;
   name: string;
   type: "LANGUAGE" | "CLINICAL" | "TECHNICAL";
   isActive: boolean;
@@ -25,7 +27,7 @@ type TrainerOption = {
   email: string;
   specialization: string;
   isActive: boolean;
-  programs: string[];
+  courses: string[];
 };
 
 type CenterOption = {
@@ -180,16 +182,25 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
     };
   }, [batchId, open]);
 
+  const selectedProgram = useMemo(
+    () => programs.find((program) => normalizeProgramKey(program.name) === normalizeProgramKey(form.programName)) ?? null,
+    [form.programName, programs],
+  );
+
   const availableTrainers = useMemo(
     () => {
       if (!form.programName) {
         return trainers;
       }
 
-      const selectedProgramKey = normalizeProgramKey(form.programName);
-      return trainers.filter((trainer) => trainer.programs.some((program) => normalizeProgramKey(program) === selectedProgramKey));
+      if (!selectedProgram) {
+        return [];
+      }
+
+      const selectedCourseKey = normalizeProgramKey(selectedProgram.courseName);
+      return trainers.filter((trainer) => trainer.courses.some((course) => normalizeProgramKey(course) === selectedCourseKey));
     },
-    [form.programName, trainers],
+    [form.programName, selectedProgram, trainers],
   );
 
   const selectedTrainerNames = useMemo(
@@ -198,17 +209,17 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
   );
 
   const selectedSearchTrainers = useMemo(() => {
-    if (!form.programName) {
+    if (!form.programName || !selectedProgram) {
       return [];
     }
 
-    const selectedProgramKey = normalizeProgramKey(form.programName);
+    const selectedCourseKey = normalizeProgramKey(selectedProgram.courseName);
     return trainers.filter(
       (trainer) =>
         form.trainerIds.includes(trainer.id) &&
-        !trainer.programs.some((program) => normalizeProgramKey(program) === selectedProgramKey),
+        !trainer.courses.some((course) => normalizeProgramKey(course) === selectedCourseKey),
     );
-  }, [trainers, form.trainerIds, form.programName]);
+  }, [trainers, form.trainerIds, form.programName, selectedProgram]);
 
   const filteredSearchResults = useMemo(() => {
     if (!trainerSearchTerm.trim() || !form.programName) return [];
@@ -396,10 +407,10 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
                     <p className="text-sm text-slate-500">Select a program to load trainers.</p>
                   ) : (
                     <>
-                      {/* TRAINERS FROM PROGRAM */}
+                      {/* TRAINERS FROM COURSE */}
                       {availableTrainers.length > 0 ? (
                         <div>
-                          <p className="text-xs font-semibold text-slate-600 mb-2">From Program</p>
+                          <p className="text-xs font-semibold text-slate-600 mb-2">From Course</p>
                           <div className="grid gap-2 sm:grid-cols-2">
                             {availableTrainers.map((trainer) => {
                               const isSelected = form.trainerIds.includes(trainer.id);
@@ -424,7 +435,7 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
                           </div>
                         </div>
                       ) : (
-                        <p className="text-sm text-slate-500">No trainers from this program yet.</p>
+                        <p className="text-sm text-slate-500">No trainers from this course yet.</p>
                       )}
 
                       {/* SEARCH FOR ALL TRAINERS */}
@@ -441,9 +452,9 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
                             <p className="text-xs font-semibold text-blue-600 mb-2">Search Results</p>
                             <div className="grid gap-2 sm:grid-cols-2">
                               {filteredSearchResults.map((trainer) => {
-                                const isInProgram = trainer.programs.some(
-                                  (p) => p.trim().toLowerCase() === form.programName.trim().toLowerCase(),
-                                );
+                                const isInCourse = selectedProgram
+                                  ? trainer.courses.some((course) => normalizeProgramKey(course) === normalizeProgramKey(selectedProgram.courseName))
+                                  : false;
                                 return (
                                   <button
                                     key={trainer.id}
@@ -453,8 +464,8 @@ export function EditBatchSheet({ batchId, open, onOpenChange }: EditBatchSheetPr
                                   >
                                     <p className="text-sm font-semibold text-blue-900">{trainer.fullName}</p>
                                     <p className="mt-1 text-xs text-blue-700">{trainer.specialization}</p>
-                                    {!isInProgram && (
-                                      <p className="mt-1 text-xs font-medium text-blue-600">⚠ Will be added to program</p>
+                                    {!isInCourse && (
+                                      <p className="mt-1 text-xs font-medium text-blue-600">Will be added to course</p>
                                     )}
                                   </button>
                                 );

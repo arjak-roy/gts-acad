@@ -19,7 +19,7 @@ type TrainerDetail = {
   specialization: string;
   capacity: number;
   status: TrainerStatus;
-  programs: string[];
+  courses: string[];
   bio: string | null;
 };
 
@@ -143,15 +143,15 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
               </div>
 
               <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Assigned Programs</p>
-                {trainer.programs.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">No programs assigned.</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Assigned Courses</p>
+                {trainer.courses.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">No courses assigned.</p>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {trainer.programs.map((program) => (
-                      <span key={program} className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                    {trainer.courses.map((course) => (
+                      <span key={course} className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
                         <BookOpen className="h-3 w-3" />
-                        {program}
+                        {course}
                       </span>
                     ))}
                   </div>

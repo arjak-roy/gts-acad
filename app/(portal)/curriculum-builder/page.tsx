@@ -7,6 +7,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { BookOpen, Boxes, Eye, GripVertical, Plus, Save, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
 
+import { CurriculumAssessmentPickerDialog } from "@/components/modules/curriculum-builder/curriculum-assessment-picker-dialog";
+import { CurriculumContentPickerDialog } from "@/components/modules/curriculum-builder/curriculum-content-picker-dialog";
 import { CurriculumHierarchyView } from "@/components/modules/curriculum-builder/curriculum-hierarchy-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,8 +35,15 @@ type ContentOption = {
   id: string;
   title: string;
   status: string;
+  folderId: string | null;
   folderName: string | null;
   contentType: string;
+};
+
+type ContentFolderOption = {
+  id: string;
+  name: string;
+  contentCount: number;
 };
 
 type AssessmentOption = {
@@ -131,8 +140,13 @@ type CurriculumBatchMapping = {
   startDate: string;
   endDate: string | null;
   isMapped: boolean;
+  hasEffectiveAccess: boolean;
   assignedAt: string | null;
   assignedByName: string | null;
+  assignmentSource: "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+  isInheritedFromCourse: boolean;
+  canRemoveBatchMapping: boolean;
+  canAddBatchMapping: boolean;
 };
 
 type WorkspacePopupView = "SEQUENCE" | "REFERENCES" | "BATCHES";
@@ -167,6 +181,12 @@ const questionTypeLabels: Record<string, string> = {
   FILL_IN_THE_BLANK: "Fill in the Blank",
   MULTI_INPUT_REASONING: "Multi-Input Reasoning",
   TWO_PART_ANALYSIS: "Two-Part Analysis",
+};
+
+const assignmentSourceLabels: Record<CurriculumBatchMapping["assignmentSource"], string> = {
+  COURSE: "Inherited from course",
+  BATCH: "Batch-specific mapping",
+  COURSE_AND_BATCH: "Inherited + batch mapping",
 };
 
 async function readApiData<T>(response: Response, fallbackMessage: string) {
@@ -404,25 +424,35 @@ function SortableStageItemRow({
 
 function SortableStageCard({
   stage,
+  courseId,
   contentOptions,
+  contentFolders,
   assessmentOptions,
+  isLoadingReferences,
   disabled,
   canEdit,
+  canCreateContent,
   onSave,
   onDelete,
-  onCreateItem,
+  onCreateItems,
+  onRefreshContentReferences,
   onToggleRequired,
   onDeleteItem,
   onReorderItems,
 }: {
   stage: CurriculumStageSummary;
+  courseId: string;
   contentOptions: ContentOption[];
+  contentFolders: ContentFolderOption[];
   assessmentOptions: AssessmentOption[];
+  isLoadingReferences: boolean;
   disabled: boolean;
   canEdit: boolean;
+  canCreateContent: boolean;
   onSave: (stageId: string, input: { title: string; description: string }) => Promise<boolean>;
   onDelete: (stageId: string) => Promise<boolean>;
-  onCreateItem: (stageId: string, input: { itemType: CurriculumItemType; contentId: string | null; assessmentPoolId: string | null; isRequired: boolean }) => Promise<boolean>;
+  onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
+  onRefreshContentReferences: () => Promise<void>;
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
   onDeleteItem: (itemId: string) => Promise<boolean>;
   onReorderItems: (stageId: string, itemIds: string[]) => Promise<void>;
@@ -435,46 +465,19 @@ function SortableStageCard({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [isEditing, setIsEditing] = useState(false);
   const [showAddItem, setShowAddItem] = useState(stage.itemCount === 0);
+  const [activePicker, setActivePicker] = useState<CurriculumItemType | null>(null);
   const [title, setTitle] = useState(stage.title);
   const [description, setDescription] = useState(stage.description ?? "");
-  const [itemType, setItemType] = useState<CurriculumItemType>("CONTENT");
-  const [referenceId, setReferenceId] = useState("");
-  const [isRequired, setIsRequired] = useState(false);
 
   useEffect(() => {
     setTitle(stage.title);
     setDescription(stage.description ?? "");
   }, [stage.description, stage.id, stage.title]);
 
-  useEffect(() => {
-    setReferenceId("");
-  }, [itemType, stage.id]);
-
-  const referenceOptions = itemType === "CONTENT" ? contentOptions : assessmentOptions;
-
   async function handleSaveStage() {
     const ok = await onSave(stage.id, { title, description });
     if (ok) {
       setIsEditing(false);
-    }
-  }
-
-  async function handleCreateStageItem() {
-    if (!referenceId) {
-      return;
-    }
-
-    const ok = await onCreateItem(stage.id, {
-      itemType,
-      contentId: itemType === "CONTENT" ? referenceId : null,
-      assessmentPoolId: itemType === "ASSESSMENT" ? referenceId : null,
-      isRequired,
-    });
-
-    if (ok) {
-      setReferenceId("");
-      setIsRequired(false);
-      setShowAddItem(false);
     }
   }
 
@@ -618,54 +621,30 @@ function SortableStageCard({
                 </Button>
               ) : (
                 <div className="space-y-3 rounded-xl border border-dashed border-[#cfd8e3] bg-white p-4">
-                  <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Item type</label>
-                      <select value={itemType} disabled={disabled} onChange={(event) => setItemType(event.target.value as CurriculumItemType)} className={selectClassName}>
-                        <option value="CONTENT">Content</option>
-                        <option value="ASSESSMENT">Assessment</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Reference</label>
-                      <select value={referenceId} disabled={disabled || referenceOptions.length === 0} onChange={(event) => setReferenceId(event.target.value)} className={selectClassName}>
-                        <option value="">Select {itemType === "CONTENT" ? "content" : "assessment"}…</option>
-                        {itemType === "CONTENT"
-                          ? contentOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {`${option.title}${option.folderName ? ` · ${option.folderName}` : ""}`}
-                            </option>
-                          ))
-                          : assessmentOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {`${option.title} · ${option.code}`}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
+                  <p className="text-sm text-slate-600">
+                    Open a picker to search and select one or more content or assessment references. Every selected reference is stored as a separate stage item.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="secondary" disabled={disabled} onClick={() => setActivePicker("CONTENT")}>
+                      <Plus className="h-4 w-4" />
+                      Add Content
+                    </Button>
+                    <Button type="button" variant="secondary" disabled={disabled} onClick={() => setActivePicker("ASSESSMENT")}>
+                      <Plus className="h-4 w-4" />
+                      Add Assessment
+                    </Button>
                   </div>
 
-                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <Checkbox checked={isRequired} disabled={disabled} onCheckedChange={(checked) => setIsRequired(checked === true)} />
-                    Make this item required for stage completion
-                  </label>
-
-                  {referenceOptions.length === 0 ? (
+                  {contentOptions.length === 0 && assessmentOptions.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      No {itemType === "CONTENT" ? "content library items" : "assessment pool items"} are available for this course yet.
+                      No content or assessments are available yet for mapping into this stage.
                     </p>
                   ) : null}
 
                   <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" disabled={disabled} onClick={() => {
-                      setReferenceId("");
-                      setIsRequired(false);
-                      setShowAddItem(false);
-                    }}>
+                    <Button type="button" variant="secondary" disabled={disabled} onClick={() => setShowAddItem(false)}>
                       Cancel
-                    </Button>
-                    <Button type="button" disabled={disabled || !referenceId} onClick={() => void handleCreateStageItem()}>
-                      Add Item
                     </Button>
                   </div>
                 </div>
@@ -674,39 +653,97 @@ function SortableStageCard({
           ) : null}
         </div>
       </div>
+
+      <CurriculumContentPickerDialog
+        open={activePicker === "CONTENT"}
+        onOpenChange={(open) => setActivePicker(open ? "CONTENT" : null)}
+        courseId={courseId}
+        items={contentOptions}
+        folders={contentFolders}
+        isLoading={isLoadingReferences}
+        isSaving={disabled}
+        canCreateContent={canCreateContent}
+        onSubmit={async ({ contentIds, isRequired }) => {
+          const ok = await onCreateItems(stage.id, {
+            itemType: "CONTENT",
+            contentIds,
+            assessmentPoolIds: [],
+            isRequired,
+          });
+
+          if (ok) {
+            setShowAddItem(false);
+          }
+
+          return ok;
+        }}
+        onContentCreated={onRefreshContentReferences}
+      />
+
+      <CurriculumAssessmentPickerDialog
+        open={activePicker === "ASSESSMENT"}
+        onOpenChange={(open) => setActivePicker(open ? "ASSESSMENT" : null)}
+        items={assessmentOptions}
+        isLoading={isLoadingReferences}
+        isSaving={disabled}
+        onSubmit={async ({ assessmentPoolIds, isRequired }) => {
+          const ok = await onCreateItems(stage.id, {
+            itemType: "ASSESSMENT",
+            contentIds: [],
+            assessmentPoolIds,
+            isRequired,
+          });
+
+          if (ok) {
+            setShowAddItem(false);
+          }
+
+          return ok;
+        }}
+      />
     </div>
   );
 }
 
 function SortableModuleCard({
   module,
+  courseId,
   contentOptions,
+  contentFolders,
   assessmentOptions,
+  isLoadingReferences,
   disabled,
   canEdit,
+  canCreateContent,
   onSave,
   onDelete,
   onCreateStage,
   onSaveStage,
   onDeleteStage,
   onReorderStages,
-  onCreateItem,
+  onCreateItems,
+  onRefreshContentReferences,
   onToggleRequired,
   onDeleteItem,
   onReorderItems,
 }: {
   module: CurriculumModuleSummary;
+  courseId: string;
   contentOptions: ContentOption[];
+  contentFolders: ContentFolderOption[];
   assessmentOptions: AssessmentOption[];
+  isLoadingReferences: boolean;
   disabled: boolean;
   canEdit: boolean;
+  canCreateContent: boolean;
   onSave: (moduleId: string, input: { title: string; description: string }) => Promise<boolean>;
   onDelete: (moduleId: string) => Promise<boolean>;
   onCreateStage: (moduleId: string, input: { title: string; description: string }) => Promise<boolean>;
   onSaveStage: (stageId: string, input: { title: string; description: string }) => Promise<boolean>;
   onDeleteStage: (stageId: string) => Promise<boolean>;
   onReorderStages: (moduleId: string, stageIds: string[]) => Promise<void>;
-  onCreateItem: (stageId: string, input: { itemType: CurriculumItemType; contentId: string | null; assessmentPoolId: string | null; isRequired: boolean }) => Promise<boolean>;
+  onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
+  onRefreshContentReferences: () => Promise<void>;
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
   onDeleteItem: (itemId: string) => Promise<boolean>;
   onReorderItems: (stageId: string, itemIds: string[]) => Promise<void>;
@@ -867,13 +904,18 @@ function SortableModuleCard({
                         <SortableStageCard
                           key={stage.id}
                           stage={stage}
+                          courseId={courseId}
                           contentOptions={contentOptions}
+                          contentFolders={contentFolders}
                           assessmentOptions={assessmentOptions}
+                          isLoadingReferences={isLoadingReferences}
                           disabled={disabled}
                           canEdit={canEdit}
+                          canCreateContent={canCreateContent}
                           onSave={onSaveStage}
                           onDelete={onDeleteStage}
-                          onCreateItem={onCreateItem}
+                          onCreateItems={onCreateItems}
+                          onRefreshContentReferences={onRefreshContentReferences}
                           onToggleRequired={onToggleRequired}
                           onDeleteItem={onDeleteItem}
                           onReorderItems={onReorderItems}
@@ -945,8 +987,8 @@ function CurriculumBatchMappingCard({
   onToggle: (batchId: string, nextMapped: boolean) => Promise<void>;
 }) {
   const orderedBatches = [...batches].sort((left, right) => {
-    if (left.isMapped !== right.isMapped) {
-      return left.isMapped ? -1 : 1;
+    if (left.hasEffectiveAccess !== right.hasEffectiveAccess) {
+      return left.hasEffectiveAccess ? -1 : 1;
     }
 
     return new Date(right.startDate).getTime() - new Date(left.startDate).getTime();
@@ -958,7 +1000,7 @@ function CurriculumBatchMappingCard({
         <div>
           <p className="text-lg font-semibold text-slate-900">Batch mapping</p>
           <p className="text-sm text-muted-foreground">
-            Assign this curriculum to batches whose program belongs to the selected course.
+            Published curricula are inherited automatically by every batch in the selected course. Batch mappings remain available for unpublished rollout planning.
           </p>
         </div>
 
@@ -979,8 +1021,8 @@ function CurriculumBatchMappingCard({
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-semibold text-slate-900">{batch.batchName}</p>
-                    <Badge variant={batch.isMapped ? "default" : "info"}>
-                      {batch.isMapped ? "Mapped" : "Available"}
+                    <Badge variant={batch.hasEffectiveAccess ? "default" : "info"}>
+                      {batch.hasEffectiveAccess ? assignmentSourceLabels[batch.assignmentSource] : "Available for mapping"}
                     </Badge>
                     <Badge variant="info">{batch.status}</Badge>
                   </div>
@@ -996,23 +1038,38 @@ function CurriculumBatchMappingCard({
                       Assigned {batch.assignedAt ? formatDateTime(batch.assignedAt) : "recently"}
                       {batch.assignedByName ? ` by ${batch.assignedByName}` : ""}
                     </p>
+                  ) : batch.isInheritedFromCourse ? (
+                    <p className="text-xs text-muted-foreground">
+                      This batch inherits the selected published curriculum automatically because it belongs to the same course.
+                    </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      This batch can use the selected curriculum because it belongs to the same course.
+                      This batch can be batch-mapped because it belongs to the same course.
                     </p>
                   )}
                 </div>
 
-                {canEdit ? (
+                {canEdit && batch.canRemoveBatchMapping ? (
                   <Button
                     type="button"
-                    variant={batch.isMapped ? "secondary" : "default"}
+                    variant="secondary"
                     disabled={disabled}
                     onClick={() => {
-                      void onToggle(batch.batchId, !batch.isMapped);
+                      void onToggle(batch.batchId, false);
                     }}
                   >
-                    {batch.isMapped ? "Remove Mapping" : "Assign Curriculum"}
+                    Remove Batch Mapping
+                  </Button>
+                ) : canEdit && batch.canAddBatchMapping ? (
+                  <Button
+                    type="button"
+                    variant="default"
+                    disabled={disabled}
+                    onClick={() => {
+                      void onToggle(batch.batchId, true);
+                    }}
+                  >
+                    Add Batch Mapping
                   </Button>
                 ) : null}
               </div>
@@ -1057,6 +1114,7 @@ export default function CurriculumBuilderPage() {
   const { can } = useRbac();
   const canCreateCurriculum = can("curriculum.create");
   const canEditCurriculum = can("curriculum.edit");
+  const canCreateContent = can("course_content.create");
 
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -1065,6 +1123,7 @@ export default function CurriculumBuilderPage() {
   const [curriculum, setCurriculum] = useState<CurriculumDetail | null>(null);
   const [curriculumBatches, setCurriculumBatches] = useState<CurriculumBatchMapping[]>([]);
   const [contentOptions, setContentOptions] = useState<ContentOption[]>([]);
+  const [contentFolders, setContentFolders] = useState<ContentFolderOption[]>([]);
   const [assessmentOptions, setAssessmentOptions] = useState<AssessmentOption[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(true);
   const [isLoadingCurricula, setIsLoadingCurricula] = useState(false);
@@ -1093,17 +1152,27 @@ export default function CurriculumBuilderPage() {
       const response = await fetch("/api/courses", { cache: "no-store" });
       const data = await readApiData<CourseOption[]>(response, "Failed to load courses.");
       const activeCourses = data.filter((course) => course.isActive);
+      const requestedCourseId = typeof window === "undefined"
+        ? ""
+        : new URLSearchParams(window.location.search).get("courseId")?.trim() ?? "";
+      const preferredCourseId = activeCourses.some((course) => course.id === requestedCourseId)
+        ? requestedCourseId
+        : activeCourses[0]?.id ?? "";
 
       setCourses(activeCourses);
-      if (activeCourses.length > 0 && !selectedCourseId) {
-        setSelectedCourseId(activeCourses[0].id);
-      }
+      setSelectedCourseId((current) => {
+        if (current && activeCourses.some((course) => course.id === current)) {
+          return current;
+        }
+
+        return preferredCourseId;
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load courses.");
     } finally {
       setIsLoadingCourses(false);
     }
-  }, [selectedCourseId]);
+  }, []);
 
   const loadCurricula = useCallback(async (courseId: string, preferredCurriculumId?: string) => {
     if (!courseId) {
@@ -1179,6 +1248,7 @@ export default function CurriculumBuilderPage() {
   const loadReferences = useCallback(async (courseId: string) => {
     if (!courseId) {
       setContentOptions([]);
+      setContentFolders([]);
       setAssessmentOptions([]);
       return;
     }
@@ -1186,15 +1256,21 @@ export default function CurriculumBuilderPage() {
     setIsLoadingReferences(true);
 
     try {
-      const [contentResult, assessmentResult] = await Promise.allSettled([
+      const [contentResult, folderResult, assessmentResult] = await Promise.allSettled([
         fetch(`/api/course-content?courseId=${courseId}`, { cache: "no-store" }).then((response) => readApiData<Array<{
           id: string;
           title: string;
           status: string;
+          folderId: string | null;
           folderName: string | null;
           contentType: string;
         }>>(response, "Failed to load course content.")),
-        fetch(`/api/assessment-pool?courseId=${courseId}`, { cache: "no-store" }).then((response) => readApiData<Array<{
+        fetch(`/api/course-content-folders?courseId=${courseId}`, { cache: "no-store" }).then((response) => readApiData<Array<{
+          id: string;
+          name: string;
+          contentCount: number;
+        }>>(response, "Failed to load course content folders.")),
+        fetch(`/api/assessment-pool`, { cache: "no-store" }).then((response) => readApiData<Array<{
           id: string;
           code: string;
           title: string;
@@ -1209,6 +1285,13 @@ export default function CurriculumBuilderPage() {
       } else {
         setContentOptions([]);
         toast.error(contentResult.reason instanceof Error ? contentResult.reason.message : "Failed to load course content.");
+      }
+
+      if (folderResult.status === "fulfilled") {
+        setContentFolders(folderResult.value);
+      } else {
+        setContentFolders([]);
+        toast.error(folderResult.reason instanceof Error ? folderResult.reason.message : "Failed to load course content folders.");
       }
 
       if (assessmentResult.status === "fulfilled") {
@@ -1255,6 +1338,7 @@ export default function CurriculumBuilderPage() {
       setCurriculum(null);
       setCurriculumBatches([]);
       setContentOptions([]);
+      setContentFolders([]);
       setAssessmentOptions([]);
       return;
     }
@@ -1298,6 +1382,14 @@ export default function CurriculumBuilderPage() {
       setShowAddCurriculumForm(true);
     }
   }, [canCreateCurriculum, curricula.length]);
+
+  const refreshReferenceInventory = useCallback(async () => {
+    if (!selectedCourseId) {
+      return;
+    }
+
+    await loadReferences(selectedCourseId);
+  }, [loadReferences, selectedCourseId]);
 
   async function handleCreateCurriculum() {
     if (!selectedCourse || !newCurriculumTitle.trim()) {
@@ -1486,22 +1578,23 @@ export default function CurriculumBuilderPage() {
     }
   }
 
-  async function handleCreateStageItem(stageId: string, input: { itemType: CurriculumItemType; contentId: string | null; assessmentPoolId: string | null; isRequired: boolean }) {
+  async function handleCreateStageItems(stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) {
     setActiveAction(`stage:${stageId}:item:create`);
 
     try {
-      await sendJson(`/api/curriculum/stage-items`, {
+      const createdItems = await sendJson<Array<{ id: string }>>(`/api/curriculum/stage-items`, {
         method: "POST",
         body: JSON.stringify({
           stageId,
           itemType: input.itemType,
-          contentId: input.contentId,
-          assessmentPoolId: input.assessmentPoolId,
+          contentIds: input.contentIds,
+          assessmentPoolIds: input.assessmentPoolIds,
           isRequired: input.isRequired,
         }),
       }, "Failed to create stage item.");
 
-      toast.success(`${input.itemType === "CONTENT" ? "Content" : "Assessment"} item added to stage.`);
+      const createdCount = createdItems.length;
+      toast.success(`${createdCount} ${input.itemType === "CONTENT" ? "content" : "assessment"} item${createdCount === 1 ? "" : "s"} added to stage.`);
       await refreshSelectedCurriculumWorkspace({ preferredCurriculumId: selectedCurriculumId });
       return true;
     } catch (error) {
@@ -2044,17 +2137,22 @@ export default function CurriculumBuilderPage() {
                               <SortableModuleCard
                                 key={moduleRecord.id}
                                 module={moduleRecord}
+                                courseId={selectedCourseId}
                                 contentOptions={contentOptions}
+                                contentFolders={contentFolders}
                                 assessmentOptions={assessmentOptions}
+                                isLoadingReferences={isLoadingReferences}
                                 disabled={isMutating}
                                 canEdit={canEditCurriculum}
+                                canCreateContent={canCreateContent}
                                 onSave={handleSaveModule}
                                 onDelete={handleDeleteModule}
                                 onCreateStage={handleCreateStage}
                                 onSaveStage={handleSaveStage}
                                 onDeleteStage={handleDeleteStage}
                                 onReorderStages={handleReorderStages}
-                                onCreateItem={handleCreateStageItem}
+                                onCreateItems={handleCreateStageItems}
+                                onRefreshContentReferences={refreshReferenceInventory}
                                 onToggleRequired={handleToggleItemRequired}
                                 onDeleteItem={handleDeleteStageItem}
                                 onReorderItems={handleReorderStageItems}

@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
+import { COURSE_STATUS_OPTIONS } from "@/lib/course-status";
+import { CourseStatus } from "@/types";
 
 type CourseProgramSummary = {
   id: string;
@@ -22,6 +24,7 @@ type CourseDetail = {
   id: string;
   name: string;
   description: string | null;
+  status: CourseStatus;
   isActive: boolean;
   programs: CourseProgramSummary[];
 };
@@ -29,12 +32,14 @@ type CourseDetail = {
 type EditCourseForm = {
   name: string;
   description: string;
+  status: CourseStatus;
   isActive: boolean;
 };
 
 const emptyForm: EditCourseForm = {
   name: "",
   description: "",
+  status: CourseStatus.DRAFT,
   isActive: true,
 };
 
@@ -78,6 +83,7 @@ export function EditCourseSheet({ courseId, open, onOpenChange }: EditCourseShee
         setForm({
           name: payload.data.name,
           description: payload.data.description ?? "",
+          status: payload.data.status,
           isActive: payload.data.isActive,
         });
         setPrograms(payload.data.programs);
@@ -213,10 +219,30 @@ export function EditCourseSheet({ courseId, open, onOpenChange }: EditCourseShee
                     onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Lifecycle Status</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                    value={form.status}
+                    onChange={(event) => setForm((prev) => ({
+                      ...prev,
+                      status: event.target.value as CourseStatus,
+                      isActive: event.target.value === CourseStatus.ARCHIVED ? false : prev.isActive,
+                    }))}
+                  >
+                    {COURSE_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    {COURSE_STATUS_OPTIONS.find((option) => option.value === form.status)?.description}
+                  </p>
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     id="course-active"
                     type="checkbox"
+                    disabled={form.status === CourseStatus.ARCHIVED}
                     checked={form.isActive}
                     onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
                   />
@@ -272,6 +298,9 @@ export function EditCourseSheet({ courseId, open, onOpenChange }: EditCourseShee
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Description:</span> {form.description.trim() || "N/A"}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-900">Status:</span> {COURSE_STATUS_OPTIONS.find((option) => option.value === form.status)?.label ?? form.status}
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Programs:</span> {programs.length}

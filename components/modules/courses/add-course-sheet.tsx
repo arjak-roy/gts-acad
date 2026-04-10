@@ -9,7 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useDebounce } from "@/hooks/use-debounce";
+import { COURSE_STATUS_OPTIONS } from "@/lib/course-status";
 import { cn, formatGeneratedCode } from "@/lib/utils";
+import { CourseStatus } from "@/types";
 
 type ProgramOption = {
   id: string;
@@ -24,6 +26,7 @@ type AddCourseForm = {
   code: string;
   name: string;
   description: string;
+  status: CourseStatus;
   programIds: string[];
 };
 
@@ -31,6 +34,7 @@ const initialForm: AddCourseForm = {
   code: "",
   name: "",
   description: "",
+  status: CourseStatus.DRAFT,
   programIds: [],
 };
 
@@ -215,6 +219,7 @@ export function AddCourseSheet() {
           code: form.code,
           name: form.name,
           description: form.description,
+          status: form.status,
           isActive: true,
           programIds: form.programIds,
         }),
@@ -274,6 +279,21 @@ export function AddCourseSheet() {
                 value={form.description}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
               />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Lifecycle Status</label>
+              <select
+                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                value={form.status}
+                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as CourseStatus }))}
+              >
+                {COURSE_STATUS_OPTIONS.filter((option) => option.value !== CourseStatus.ARCHIVED).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                {COURSE_STATUS_OPTIONS.find((option) => option.value === form.status)?.description}
+              </p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
@@ -357,6 +377,9 @@ export function AddCourseSheet() {
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Description:</span> {form.description.trim() || "N/A"}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-900">Status:</span> {COURSE_STATUS_OPTIONS.find((option) => option.value === form.status)?.label ?? form.status}
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Programs:</span> {selectedProgramNames.length > 0 ? selectedProgramNames.join(", ") : "None selected"}

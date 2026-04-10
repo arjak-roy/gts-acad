@@ -17,6 +17,10 @@ type BatchContentItem = {
   fileName: string | null;
   assignedByName: string | null;
   assignedAt: string;
+  assignmentSource: "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
 };
 
 type BatchAssessmentItem = {
@@ -32,6 +36,10 @@ type BatchAssessmentItem = {
   assignedByName: string | null;
   scheduledAt: string | null;
   assignedAt: string;
+  assignmentSource: "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+  canRemoveBatchMapping: boolean;
 };
 
 type AvailableContent = {
@@ -64,6 +72,12 @@ const questionTypeLabels: Record<string, string> = {
   FILL_IN_THE_BLANK: "Fill Blank",
   MULTI_INPUT_REASONING: "Multi-Input",
   TWO_PART_ANALYSIS: "Two-Part",
+};
+
+const assignmentSourceLabels: Record<BatchContentItem["assignmentSource"], string> = {
+  COURSE: "Inherited from course",
+  BATCH: "Batch-specific mapping",
+  COURSE_AND_BATCH: "Inherited + batch mapping",
 };
 
 export function BatchContentMappingTab() {
@@ -283,37 +297,42 @@ export function BatchContentMappingTab() {
           {activeTab === "content" ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{assignedContent.length} content item{assignedContent.length !== 1 ? "s" : ""} assigned</p>
-                <CanAccess permission="batch_content.assign">
-                  <Button size="sm" variant="secondary" onClick={() => { setShowAvailable(true); void fetchAvailable(); }}>
-                    + Assign Content
-                  </Button>
-                </CanAccess>
+                <div>
+                  <p className="text-sm text-muted-foreground">{assignedContent.length} content item{assignedContent.length !== 1 ? "s" : ""} available to this batch</p>
+                  <p className="text-xs text-muted-foreground">Published course content is inherited automatically. Batch mappings remain supplemental only.</p>
+                </div>
               </div>
               {assignedContent.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-muted-foreground">
-                  <p className="text-sm">No content assigned to this batch yet.</p>
+                  <p className="text-sm">No published course content is currently available to this batch.</p>
                 </div>
               ) : (
                 <div className="divide-y rounded-lg border">
                   {assignedContent.map((item) => (
                     <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.contentTitle}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-medium">{item.contentTitle}</p>
+                          <Badge variant="info" className="text-[10px] px-1 py-0">
+                            {assignmentSourceLabels[item.assignmentSource]}
+                          </Badge>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {item.contentType} {item.fileName && `· ${item.fileName}`}
                           {item.assignedByName && ` · by ${item.assignedByName}`}
                         </p>
                       </div>
                       <CanAccess permission="batch_content.remove">
+                        {item.canRemoveBatchMapping ? (
                         <Button
                           variant="ghost"
                           size="sm"
                           className="shrink-0 text-destructive hover:text-destructive"
                           onClick={() => handleRemoveContent(item.contentId)}
                         >
-                          Remove
+                          Remove Batch Mapping
                         </Button>
+                        ) : null}
                       </CanAccess>
                     </div>
                   ))}
@@ -323,10 +342,13 @@ export function BatchContentMappingTab() {
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{assignedAssessments.length} assessment{assignedAssessments.length !== 1 ? "s" : ""} assigned</p>
+                <div>
+                  <p className="text-sm text-muted-foreground">{assignedAssessments.length} assessment{assignedAssessments.length !== 1 ? "s" : ""} available to this batch</p>
+                  <p className="text-xs text-muted-foreground">Course-linked assessments are inherited automatically. Use batch mappings for supplemental pools or schedules.</p>
+                </div>
                 <CanAccess permission="batch_content.assign">
                   <Button size="sm" variant="secondary" onClick={() => { setShowAvailable(true); void fetchAvailable(); }}>
-                    + Assign Assessment
+                    + Add Supplemental Assessment
                   </Button>
                 </CanAccess>
               </div>
@@ -342,6 +364,9 @@ export function BatchContentMappingTab() {
                         <div className="flex items-center gap-2">
                           <p className="truncate text-sm font-medium">{item.assessmentTitle}</p>
                           <span className="text-xs font-mono text-muted-foreground">{item.assessmentCode}</span>
+                          <Badge variant="info" className="text-[10px] px-1 py-0">
+                            {assignmentSourceLabels[item.assignmentSource]}
+                          </Badge>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant="info" className="text-[10px] px-1 py-0">{questionTypeLabels[item.questionType] ?? item.questionType}</Badge>
@@ -352,14 +377,16 @@ export function BatchContentMappingTab() {
                         </div>
                       </div>
                       <CanAccess permission="batch_content.remove">
+                        {item.canRemoveBatchMapping ? (
                         <Button
                           variant="ghost"
                           size="sm"
                           className="shrink-0 text-destructive hover:text-destructive"
                           onClick={() => handleRemoveAssessment(item.assessmentPoolId)}
                         >
-                          Remove
+                          Remove Batch Mapping
                         </Button>
+                        ) : null}
                       </CanAccess>
                     </div>
                   ))}
@@ -382,7 +409,7 @@ export function BatchContentMappingTab() {
 
               {activeTab === "content" ? (
                 availableContent.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No available published content for this batch&apos;s course.</p>
+                  <p className="text-xs text-muted-foreground">No extra content mappings are available because published course content is inherited automatically.</p>
                 ) : (
                   <div className="divide-y rounded-lg border bg-background">
                     {availableContent.map((item) => (
@@ -392,7 +419,7 @@ export function BatchContentMappingTab() {
                           <p className="text-xs text-muted-foreground">{item.contentType}</p>
                         </div>
                         <Button size="sm" variant="secondary" onClick={() => handleAssignContent([item.id])}>
-                          Assign
+                          Add Batch Mapping
                         </Button>
                       </div>
                     ))}
@@ -400,7 +427,7 @@ export function BatchContentMappingTab() {
                 )
               ) : (
                 availableAssessments.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No available published assessments for this batch&apos;s course.</p>
+                  <p className="text-xs text-muted-foreground">No supplemental published assessments are currently available for this batch.</p>
                 ) : (
                   <div className="divide-y rounded-lg border bg-background">
                     {availableAssessments.map((item) => (
@@ -412,7 +439,7 @@ export function BatchContentMappingTab() {
                           </p>
                         </div>
                         <Button size="sm" variant="secondary" onClick={() => handleAssignAssessment([item.id])}>
-                          Assign
+                          Add Batch Mapping
                         </Button>
                       </div>
                     ))}

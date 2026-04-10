@@ -2,29 +2,29 @@ import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerDetail, TrainerOption } from "@/services/trainers/types";
 
-function filterMockByProgram(programName?: string) {
-  const normalizedProgramName = programName?.trim();
+function filterMockByCourse(courseName?: string) {
+  const normalizedCourseName = courseName?.trim();
 
   return MOCK_TRAINERS.filter((trainer) =>
-    normalizedProgramName
-      ? trainer.programs.some((program) => program.toLowerCase() === normalizedProgramName.toLowerCase())
+    normalizedCourseName
+      ? trainer.courses.some((course) => course.toLowerCase() === normalizedCourseName.toLowerCase())
       : true,
   );
 }
 
-export async function listTrainersService(programName?: string): Promise<TrainerOption[]> {
-  const normalizedProgramName = programName?.trim();
+export async function listTrainersService(courseName?: string): Promise<TrainerOption[]> {
+  const normalizedCourseName = courseName?.trim();
 
   if (!isDatabaseConfigured) {
-    return filterMockByProgram(normalizedProgramName);
+    return filterMockByCourse(normalizedCourseName);
   }
 
   try {
     const trainers = await prisma.trainerProfile.findMany({
-      where: normalizedProgramName
+      where: normalizedCourseName
         ? {
-            programs: {
-              has: normalizedProgramName,
+            courses: {
+              has: normalizedCourseName,
             },
           }
         : undefined,
@@ -45,11 +45,11 @@ export async function listTrainersService(programName?: string): Promise<Trainer
       email: trainer.user.email,
       specialization: trainer.specialization,
       isActive: trainer.isActive,
-      programs: trainer.programs,
+      courses: trainer.courses,
     }));
   } catch (error) {
     console.warn("Trainer list fallback activated", error);
-    return filterMockByProgram(normalizedProgramName);
+    return filterMockByCourse(normalizedCourseName);
   }
 }
 
@@ -62,21 +62,21 @@ export async function searchTrainersService(query: string, limit: number): Promi
         trainer.fullName.toLowerCase().includes(normalizedQuery) ||
         trainer.email.toLowerCase().includes(normalizedQuery) ||
         trainer.specialization.toLowerCase().includes(normalizedQuery) ||
-        trainer.programs.some((program) => program.toLowerCase().includes(normalizedQuery)),
+        trainer.courses.some((course) => course.toLowerCase().includes(normalizedQuery)),
     ).slice(0, limit);
   }
 
   try {
     // Run two branches in parallel:
     // Branch A - match on name / email / specialization directly
-    // Branch B - resolve program names first, then match trainers via hasSome
+    // Branch B - resolve course names first, then match trainers via hasSome
     const trainerSelect = {
       include: { user: { select: { name: true, email: true } } },
       orderBy: [{ isActive: "desc" as const }, { joinedAt: "desc" as const }],
       take: limit,
     };
 
-    const [branchA, matchingPrograms] = await Promise.all([
+    const [branchA, matchingCourses] = await Promise.all([
       prisma.trainerProfile.findMany({
         where: {
           OR: [
@@ -87,7 +87,7 @@ export async function searchTrainersService(query: string, limit: number): Promi
         },
         ...trainerSelect,
       }),
-      prisma.program.findMany({
+      prisma.course.findMany({
         where: { name: { contains: query, mode: "insensitive" } },
         select: { name: true },
         take: 20,
@@ -95,9 +95,9 @@ export async function searchTrainersService(query: string, limit: number): Promi
     ]);
 
     const branchB =
-      matchingPrograms.length > 0
+      matchingCourses.length > 0
         ? await prisma.trainerProfile.findMany({
-            where: { programs: { hasSome: matchingPrograms.map((p) => p.name) } },
+            where: { courses: { hasSome: matchingCourses.map((course) => course.name) } },
             ...trainerSelect,
           })
         : [];
@@ -121,7 +121,7 @@ export async function searchTrainersService(query: string, limit: number): Promi
       email: trainer.user.email,
       specialization: trainer.specialization,
       isActive: trainer.isActive,
-      programs: trainer.programs,
+      courses: trainer.courses,
     }));
   } catch (error) {
     console.warn("Trainer search fallback activated", error);
@@ -130,7 +130,7 @@ export async function searchTrainersService(query: string, limit: number): Promi
         trainer.fullName.toLowerCase().includes(normalizedQuery) ||
         trainer.email.toLowerCase().includes(normalizedQuery) ||
         trainer.specialization.toLowerCase().includes(normalizedQuery) ||
-        trainer.programs.some((program) => program.toLowerCase().includes(normalizedQuery)),
+        trainer.courses.some((course) => course.toLowerCase().includes(normalizedQuery)),
     ).slice(0, limit);
   }
 }
@@ -152,7 +152,7 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
       bio: null,
       capacity: 0,
       status: trainer.isActive ? "ACTIVE" : "INACTIVE",
-      programs: trainer.programs,
+      courses: trainer.courses,
     };
   }
 
@@ -184,24 +184,24 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
     bio: trainer.bio,
     capacity: trainer.capacity,
     status: trainer.isActive ? "ACTIVE" : "INACTIVE",
-    programs: trainer.programs,
+    courses: trainer.courses,
   };
 }
 
-export async function getTrainersForProgramService(programName: string): Promise<TrainerOption[]> {
-  const normalizedProgramName = programName.trim();
+export async function getTrainersForCourseService(courseName: string): Promise<TrainerOption[]> {
+  const normalizedCourseName = courseName.trim();
 
   if (!isDatabaseConfigured) {
     return MOCK_TRAINERS.filter((trainer) =>
-      trainer.programs.some((program) => program.toLowerCase() === normalizedProgramName.toLowerCase()),
+      trainer.courses.some((course) => course.toLowerCase() === normalizedCourseName.toLowerCase()),
     );
   }
 
   const trainers = await prisma.trainerProfile.findMany({
     where: {
       isActive: true,
-      programs: {
-        has: normalizedProgramName,
+      courses: {
+        has: normalizedCourseName,
       },
     },
     include: { user: { select: { name: true, email: true } } },
@@ -213,6 +213,6 @@ export async function getTrainersForProgramService(programName: string): Promise
     email: trainer.user.email,
     specialization: trainer.specialization,
     isActive: trainer.isActive,
-    programs: trainer.programs,
+    courses: trainer.courses,
   }));
 }

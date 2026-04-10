@@ -10,8 +10,8 @@ import { searchDashboardService } from "@/services/dashboard-search-service";
  * Returns service output so UI can remain independent of data source details.
  */
 export async function getDashboardStats(input?: unknown) {
-  getDashboardStatsSchema.parse(input ?? {});
-  return getDashboardStatsService();
+  const parsed = getDashboardStatsSchema.parse(input ?? {});
+  return getDashboardStatsService(parsed);
 }
 
 /**

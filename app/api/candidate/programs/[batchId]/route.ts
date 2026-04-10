@@ -5,7 +5,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireCandidateSession } from "@/lib/auth/route-guards";
 import { batchIdSchema } from "@/lib/validation-schemas/batches";
 import { listBatchAssessmentsService, listBatchContentService } from "@/services/batch-content-service";
-import { getCurriculaForBatchService } from "@/services/curriculum-service";
+import { getCandidateCurriculaForBatchService } from "@/services/curriculum-service";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
 import { listScheduleEventsService } from "@/services/schedule-service";
 
@@ -36,13 +36,23 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     }
 
     const [curriculumWorkspace, assessments, resources, scheduleResponse] = await Promise.all([
-      getCurriculaForBatchService(batchId),
-      listBatchAssessmentsService(batchId),
-      listBatchContentService(batchId),
+      getCandidateCurriculaForBatchService({ batchId, learnerId: profile.id }),
+      listBatchAssessmentsService(batchId, { publishedOnly: true }),
+      listBatchContentService(batchId, { publishedOnly: true }),
       listScheduleEventsService({ batchId, page: 1, pageSize: 100 }),
     ]);
 
-    const { availableCurricula: _availableCurricula, ...curriculum } = curriculumWorkspace;
+    const curriculum = {
+      batchId: curriculumWorkspace.batchId,
+      batchCode: curriculumWorkspace.batchCode,
+      batchName: curriculumWorkspace.batchName,
+      programId: curriculumWorkspace.programId,
+      programName: curriculumWorkspace.programName,
+      courseId: curriculumWorkspace.courseId,
+      courseCode: curriculumWorkspace.courseCode,
+      courseName: curriculumWorkspace.courseName,
+      assignedCurricula: curriculumWorkspace.assignedCurricula,
+    };
 
     const response = apiSuccess({
       enrollment,

@@ -1,104 +1,289 @@
 import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import type { BatchAssessmentItem, BatchContentItem } from "@/services/batch-content/types";
+import { getBatchCourseContext } from "@/services/lms/hierarchy";
+import type { BatchAssessmentItem, BatchContentItem, BatchAssignmentSource } from "@/services/batch-content/types";
 import type { ContentListItem } from "@/services/course-content/types";
 import type { AssessmentPoolListItem } from "@/services/assessment-pool/types";
 
-export async function listBatchContentService(batchId: string): Promise<BatchContentItem[]> {
+type ListBatchItemsOptions = {
+  publishedOnly?: boolean;
+};
+
+function resolveAssignmentSource(options: {
+  isInheritedFromCourse: boolean;
+  isBatchMapped: boolean;
+}): BatchAssignmentSource {
+  if (options.isInheritedFromCourse && options.isBatchMapped) {
+    return "COURSE_AND_BATCH";
+  }
+
+  if (options.isBatchMapped) {
+    return "BATCH";
+  }
+
+  return "COURSE";
+}
+
+export async function listBatchContentService(batchId: string, options?: ListBatchItemsOptions): Promise<BatchContentItem[]> {
   if (!isDatabaseConfigured) return [];
 
-  const mappings = await prisma.batchContentMapping.findMany({
-    where: { batchId },
-    orderBy: { assignedAt: "desc" },
-    select: {
-      id: true,
-      batchId: true,
-      contentId: true,
-      assignedAt: true,
-      content: {
-        select: {
-          title: true,
-          description: true,
-          excerpt: true,
-          contentType: true,
-          status: true,
-          estimatedReadingMinutes: true,
-          fileUrl: true,
-          fileName: true,
-          mimeType: true,
-          folder: {
-            select: {
-              name: true,
+  const batch = await getBatchCourseContext(batchId);
+
+  if (!batch) {
+    return [];
+  }
+
+  const [mappedContents, inheritedCourseContents] = await Promise.all([
+    prisma.batchContentMapping.findMany({
+      where: {
+        batchId,
+        ...(options?.publishedOnly ? { content: { is: { status: "PUBLISHED" } } } : {}),
+      },
+      orderBy: { assignedAt: "desc" },
+      select: {
+        id: true,
+        batchId: true,
+        contentId: true,
+        assignedAt: true,
+        content: {
+          select: {
+            title: true,
+            description: true,
+            excerpt: true,
+            contentType: true,
+            status: true,
+            estimatedReadingMinutes: true,
+            fileUrl: true,
+            fileName: true,
+            mimeType: true,
+            course: {
+              select: {
+                name: true,
+              },
+            },
+            folder: {
+              select: {
+                name: true,
+              },
             },
           },
         },
+        assignedBy: { select: { name: true } },
       },
-      assignedBy: { select: { name: true } },
-    },
-  });
-
-  return mappings.map((m) => ({
-    id: m.id,
-    batchId: m.batchId,
-    contentId: m.contentId,
-    contentTitle: m.content.title,
-    contentDescription: m.content.description,
-    contentExcerpt: m.content.excerpt,
-    contentType: m.content.contentType,
-    contentStatus: m.content.status,
-    folderName: m.content.folder?.name ?? null,
-    estimatedReadingMinutes: m.content.estimatedReadingMinutes,
-    fileUrl: m.content.fileUrl,
-    fileName: m.content.fileName,
-    mimeType: m.content.mimeType,
-    assignedByName: m.assignedBy?.name ?? null,
-    assignedAt: m.assignedAt,
-  }));
-}
-
-export async function listBatchAssessmentsService(batchId: string): Promise<BatchAssessmentItem[]> {
-  if (!isDatabaseConfigured) return [];
-
-  const mappings = await prisma.batchAssessmentMapping.findMany({
-    where: { batchId },
-    orderBy: { assignedAt: "desc" },
-    select: {
-      id: true,
-      batchId: true,
-      assessmentPoolId: true,
-      scheduledAt: true,
-      assignedAt: true,
-      assessmentPool: {
-        select: {
-          title: true,
-          code: true,
-          questionType: true,
-          difficultyLevel: true,
-          status: true,
-          totalMarks: true,
-          _count: { select: { questions: true } },
+    }),
+    prisma.courseContent.findMany({
+      where: {
+        courseId: batch.courseId,
+        status: "PUBLISHED",
+      },
+      orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        excerpt: true,
+        contentType: true,
+        status: true,
+        estimatedReadingMinutes: true,
+        fileUrl: true,
+        fileName: true,
+        mimeType: true,
+        createdAt: true,
+        folder: {
+          select: {
+            name: true,
+          },
         },
       },
-      assignedBy: { select: { name: true } },
-    },
+    }),
+  ]);
+
+  const mappedByContentId = new Map(mappedContents.map((mapping) => [mapping.contentId, mapping]));
+
+  const inheritedItems: BatchContentItem[] = inheritedCourseContents.map((content) => {
+    const mapping = mappedByContentId.get(content.id);
+
+    if (mapping) {
+      mappedByContentId.delete(content.id);
+    }
+
+    return {
+      id: mapping?.id ?? `course:${batchId}:${content.id}`,
+      batchId,
+      contentId: content.id,
+      contentTitle: content.title,
+      contentDescription: content.description,
+      contentExcerpt: content.excerpt,
+      contentType: content.contentType,
+      contentStatus: content.status,
+      folderName: content.folder?.name ?? null,
+      estimatedReadingMinutes: content.estimatedReadingMinutes,
+      fileUrl: content.fileUrl,
+      fileName: content.fileName,
+      mimeType: content.mimeType,
+      assignedByName: mapping?.assignedBy?.name ?? null,
+      assignedAt: mapping?.assignedAt ?? content.createdAt,
+      assignmentSource: resolveAssignmentSource({
+        isInheritedFromCourse: true,
+        isBatchMapped: Boolean(mapping),
+      }),
+      isInheritedFromCourse: true,
+      isBatchMapped: Boolean(mapping),
+      canRemoveBatchMapping: Boolean(mapping),
+    };
   });
 
-  return mappings.map((m) => ({
-    id: m.id,
-    batchId: m.batchId,
-    assessmentPoolId: m.assessmentPoolId,
-    assessmentTitle: m.assessmentPool.title,
-    assessmentCode: m.assessmentPool.code,
-    questionType: m.assessmentPool.questionType,
-    difficultyLevel: m.assessmentPool.difficultyLevel,
-    status: m.assessmentPool.status,
-    questionCount: m.assessmentPool._count.questions,
-    totalMarks: m.assessmentPool.totalMarks,
-    assignedByName: m.assignedBy?.name ?? null,
-    scheduledAt: m.scheduledAt,
-    assignedAt: m.assignedAt,
+  const batchOnlyItems = Array.from(mappedByContentId.values()).map((mapping) => ({
+    id: mapping.id,
+    batchId: mapping.batchId,
+    contentId: mapping.contentId,
+    contentTitle: mapping.content.title,
+    contentDescription: mapping.content.description,
+    contentExcerpt: mapping.content.excerpt,
+    contentType: mapping.content.contentType,
+    contentStatus: mapping.content.status,
+    folderName: mapping.content.folder?.name ?? null,
+    estimatedReadingMinutes: mapping.content.estimatedReadingMinutes,
+    fileUrl: mapping.content.fileUrl,
+    fileName: mapping.content.fileName,
+    mimeType: mapping.content.mimeType,
+    assignedByName: mapping.assignedBy?.name ?? null,
+    assignedAt: mapping.assignedAt,
+    assignmentSource: resolveAssignmentSource({
+      isInheritedFromCourse: false,
+      isBatchMapped: true,
+    }),
+    isInheritedFromCourse: false,
+    isBatchMapped: true,
+    canRemoveBatchMapping: true,
   }));
+
+  return [...inheritedItems, ...batchOnlyItems];
+}
+
+export async function listBatchAssessmentsService(batchId: string, options?: ListBatchItemsOptions): Promise<BatchAssessmentItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  const batch = await getBatchCourseContext(batchId);
+
+  if (!batch) {
+    return [];
+  }
+
+  const [mappedAssessments, inheritedCourseAssessments] = await Promise.all([
+    prisma.batchAssessmentMapping.findMany({
+      where: {
+        batchId,
+        ...(options?.publishedOnly ? { assessmentPool: { is: { status: "PUBLISHED" } } } : {}),
+      },
+      orderBy: { assignedAt: "desc" },
+      select: {
+        id: true,
+        batchId: true,
+        assessmentPoolId: true,
+        scheduledAt: true,
+        assignedAt: true,
+        assessmentPool: {
+          select: {
+            title: true,
+            code: true,
+            questionType: true,
+            difficultyLevel: true,
+            status: true,
+            totalMarks: true,
+            _count: { select: { questions: true } },
+          },
+        },
+        assignedBy: { select: { name: true } },
+      },
+    }),
+    prisma.courseAssessmentLink.findMany({
+      where: {
+        courseId: batch.courseId,
+        assessmentPool: {
+          is: {
+            status: "PUBLISHED",
+          },
+        },
+      },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        assessmentPoolId: true,
+        createdAt: true,
+        assessmentPool: {
+          select: {
+            title: true,
+            code: true,
+            questionType: true,
+            difficultyLevel: true,
+            status: true,
+            totalMarks: true,
+            _count: { select: { questions: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const mappedByPoolId = new Map(mappedAssessments.map((mapping) => [mapping.assessmentPoolId, mapping]));
+
+  const inheritedItems: BatchAssessmentItem[] = inheritedCourseAssessments.map((link) => {
+    const mapping = mappedByPoolId.get(link.assessmentPoolId);
+
+    if (mapping) {
+      mappedByPoolId.delete(link.assessmentPoolId);
+    }
+
+    return {
+      id: mapping?.id ?? link.id,
+      batchId,
+      assessmentPoolId: link.assessmentPoolId,
+      assessmentTitle: link.assessmentPool.title,
+      assessmentCode: link.assessmentPool.code,
+      questionType: link.assessmentPool.questionType,
+      difficultyLevel: link.assessmentPool.difficultyLevel,
+      status: link.assessmentPool.status,
+      questionCount: link.assessmentPool._count.questions,
+      totalMarks: link.assessmentPool.totalMarks,
+      assignedByName: mapping?.assignedBy?.name ?? null,
+      scheduledAt: mapping?.scheduledAt ?? null,
+      assignedAt: mapping?.assignedAt ?? link.createdAt,
+      assignmentSource: resolveAssignmentSource({
+        isInheritedFromCourse: true,
+        isBatchMapped: Boolean(mapping),
+      }),
+      isInheritedFromCourse: true,
+      isBatchMapped: Boolean(mapping),
+      canRemoveBatchMapping: Boolean(mapping),
+    };
+  });
+
+  const batchOnlyItems = Array.from(mappedByPoolId.values()).map((mapping) => ({
+    id: mapping.id,
+    batchId: mapping.batchId,
+    assessmentPoolId: mapping.assessmentPoolId,
+    assessmentTitle: mapping.assessmentPool.title,
+    assessmentCode: mapping.assessmentPool.code,
+    questionType: mapping.assessmentPool.questionType,
+    difficultyLevel: mapping.assessmentPool.difficultyLevel,
+    status: mapping.assessmentPool.status,
+    questionCount: mapping.assessmentPool._count.questions,
+    totalMarks: mapping.assessmentPool.totalMarks,
+    assignedByName: mapping.assignedBy?.name ?? null,
+    scheduledAt: mapping.scheduledAt,
+    assignedAt: mapping.assignedAt,
+    assignmentSource: resolveAssignmentSource({
+      isInheritedFromCourse: false,
+      isBatchMapped: true,
+    }),
+    isInheritedFromCourse: false,
+    isBatchMapped: true,
+    canRemoveBatchMapping: true,
+  }));
+
+  return [...inheritedItems, ...batchOnlyItems];
 }
 
 export async function getAvailableContentForBatchService(
@@ -106,73 +291,11 @@ export async function getAvailableContentForBatchService(
 ): Promise<ContentListItem[]> {
   if (!isDatabaseConfigured) return [];
 
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    select: { program: { select: { courseId: true } } },
-  });
+  const batch = await getBatchCourseContext(batchId);
 
   if (!batch) return [];
 
-  const assigned = await prisma.batchContentMapping.findMany({
-    where: { batchId },
-    select: { contentId: true },
-  });
-
-  const assignedIds = new Set(assigned.map((a) => a.contentId));
-
-  const contents = await prisma.courseContent.findMany({
-    where: {
-      courseId: batch.program.courseId,
-      status: "PUBLISHED",
-      id: { notIn: [...assignedIds] },
-    },
-    orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
-    select: {
-      id: true,
-      courseId: true,
-      folderId: true,
-      title: true,
-      description: true,
-      excerpt: true,
-      contentType: true,
-      estimatedReadingMinutes: true,
-      fileUrl: true,
-      fileName: true,
-      fileSize: true,
-      mimeType: true,
-      storagePath: true,
-      storageProvider: true,
-      sortOrder: true,
-      status: true,
-      isScorm: true,
-      createdAt: true,
-      folder: { select: { name: true } },
-      course: { select: { name: true } },
-    },
-  });
-
-  return contents.map((c) => ({
-    id: c.id,
-    courseId: c.courseId,
-    courseName: c.course.name,
-    folderId: c.folderId,
-    folderName: c.folder?.name ?? null,
-    title: c.title,
-    description: c.description,
-    excerpt: c.excerpt,
-    contentType: c.contentType,
-    estimatedReadingMinutes: c.estimatedReadingMinutes,
-    fileUrl: c.fileUrl,
-    fileName: c.fileName,
-    fileSize: c.fileSize,
-    mimeType: c.mimeType,
-    storagePath: c.storagePath,
-    storageProvider: c.storageProvider,
-    sortOrder: c.sortOrder,
-    status: c.status,
-    isScorm: c.isScorm,
-    createdAt: c.createdAt,
-  }));
+  return [];
 }
 
 export async function getAvailableAssessmentsForBatchService(
@@ -180,29 +303,33 @@ export async function getAvailableAssessmentsForBatchService(
 ): Promise<AssessmentPoolListItem[]> {
   if (!isDatabaseConfigured) return [];
 
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    select: { program: { select: { courseId: true } } },
-  });
+  const batch = await getBatchCourseContext(batchId);
 
   if (!batch) return [];
 
-  const assigned = await prisma.batchAssessmentMapping.findMany({
-    where: { batchId },
-    select: { assessmentPoolId: true },
-  });
+  const [assignedMappings, inheritedCourseLinks] = await Promise.all([
+    prisma.batchAssessmentMapping.findMany({
+      where: { batchId },
+      select: { assessmentPoolId: true },
+    }),
+    prisma.courseAssessmentLink.findMany({
+      where: { courseId: batch.courseId },
+      select: { assessmentPoolId: true },
+    }),
+  ]);
 
-  const assignedIds = new Set(assigned.map((a) => a.assessmentPoolId));
+  const excludedIds = new Set([
+    ...assignedMappings.map((mapping) => mapping.assessmentPoolId),
+    ...inheritedCourseLinks.map((link) => link.assessmentPoolId),
+  ]);
 
-  // Get assessments linked to the course OR standalone (no course)
   const pools = await prisma.assessmentPool.findMany({
     where: {
       status: "PUBLISHED",
-      id: { notIn: [...assignedIds] },
+      id: { notIn: [...excludedIds] },
       OR: [
-        { courseId: batch.program.courseId },
-        { courseAssessmentLinks: { some: { courseId: batch.program.courseId } } },
-        { courseId: null },
+        { courseAssessmentLinks: { some: { courseId: batch.courseId } } },
+        { courseAssessmentLinks: { none: {} } },
       ],
     },
     orderBy: { title: "asc" },
@@ -211,7 +338,6 @@ export async function getAvailableAssessmentsForBatchService(
       code: true,
       title: true,
       description: true,
-      courseId: true,
       questionType: true,
       difficultyLevel: true,
       totalMarks: true,
@@ -220,7 +346,6 @@ export async function getAvailableAssessmentsForBatchService(
       status: true,
       isAiGenerated: true,
       createdAt: true,
-      course: { select: { name: true } },
       _count: { select: { questions: true, courseAssessmentLinks: true } },
     },
   });
@@ -230,8 +355,6 @@ export async function getAvailableAssessmentsForBatchService(
     code: p.code,
     title: p.title,
     description: p.description,
-    courseId: p.courseId,
-    courseName: p.course?.name ?? null,
     questionType: p.questionType,
     difficultyLevel: p.difficultyLevel,
     totalMarks: p.totalMarks,

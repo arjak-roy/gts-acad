@@ -10,7 +10,8 @@ import {
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { AUDIT_ENTITY_TYPE, AUDIT_ACTION_TYPE } from "@/services/logs-actions/constants";
 import type { CreateContentInput, UpdateContentInput } from "@/lib/validation-schemas/course-content";
-import { deleteStoredUploadAsset } from "@/services/file-upload";
+import { deleteStoredUploadAssetIfUnreferenced } from "@/services/file-upload";
+import { syncLearningResourceFromContentService } from "@/services/learning-resource-service";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import type { ContentCreateResult } from "@/services/course-content/types";
 
@@ -105,6 +106,11 @@ export async function createContentService(
     message: `Content "${content.title}" created.`,
     actorUserId: options?.actorUserId,
     metadata: { courseId: input.courseId, contentType: input.contentType },
+  });
+
+  await syncLearningResourceFromContentService(content.id, {
+    actorUserId: options?.actorUserId,
+    changeSummary: "Created from repository upload.",
   });
 
   return content;
@@ -262,6 +268,13 @@ export async function updateContentService(
     },
   });
 
+  await syncLearningResourceFromContentService(content.id, {
+    actorUserId: options?.actorUserId,
+    changeSummary: input.status === "ARCHIVED"
+      ? "Archived from repository explorer."
+      : "Updated from repository explorer.",
+  });
+
   return content;
 }
 
@@ -292,16 +305,6 @@ export async function deleteContentService(
     throw new Error("Content not found.");
   }
 
-  if (existing.storagePath) {
-    await deleteStoredUploadAsset(
-      {
-        storageProvider: existing.storageProvider,
-        storagePath: existing.storagePath,
-      },
-      { throwOnError: true },
-    );
-  }
-
   const content = await prisma.courseContent.delete({
     where: { id: contentId },
     select: {
@@ -314,6 +317,14 @@ export async function deleteContentService(
       fileName: true,
     },
   });
+
+  await deleteStoredUploadAssetIfUnreferenced(
+    {
+      storageProvider: existing.storageProvider,
+      storagePath: existing.storagePath,
+    },
+    { throwOnError: true },
+  );
 
   await createAuditLogEntry({
     entityType: AUDIT_ENTITY_TYPE.COURSE_CONTENT,
@@ -360,6 +371,11 @@ export async function archiveContentService(
     action: AUDIT_ACTION_TYPE.UPDATED,
     message: `Content "${content.title}" archived.`,
     actorUserId: options?.actorUserId,
+  });
+
+  await syncLearningResourceFromContentService(content.id, {
+    actorUserId: options?.actorUserId,
+    changeSummary: "Archived from repository explorer.",
   });
 
   return content;

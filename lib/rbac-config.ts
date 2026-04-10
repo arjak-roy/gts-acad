@@ -1,4 +1,6 @@
-export const routePermissionMap: Record<string, string> = {
+export type PermissionRequirement = string | string[];
+
+export const routePermissionMap: Record<string, PermissionRequirement> = {
   "/dashboard": "dashboard.view",
   "/overview": "dashboard.view",
   "/sessions": "sessions.view",
@@ -15,10 +17,12 @@ export const routePermissionMap: Record<string, string> = {
   "/certifications": "certifications.view",
   "/readiness": "readiness.view",
   "/language-lab": "lms.view",
-  "/course-builder": "courses.view",
-  "/course-builder/content": "course_content.view",
+  "/course-builder": ["course_content.view", "learning_resources.view"],
+  "/course-builder/repository": ["course_content.view", "learning_resources.view"],
+  "/course-builder/content": ["course_content.view", "learning_resources.view"],
+  "/course-builder/resources": ["course_content.view", "learning_resources.view"],
   "/course-builder/assessments": "assessment_pool.view",
-  "/course-builder/batch-mapping": "batch_content.view",
+  "/course-builder/batch-mapping": ["course_content.view", "learning_resources.view"],
   "/curriculum-builder": "curriculum.view",
   "/payments": "payments.view",
   "/support": "support.view",
@@ -28,7 +32,7 @@ export const routePermissionMap: Record<string, string> = {
   "/roles": "roles.view",
 };
 
-export function getRequiredPermission(pathname: string): string | null {
+export function getRequiredPermission(pathname: string): PermissionRequirement | null {
   const matchingRoute = Object.keys(routePermissionMap)
     .sort((left, right) => right.length - left.length)
     .find((route) => pathname === route || pathname.startsWith(`${route}/`));

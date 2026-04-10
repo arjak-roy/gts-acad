@@ -21,7 +21,6 @@ type AddProgramForm = {
   durationWeeks: string;
   category: string;
   description: string;
-  trainerIds: string[];
   batchIds: string[];
 };
 
@@ -31,15 +30,6 @@ type CourseOption = {
   description: string | null;
   isActive: boolean;
   programCount: number;
-};
-
-type ProgramTrainerOption = {
-  id: string;
-  fullName: string;
-  email: string;
-  specialization: string;
-  isActive: boolean;
-  programs: string[];
 };
 
 type ProgramBatchOption = {
@@ -58,7 +48,6 @@ const initialForm: AddProgramForm = {
   durationWeeks: "",
   category: "",
   description: "",
-  trainerIds: [],
   batchIds: [],
 };
 
@@ -71,9 +60,7 @@ export function AddProgramSheet() {
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [courses, setCourses] = useState<CourseOption[]>([]);
-  const [trainers, setTrainers] = useState<ProgramTrainerOption[]>([]);
   const [batches, setBatches] = useState<ProgramBatchOption[]>([]);
-  const [trainerSearchTerm, setTrainerSearchTerm] = useState("");
   const [batchSearchTerm, setBatchSearchTerm] = useState("");
   const [form, setForm] = useState<AddProgramForm>(initialForm);
   const debouncedProgramName = useDebounce(form.name, 300);
@@ -141,18 +128,16 @@ export function AddProgramSheet() {
       setIsLoadingOptions(true);
 
       try {
-        const [coursesResponse, trainersResponse, batchesResponse] = await Promise.all([
+        const [coursesResponse, batchesResponse] = await Promise.all([
           fetch("/api/courses", { cache: "no-store" }),
-          fetch("/api/trainers", { cache: "no-store" }),
           fetch("/api/batches", { cache: "no-store" }),
         ]);
 
-        if (!coursesResponse.ok || !trainersResponse.ok || !batchesResponse.ok) {
-          throw new Error("Failed to load course, trainer, and batch options.");
+        if (!coursesResponse.ok || !batchesResponse.ok) {
+          throw new Error("Failed to load course and batch options.");
         }
 
         const coursesPayload = (await coursesResponse.json()) as { data?: CourseOption[] };
-        const trainersPayload = (await trainersResponse.json()) as { data?: ProgramTrainerOption[] };
         const batchesPayload = (await batchesResponse.json()) as { data?: ProgramBatchOption[] };
 
         if (!active) {
@@ -160,14 +145,13 @@ export function AddProgramSheet() {
         }
 
         setCourses((coursesPayload.data ?? []).filter((course) => course.isActive));
-        setTrainers((trainersPayload.data ?? []).filter((trainer) => trainer.isActive));
         setBatches((batchesPayload.data ?? []).filter((batch) => batch.status !== "ARCHIVED"));
       } catch (loadError) {
         if (!active) {
           return;
         }
 
-        const message = loadError instanceof Error ? loadError.message : "Failed to load course, trainer, and batch options.";
+        const message = loadError instanceof Error ? loadError.message : "Failed to load course and batch options.";
         setError(message);
       } finally {
         if (active) {
@@ -182,22 +166,6 @@ export function AddProgramSheet() {
       active = false;
     };
   }, [open]);
-
-  const filteredTrainerResults = useMemo(() => {
-    if (!trainerSearchTerm.trim()) {
-      return [];
-    }
-
-    const term = trainerSearchTerm.toLowerCase();
-    return trainers.filter(
-      (trainer) =>
-        !form.trainerIds.includes(trainer.id) &&
-        (trainer.fullName.toLowerCase().includes(term) ||
-          trainer.email.toLowerCase().includes(term) ||
-          trainer.specialization.toLowerCase().includes(term) ||
-          trainer.programs.some((program) => program.toLowerCase().includes(term))),
-    );
-  }, [trainerSearchTerm, trainers, form.trainerIds]);
 
   const filteredBatchResults = useMemo(() => {
     if (!batchSearchTerm.trim()) {
@@ -214,11 +182,6 @@ export function AddProgramSheet() {
     );
   }, [batchSearchTerm, batches, form.batchIds]);
 
-  const selectedTrainerNames = useMemo(
-    () => trainers.filter((trainer) => form.trainerIds.includes(trainer.id)).map((trainer) => trainer.fullName),
-    [trainers, form.trainerIds],
-  );
-
   const selectedBatchNames = useMemo(
     () => batches.filter((batch) => form.batchIds.includes(batch.id)).map((batch) => `${batch.code} - ${batch.name}`),
     [batches, form.batchIds],
@@ -228,7 +191,6 @@ export function AddProgramSheet() {
     setStep("form");
     setError(null);
     setForm(initialForm);
-    setTrainerSearchTerm("");
     setBatchSearchTerm("");
   };
 
@@ -256,15 +218,6 @@ export function AddProgramSheet() {
 
     setError(null);
     setStep("confirm");
-  };
-
-  const toggleTrainer = (trainerId: string) => {
-    setForm((prev) => ({
-      ...prev,
-      trainerIds: prev.trainerIds.includes(trainerId)
-        ? prev.trainerIds.filter((id) => id !== trainerId)
-        : [...prev.trainerIds, trainerId],
-    }));
   };
 
   const toggleBatch = (batchId: string) => {
@@ -295,7 +248,6 @@ export function AddProgramSheet() {
           category: form.category,
           description: form.description,
           isActive: true,
-          trainerIds: form.trainerIds,
           batchIds: form.batchIds,
         }),
       });
@@ -398,60 +350,6 @@ export function AddProgramSheet() {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <div className="flex items-center justify-between gap-3">
-                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assign Trainers</label>
-                  <span className="text-xs font-medium text-slate-500">{form.trainerIds.length} selected</span>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <Input
-                    type="text"
-                    placeholder="Search trainers by name, email, specialization"
-                    value={trainerSearchTerm}
-                    onChange={(event) => setTrainerSearchTerm(event.target.value)}
-                    className="mb-3"
-                  />
-                  {isLoadingOptions ? <p className="text-sm text-slate-500">Loading trainers...</p> : null}
-                  {!isLoadingOptions && trainerSearchTerm.trim() && filteredTrainerResults.length > 0 ? (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {filteredTrainerResults.map((trainer) => (
-                        <button
-                          key={trainer.id}
-                          type="button"
-                          onClick={() => toggleTrainer(trainer.id)}
-                          className="rounded-2xl border border-blue-300 bg-blue-50 px-3 py-3 text-left transition hover:bg-blue-100"
-                        >
-                          <p className="text-sm font-semibold text-blue-900">{trainer.fullName}</p>
-                          <p className="mt-1 text-xs text-blue-700">{trainer.specialization}</p>
-                          <p className="mt-1 text-xs text-blue-600">{trainer.email}</p>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {!isLoadingOptions && trainerSearchTerm.trim() && filteredTrainerResults.length === 0 ? (
-                    <p className="text-sm text-slate-500">No trainers found.</p>
-                  ) : null}
-                  {form.trainerIds.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {trainers
-                        .filter((trainer) => form.trainerIds.includes(trainer.id))
-                        .map((trainer) => (
-                          <button
-                            key={trainer.id}
-                            type="button"
-                            onClick={() => toggleTrainer(trainer.id)}
-                            className={cn(
-                              "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                              "border-slate-300 bg-white text-slate-700 hover:border-slate-400",
-                            )}
-                          >
-                            {trainer.fullName} ×
-                          </button>
-                        ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <div className="flex items-center justify-between gap-3">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assign Batches</label>
                   <span className="text-xs font-medium text-slate-500">{form.batchIds.length} selected</span>
                 </div>
@@ -551,9 +449,6 @@ export function AddProgramSheet() {
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Category:</span> {form.category.trim() || "N/A"}
-              </p>
-              <p>
-                <span className="font-semibold text-slate-900">Trainers:</span> {selectedTrainerNames.length > 0 ? selectedTrainerNames.join(", ") : "Unassigned"}
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Batches:</span> {selectedBatchNames.length > 0 ? selectedBatchNames.join(", ") : "Unassigned"}

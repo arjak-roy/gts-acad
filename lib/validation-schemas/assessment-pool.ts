@@ -16,7 +16,6 @@ export const createAssessmentPoolSchema = z.object({
   code: z.string().trim().max(50).optional().default(""),
   title: z.string().trim().min(2, "Title must be at least 2 characters.").max(255),
   description: z.string().trim().max(2000).optional().default(""),
-  courseId: z.string().trim().optional().default(""),
   questionType: questionTypeEnum,
   difficultyLevel: difficultyLevelEnum.optional().default("MEDIUM"),
   totalMarks: z.coerce.number().int().positive().optional().default(100),

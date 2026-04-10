@@ -1,0 +1,156 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardList } from "lucide-react";
+
+import { CurriculumReferencePickerDialog } from "@/components/modules/curriculum-builder/curriculum-reference-picker-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+
+type AssessmentOption = {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  questionType: string;
+  difficultyLevel: string;
+};
+
+type CurriculumAssessmentPickerDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: AssessmentOption[];
+  isLoading: boolean;
+  isSaving: boolean;
+  onSubmit: (input: { assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
+};
+
+export function CurriculumAssessmentPickerDialog({
+  open,
+  onOpenChange,
+  items,
+  isLoading,
+  isSaving,
+  onSubmit,
+}: CurriculumAssessmentPickerDialogProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isRequired, setIsRequired] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setSearchTerm("");
+      setSelectedIds([]);
+      setIsRequired(false);
+    }
+  }, [open]);
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const visibleItems = useMemo(() => items.filter((item) => {
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return [item.title, item.code, item.questionType, item.difficultyLevel, item.status]
+      .some((value) => value.toLowerCase().includes(normalizedSearch));
+  }), [items, normalizedSearch]);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((current) => (
+      current.includes(id)
+        ? current.filter((itemId) => itemId !== id)
+        : [...current, id]
+    ));
+  };
+
+  const handleConfirm = async () => {
+    const ok = await onSubmit({
+      assessmentPoolIds: selectedIds,
+      isRequired,
+    });
+
+    if (ok) {
+      onOpenChange(false);
+    }
+  };
+
+  return (
+    <CurriculumReferencePickerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add Assessments to Stage"
+      description="Search across the full assessment pool and add one or more assessments to this stage. Each selected assessment is saved as a separate stage item."
+      searchTerm={searchTerm}
+      onSearchTermChange={setSearchTerm}
+      searchPlaceholder="Search assessments by title, code, type, difficulty, or status"
+      selectedCount={selectedIds.length}
+      confirmLabel={`Add Assessments${selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}`}
+      isConfirmDisabled={selectedIds.length === 0 || isSaving}
+      isSubmitting={isSaving}
+      onConfirm={() => void handleConfirm()}
+      actions={(
+        <>
+          <Button type="button" variant="ghost" size="sm" disabled={visibleItems.length === 0} onClick={() => setSelectedIds(Array.from(new Set([...selectedIds, ...visibleItems.map((item) => item.id)])))}>
+            Select visible
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={selectedIds.length === 0} onClick={() => setSelectedIds([])}>
+            Clear
+          </Button>
+        </>
+      )}
+      footerContent={(
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <Checkbox checked={isRequired} onCheckedChange={(checked) => setIsRequired(checked === true)} disabled={isSaving} />
+          Mark every selected assessment as required.
+        </label>
+      )}
+    >
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+        </div>
+      ) : visibleItems.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-6 text-sm text-slate-500">
+          {normalizedSearch ? "No assessments match the current search." : "No assessments are available in the pool yet."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {visibleItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={cn(
+                "flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-slate-50",
+                selectedIds.includes(item.id) && "border-primary bg-primary/5",
+              )}
+              onClick={() => toggleSelection(item.id)}
+            >
+              <Checkbox
+                checked={selectedIds.includes(item.id)}
+                onCheckedChange={() => toggleSelection(item.id)}
+                onClick={(event) => event.stopPropagation()}
+                className="mt-1"
+              />
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-slate-400" />
+                  <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                  <Badge variant="info">{item.questionType}</Badge>
+                  <Badge variant="info">{item.difficultyLevel}</Badge>
+                  <Badge variant="info">{item.status}</Badge>
+                </div>
+                <p className="text-xs text-slate-500">Code: {item.code}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </CurriculumReferencePickerDialog>
+  );
+}

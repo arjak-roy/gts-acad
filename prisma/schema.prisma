@@ -66,6 +66,15 @@ enum ProgramType {
   @@map("program_type")
 }
 
+enum CourseStatus {
+  DRAFT     @map("draft")
+  IN_REVIEW @map("in_review")
+  PUBLISHED @map("published")
+  ARCHIVED  @map("archived")
+
+  @@map("course_status")
+}
+
 enum BatchStatus {
   DRAFT      @map("draft")
   PLANNED    @map("planned")
@@ -208,6 +217,7 @@ enum AuditEntityType {
   COURSE          @map("course")
   COURSE_CONTENT  @map("course_content")
   COURSE_CONTENT_FOLDER @map("course_content_folder")
+  LEARNING_RESOURCE @map("learning_resource")
   ASSESSMENT_POOL @map("assessment_pool")
   CURRICULUM      @map("curriculum")
   EMAIL           @map("email")
@@ -275,6 +285,30 @@ enum ContentStatus {
   @@map("content_status")
 }
 
+enum LearningResourceVisibility {
+  PRIVATE    @map("private")
+  RESTRICTED @map("restricted")
+  PUBLIC     @map("public")
+
+  @@map("learning_resource_visibility")
+}
+
+enum LearningResourceTargetType {
+  COURSE          @map("course")
+  BATCH           @map("batch")
+  ASSESSMENT_POOL @map("assessment_pool")
+  SCHEDULE_EVENT  @map("schedule_event")
+
+  @@map("learning_resource_target_type")
+}
+
+enum LearningResourceUsageType {
+  PREVIEW  @map("preview")
+  DOWNLOAD @map("download")
+
+  @@map("learning_resource_usage_type")
+}
+
 enum UploadStorageProvider {
   LOCAL_PUBLIC @map("local_public")
   S3           @map("s3")
@@ -295,6 +329,15 @@ enum CurriculumItemType {
   ASSESSMENT @map("assessment")
 
   @@map("curriculum_item_type")
+}
+
+enum CurriculumProgressStatus {
+  NOT_STARTED @map("not_started")
+  IN_PROGRESS @map("in_progress")
+  COMPLETED   @map("completed")
+  SKIPPED     @map("skipped")
+
+  @@map("curriculum_progress_status")
 }
 
 enum QuestionType {
@@ -418,7 +461,13 @@ model User {
   createdCourseContents    CourseContent[]          @relation("ContentCreatedBy")
   createdCourseContentFolders CourseContentFolder[] @relation("ContentFolderCreatedBy")
   createdAssessmentPools   AssessmentPool[]         @relation("AssessmentPoolCreatedBy")
+  createdQuestionBankQuestions QuestionBankQuestion[] @relation("QuestionBankCreatedBy")
   createdCurricula         Curriculum[]             @relation("CurriculumCreatedBy")
+  createdLearningResources LearningResource[]       @relation("LearningResourceCreatedBy")
+  updatedLearningResources LearningResource[]       @relation("LearningResourceUpdatedBy")
+  assignedLearningResources LearningResourceAssignment[] @relation("LearningResourceAssignedBy")
+  learningResourceVersions LearningResourceVersion[] @relation("LearningResourceVersionUpdatedBy")
+  learningResourceUsages   LearningResourceUsage[]  @relation("LearningResourceUsageActor")
   assignedBatchContents    BatchContentMapping[]    @relation("BatchContentAssignedBy")
   assignedBatchAssessments BatchAssessmentMapping[] @relation("BatchAssessmentAssignedBy")
   assignedBatchCurricula   BatchCurriculumMapping[] @relation("BatchCurriculumAssignedBy")
@@ -735,7 +784,7 @@ model TrainerProfile {
   capacity       Int            @default(0)
   isActive       Boolean        @default(true) @map("is_active")
   joinedAt       DateTime       @default(now()) @map("joined_at") @db.Date
-  programs       String[]
+  courses        String[]       @map("programs")
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   leadBatches    Batch[]        @relation("BatchLeadTrainer")
   batches        Batch[]        @relation("BatchTrainers")
@@ -751,6 +800,7 @@ model Course {
   code                  String                 @unique @db.VarChar(50)
   name                  String                 @unique @map("course_name") @db.VarChar(255)
   description           String?                @map("course_desc")
+  status                CourseStatus           @default(DRAFT) @map("course_status")
   isActive              Boolean                @default(true) @map("is_active")
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -758,10 +808,11 @@ model Course {
   courseContentFolders  CourseContentFolder[]
   courseContents        CourseContent[]
   courseAssessmentLinks CourseAssessmentLink[]
-  assessmentPools       AssessmentPool[]
+  questionBankQuestions QuestionBankQuestion[]
   curricula             Curriculum[]
 
   @@index([isActive], map: "idx_courses_active")
+  @@index([status], map: "idx_courses_status")
   @@map("courses")
 }
 
@@ -840,6 +891,7 @@ model Batch {
   batchContentMappings    BatchContentMapping[]
   batchAssessmentMappings BatchAssessmentMapping[]
   batchCurriculumMappings BatchCurriculumMapping[]
+  curriculumItemProgress  LearnerCurriculumItemProgress[]
 
   @@index([programId, status], map: "idx_batches_program_status")
   @@index([trainerId], map: "idx_batches_trainer")
@@ -884,6 +936,7 @@ model Learner {
   performanceMetrics         PerformanceMetric[]
   roleplays                  Roleplay[]
   interviews                 Interview[]
+  curriculumItemProgress     LearnerCurriculumItemProgress[]
 
   @@index([userId], map: "idx_candidates_user")
   @@index([placementStatus, recruiterSyncStatus], map: "idx_candidates_status")
@@ -1178,6 +1231,7 @@ model CourseContent {
   course               Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
   folder               CourseContentFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
   createdBy            User?                 @relation("ContentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  learningResource     LearningResource?     @relation("LearningResourceSourceContent")
   batchContentMappings BatchContentMapping[]
   curriculumStageItems CurriculumStageItem[] @relation("CurriculumContentItems")
 
@@ -1203,6 +1257,159 @@ model CourseContentFolder {
   @@unique([courseId, name])
   @@index([courseId, sortOrder], map: "idx_course_content_folders_course_order")
   @@map("course_content_folders")
+}
+
+model LearningResourceCategory {
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("category_id")
+  parentId             String?                   @db.Uuid @map("parent_category_id")
+  name                 String                    @db.VarChar(120)
+  slug                 String                    @unique @db.VarChar(160)
+  description          String?                   @db.VarChar(500)
+  sortOrder            Int                       @default(0) @map("sort_order")
+  isActive             Boolean                   @default(true) @map("is_active")
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent               LearningResourceCategory? @relation("LearningResourceCategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children             LearningResourceCategory[] @relation("LearningResourceCategoryHierarchy")
+  resources            LearningResource[]        @relation("LearningResourceCategory")
+  subcategoryResources LearningResource[]        @relation("LearningResourceSubcategory")
+
+  @@index([parentId, sortOrder], map: "idx_learning_resource_categories_parent_order")
+  @@map("learning_resource_categories")
+}
+
+model LearningResourceTag {
+  id        String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("tag_id")
+  name      String                   @db.VarChar(80)
+  slug      String                   @unique @db.VarChar(120)
+  createdAt DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  resources LearningResourceTagMap[]
+
+  @@map("learning_resource_tags")
+}
+
+model LearningResource {
+  id                    String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("resource_id")
+  sourceContentId       String?                    @unique @db.Uuid @map("source_content_id")
+  title                 String                     @db.VarChar(255)
+  description           String?                    @db.VarChar(2000)
+  excerpt               String?                    @db.VarChar(500)
+  contentType           ContentType                @map("content_type")
+  status                ContentStatus              @default(DRAFT)
+  visibility            LearningResourceVisibility @default(PRIVATE)
+  categoryId            String?                    @db.Uuid @map("category_id")
+  subcategoryId         String?                    @db.Uuid @map("subcategory_id")
+  bodyJson              Json?                      @map("body_json")
+  renderedHtml          String?                    @map("rendered_html")
+  estimatedReadingMinutes Int?                     @map("estimated_reading_minutes")
+  fileUrl               String?                    @map("file_url")
+  fileName              String?                    @map("file_name") @db.VarChar(255)
+  fileSize              Int?                       @map("file_size")
+  mimeType              String?                    @map("mime_type") @db.VarChar(100)
+  storagePath           String?                    @map("storage_path") @db.VarChar(500)
+  storageProvider       UploadStorageProvider?     @map("storage_provider")
+  currentVersionNumber  Int                        @default(1) @map("current_version_number")
+  publishedAt           DateTime?                  @map("published_at") @db.Timestamptz(6)
+  createdById           String?                    @db.Uuid @map("created_by_user_id")
+  updatedById           String?                    @db.Uuid @map("updated_by_user_id")
+  createdAt             DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceContent         CourseContent?             @relation("LearningResourceSourceContent", fields: [sourceContentId], references: [id], onDelete: Cascade)
+  category              LearningResourceCategory?  @relation("LearningResourceCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategory           LearningResourceCategory?  @relation("LearningResourceSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
+  createdBy             User?                      @relation("LearningResourceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy             User?                      @relation("LearningResourceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tags                  LearningResourceTagMap[]
+  attachments           LearningResourceAttachment[]
+  assignments           LearningResourceAssignment[]
+  versions              LearningResourceVersion[]
+  usages                LearningResourceUsage[]
+
+  @@index([status, visibility, updatedAt], map: "idx_learning_resources_status_visibility_updated")
+  @@index([categoryId, subcategoryId], map: "idx_learning_resources_category")
+  @@index([contentType, status], map: "idx_learning_resources_type_status")
+  @@map("learning_resources")
+}
+
+model LearningResourceTagMap {
+  resourceId String           @db.Uuid @map("resource_id")
+  tagId      String           @db.Uuid @map("tag_id")
+  resource   LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  tag        LearningResourceTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, tagId])
+  @@index([tagId], map: "idx_learning_resource_tag_map_tag")
+  @@map("learning_resource_tag_map")
+}
+
+model LearningResourceAttachment {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("attachment_id")
+  resourceId      String                 @db.Uuid @map("resource_id")
+  title           String?                @db.VarChar(255)
+  fileUrl         String?                @map("file_url")
+  fileName        String                 @map("file_name") @db.VarChar(255)
+  fileSize        Int?                   @map("file_size")
+  mimeType        String?                @map("mime_type") @db.VarChar(100)
+  storagePath     String?                @map("storage_path") @db.VarChar(500)
+  storageProvider UploadStorageProvider? @map("storage_provider")
+  sortOrder       Int                    @default(0) @map("sort_order")
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  resource        LearningResource       @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, sortOrder], map: "idx_learning_resource_attachments_resource_order")
+  @@map("learning_resource_attachments")
+}
+
+model LearningResourceAssignment {
+  id           String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("assignment_id")
+  resourceId   String                     @db.Uuid @map("resource_id")
+  targetType   LearningResourceTargetType @map("target_type")
+  targetId     String                     @db.Uuid @map("target_id")
+  notes        String?                    @db.VarChar(1000)
+  assignedById String?                    @db.Uuid @map("assigned_by_user_id")
+  assignedAt   DateTime                   @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  resource     LearningResource           @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  assignedBy   User?                      @relation("LearningResourceAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  usages       LearningResourceUsage[]
+
+  @@unique([resourceId, targetType, targetId])
+  @@index([targetType, targetId], map: "idx_learning_resource_assignments_target")
+  @@map("learning_resource_assignments")
+}
+
+model LearningResourceVersion {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("version_id")
+  resourceId    String           @db.Uuid @map("resource_id")
+  versionNumber Int              @map("version_number")
+  title         String           @db.VarChar(255)
+  changeSummary String?          @map("change_summary") @db.VarChar(500)
+  snapshot      Json
+  updatedById   String?          @db.Uuid @map("updated_by_user_id")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  resource      LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  updatedBy     User?            @relation("LearningResourceVersionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([resourceId, versionNumber])
+  @@index([resourceId, createdAt], map: "idx_learning_resource_versions_resource_created")
+  @@map("learning_resource_versions")
+}
+
+model LearningResourceUsage {
+  id           String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("usage_id")
+  resourceId   String                    @db.Uuid @map("resource_id")
+  assignmentId String?                   @db.Uuid @map("assignment_id")
+  actorUserId  String?                   @db.Uuid @map("actor_user_id")
+  eventType    LearningResourceUsageType @map("event_type")
+  metadata     Json                      @default("{}")
+  createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  resource     LearningResource          @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  assignment   LearningResourceAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  actorUser    User?                     @relation("LearningResourceUsageActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([resourceId, eventType, createdAt], map: "idx_learning_resource_usage_resource_event")
+  @@index([assignmentId], map: "idx_learning_resource_usage_assignment")
+  @@map("learning_resource_usage")
 }
 
 model Curriculum {
@@ -1270,6 +1477,7 @@ model CurriculumStageItem {
   stage            CurriculumStage     @relation(fields: [stageId], references: [id], onDelete: Cascade)
   content          CourseContent?      @relation("CurriculumContentItems", fields: [contentId], references: [id], onDelete: SetNull)
   assessmentPool   AssessmentPool?     @relation("CurriculumAssessmentItems", fields: [assessmentPoolId], references: [id], onDelete: SetNull)
+  learnerProgress  LearnerCurriculumItemProgress[]
 
   @@index([stageId, sortOrder], map: "idx_curriculum_stage_items_stage_order")
   @@index([contentId], map: "idx_curriculum_stage_items_content")
@@ -1282,7 +1490,6 @@ model AssessmentPool {
   code                 String               @unique @db.VarChar(50)
   title                String               @db.VarChar(255)
   description          String?
-  courseId              String?              @db.Uuid @map("course_id")
   questionType         QuestionType         @map("question_type")
   difficultyLevel      DifficultyLevel      @default(MEDIUM) @map("difficulty_level")
   totalMarks           Int                  @default(100) @map("total_marks")
@@ -1294,7 +1501,6 @@ model AssessmentPool {
   createdById          String?              @db.Uuid @map("created_by_user_id")
   createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  course               Course?              @relation(fields: [courseId], references: [id], onDelete: SetNull)
   createdBy            User?                @relation("AssessmentPoolCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   questions            AssessmentQuestion[]
   courseAssessmentLinks CourseAssessmentLink[]
@@ -1303,7 +1509,6 @@ model AssessmentPool {
   curriculumStageItems CurriculumStageItem[] @relation("CurriculumAssessmentItems")
   aiJobs               AiAssessmentJob[]
 
-  @@index([courseId, status], map: "idx_assessment_pool_course_status")
   @@index([questionType], map: "idx_assessment_pool_question_type")
   @@index([difficultyLevel], map: "idx_assessment_pool_difficulty")
   @@map("assessment_pools")
@@ -1325,6 +1530,28 @@ model AssessmentQuestion {
 
   @@index([assessmentPoolId, sortOrder], map: "idx_assessment_questions_pool_order")
   @@map("assessment_questions")
+}
+
+model QuestionBankQuestion {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("question_bank_question_id")
+  courseId      String?      @db.Uuid @map("course_id")
+  questionText  String       @map("question_text")
+  questionType  QuestionType @map("question_type")
+  options       Json?
+  correctAnswer Json?        @map("correct_answer")
+  explanation   String?
+  tags          String[]     @default([])
+  marks         Int          @default(1)
+  createdById   String?      @db.Uuid @map("created_by_user_id")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  course        Course?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  createdBy     User?        @relation("QuestionBankCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([courseId, questionType], map: "idx_question_bank_questions_course_type")
+  @@index([questionType], map: "idx_question_bank_questions_type")
+  @@index([createdById], map: "idx_question_bank_questions_creator")
+  @@map("question_bank_questions")
 }
 
 model CourseAssessmentLink {
@@ -1386,6 +1613,30 @@ model BatchCurriculumMapping {
   @@unique([batchId, curriculumId])
   @@index([curriculumId], map: "idx_batch_curriculum_mapping_curriculum")
   @@map("batch_curriculum_mappings")
+}
+
+model LearnerCurriculumItemProgress {
+  id             String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("progress_id")
+  learnerId      String                   @db.Uuid @map("candidate_id")
+  batchId        String                   @db.Uuid @map("batch_id")
+  stageItemId    String                   @db.Uuid @map("stage_item_id")
+  status         CurriculumProgressStatus @default(NOT_STARTED)
+  progressPercent Int                     @default(0) @map("progress_percent")
+  startedAt      DateTime?                @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime?                @map("completed_at") @db.Timestamptz(6)
+  lastActivityAt DateTime                 @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  learner        Learner                  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  batch          Batch                    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  stageItem      CurriculumStageItem      @relation(fields: [stageItemId], references: [id], onDelete: Cascade)
+
+  @@unique([learnerId, batchId, stageItemId])
+  @@index([learnerId, batchId], map: "idx_curriculum_progress_learner_batch")
+  @@index([learnerId, status], map: "idx_curriculum_progress_learner_status")
+  @@index([batchId, status], map: "idx_curriculum_progress_batch_status")
+  @@index([stageItemId], map: "idx_curriculum_progress_stage_item")
+  @@map("learner_curriculum_item_progress")
 }
 
 model AiAssessmentJob {

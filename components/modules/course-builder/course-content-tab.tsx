@@ -1,14 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Eye, MoreHorizontal, PencilLine, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { Eye, History, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CanAccess } from "@/components/ui/can-access";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
 
 export type CourseContentItem = {
   id: string;
@@ -31,6 +27,25 @@ export type CourseContentItem = {
   status: string;
   isScorm: boolean;
   createdAt: string;
+  resourceId?: string;
+  sourceCourseId?: string;
+  sourceCourseName?: string;
+  sourceFolderId?: string | null;
+  sourceFolderName?: string | null;
+  resourceStatus?: string;
+  resourceVisibility?: string;
+  assignedAt?: string;
+  isSharedAssignment?: boolean;
+  shareKind?: "COURSE_ASSIGNMENT";
+};
+
+export type LinkedRepositoryResourceSummary = {
+  id: string;
+  sourceContentId: string;
+  status: string;
+  tagNames: string[];
+  currentVersionNumber: number;
+  assignmentCount: number;
 };
 
 const contentTypeLabels: Record<string, string> = {
@@ -50,166 +65,186 @@ const statusVariant: Record<string, "default" | "info" | "warning"> = {
 };
 
 function formatFileSize(bytes: number | null): string {
-  if (!bytes) return "—";
+  if (!bytes) return "-";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function CourseContentTab({
-  courseId,
-  folderId,
+  items,
   folderName,
+  linkedResources = {},
   onAddContent,
   onViewContent,
   onEditContent,
   onDeleteContent,
+  onViewRepositoryResource,
+  onEditRepositoryResource,
+  onViewRepositoryHistory,
+  onManageRepositoryAssignments,
+  canCreateContent,
+  canEditContent,
+  canDeleteContent,
 }: {
-  courseId: string;
-  folderId?: string;
+  items: CourseContentItem[];
   folderName?: string | null;
+  linkedResources?: Record<string, LinkedRepositoryResourceSummary>;
   onAddContent: () => void;
   onViewContent: (contentId: string) => void;
   onEditContent: (contentId: string) => void;
   onDeleteContent: (content: CourseContentItem) => void;
+  onViewRepositoryResource?: (resourceId: string) => void;
+  onEditRepositoryResource?: (resourceId: string) => void;
+  onViewRepositoryHistory?: (resourceId: string, resourceTitle: string) => void;
+  onManageRepositoryAssignments?: (resourceId: string, resourceTitle: string) => void;
+  canCreateContent?: boolean;
+  canEditContent?: boolean;
+  canDeleteContent?: boolean;
 }) {
-  const [contents, setContents] = useState<CourseContentItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchContents = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (courseId) {
-        params.set("courseId", courseId);
-      }
-      if (folderId) {
-        params.set("folderId", folderId);
-      }
-
-      const url = params.size > 0 ? `/api/course-content?${params.toString()}` : "/api/course-content";
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error("Failed to load content.");
-      const result = (await response.json()) as { data?: CourseContentItem[] };
-      setContents(result.data ?? []);
-    } catch {
-      toast.error("Failed to load course content.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [courseId, folderId]);
-
-  useEffect(() => {
-    if (courseId) void fetchContents();
-  }, [courseId, fetchContents]);
-
-  if (!courseId) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-        <p className="text-sm">Select a course to view its content library.</p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-3 p-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-16 w-full rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-
-  const published = contents.filter((c) => c.status === "PUBLISHED").length;
-  const drafts = contents.filter((c) => c.status === "DRAFT").length;
+  const published = items.filter((content) => content.status === "PUBLISHED").length;
+  const drafts = items.filter((content) => content.status === "DRAFT").length;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">
-            {contents.length} item{contents.length !== 1 ? "s" : ""} · {published} published · {drafts} draft{drafts !== 1 ? "s" : ""}
+            {items.length} item{items.length !== 1 ? "s" : ""} · {published} published · {drafts} draft{drafts !== 1 ? "s" : ""}
             {folderName ? ` · Folder: ${folderName}` : ""}
           </p>
         </div>
-        <CanAccess permission="course_content.create">
+        {canCreateContent ? (
           <Button size="sm" onClick={onAddContent}>
             Upload Content
           </Button>
-        </CanAccess>
+        ) : null}
       </div>
 
-      {contents.length === 0 ? (
+      {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-muted-foreground">
-          <p className="text-sm">No content items yet.</p>
-          <p className="text-xs mt-1">Upload PDFs, documents, or other materials for this course.</p>
+          <p className="text-sm">{folderName ? "No repository items in this folder yet." : "No repository items yet."}</p>
+          <p className="mt-1 text-xs">
+            Upload PDFs, documents, links, or authored lessons here, then use Actions &gt; Manage Assignments when the item should appear in another course.
+          </p>
         </div>
       ) : (
         <div className="divide-y rounded-lg border">
-          {contents.map((content) => (
-            <div key={content.id} className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/50">
-              <button
-                type="button"
-                className="min-w-0 flex-1 text-left"
-                onClick={() => onViewContent(content.id)}
-              >
+          {items.map((content) => {
+            const linkedResource = linkedResources[content.id] ?? null;
+            const repositoryResourceId = linkedResource?.id ?? content.resourceId ?? null;
+            const isSharedAssignment = content.isSharedAssignment === true;
+            const handlePrimaryOpen = () => {
+              if (repositoryResourceId && onViewRepositoryResource) {
+                onViewRepositoryResource(repositoryResourceId);
+                return;
+              }
+
+              onViewContent(content.id);
+            };
+
+            return (
+              <div key={content.id} className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/50">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left"
+                  onClick={handlePrimaryOpen}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-sm font-medium">{content.title}</span>
+                    {!folderName && content.folderName ? (
+                      <Badge variant="info" className="px-1.5 py-0 text-[10px]">
+                        {content.folderName}
+                      </Badge>
+                    ) : null}
+                    {content.isScorm ? (
+                      <Badge variant="accent" className="px-1.5 py-0 text-[10px]">
+                        SCORM - Coming Soon
+                      </Badge>
+                    ) : null}
+                    {isSharedAssignment ? (
+                      <Badge variant="info" className="px-1.5 py-0 text-[10px]">
+                        Assigned
+                      </Badge>
+                    ) : null}
+                    {linkedResource?.tagNames.slice(0, 3).map((tagName) => (
+                      <Badge key={`${content.id}-${tagName}`} variant="default" className="px-1.5 py-0 text-[10px]">
+                        {tagName}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>{contentTypeLabels[content.contentType] ?? content.contentType}</span>
+                    {content.estimatedReadingMinutes ? <span>· {content.estimatedReadingMinutes} min read</span> : null}
+                    {content.fileName ? <span>· {content.fileName}</span> : null}
+                    {content.fileSize ? <span>· {formatFileSize(content.fileSize)}</span> : null}
+                    {linkedResource ? <span>· v{linkedResource.currentVersionNumber}</span> : null}
+                    {linkedResource ? <span>· {linkedResource.assignmentCount} assignment{linkedResource.assignmentCount === 1 ? "" : "s"}</span> : null}
+                    {isSharedAssignment && content.sourceCourseName ? <span>· Shared from: {content.sourceCourseName}</span> : null}
+                    {isSharedAssignment && content.sourceFolderName ? <span>· Source Folder: {content.sourceFolderName}</span> : null}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                    {content.excerpt || content.description || "No description yet."}
+                  </p>
+                </button>
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{content.title}</span>
-                  {!folderId && content.folderName ? (
-                    <Badge variant="info" className="text-[10px] px-1.5 py-0">
-                      {content.folderName}
-                    </Badge>
-                  ) : null}
-                  {content.isScorm && (
-                    <Badge variant="accent" className="text-[10px] px-1.5 py-0">
-                      SCORM — Coming Soon
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{contentTypeLabels[content.contentType] ?? content.contentType}</span>
-                  {content.estimatedReadingMinutes ? <span>· {content.estimatedReadingMinutes} min read</span> : null}
-                  {content.fileName && <span>· {content.fileName}</span>}
-                  {content.fileSize && <span>· {formatFileSize(content.fileSize)}</span>}
-                </div>
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">
-                  {content.excerpt || content.description || "No description yet."}
-                </p>
-              </button>
-              <div className="flex items-center gap-2">
-                <Badge variant={statusVariant[content.status] ?? "info"} className="shrink-0">
-                  {content.status}
-                </Badge>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9">
-                      <MoreHorizontal className="h-4 w-4" />
-                      <span className="sr-only">Open content actions</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <CanAccess permission="course_content.edit">
-                      <DropdownMenuItem onSelect={() => onEditContent(content.id)}>
-                        <PencilLine className="mr-2 h-4 w-4" />
-                        Edit
+                  <Badge variant={statusVariant[linkedResource?.status ?? content.resourceStatus ?? content.status] ?? "info"} className="shrink-0">
+                    {linkedResource?.status ?? content.resourceStatus ?? content.status}
+                  </Badge>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Open repository actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {repositoryResourceId && onViewRepositoryResource ? (
+                        <DropdownMenuItem onSelect={() => onViewRepositoryResource(repositoryResourceId)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Repository Item
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuItem onSelect={() => onViewContent(content.id)}>
+                        <Eye className="mr-2 h-4 w-4" />
+                        {isSharedAssignment ? "View Source Upload" : "View Upload"}
                       </DropdownMenuItem>
-                    </CanAccess>
-                    <DropdownMenuItem onSelect={() => onViewContent(content.id)}>
-                      <Eye className="mr-2 h-4 w-4" />
-                      View
-                    </DropdownMenuItem>
-                    <CanAccess permission="course_content.delete">
-                      <DropdownMenuItem className="text-rose-700 focus:bg-rose-50 focus:text-rose-700" onSelect={() => onDeleteContent(content)}>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </CanAccess>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      {canEditContent && !isSharedAssignment ? (
+                        <DropdownMenuItem onSelect={() => onEditContent(content.id)}>
+                          <PencilLine className="mr-2 h-4 w-4" />
+                          Edit Upload
+                        </DropdownMenuItem>
+                      ) : null}
+                      {linkedResource && onEditRepositoryResource && !isSharedAssignment ? (
+                        <DropdownMenuItem onSelect={() => onEditRepositoryResource(linkedResource.id)}>
+                          <PencilLine className="mr-2 h-4 w-4" />
+                          Edit Repository Metadata
+                        </DropdownMenuItem>
+                      ) : null}
+                      {linkedResource && onManageRepositoryAssignments && !isSharedAssignment ? (
+                        <DropdownMenuItem onSelect={() => onManageRepositoryAssignments(linkedResource.id, content.title)}>
+                          <Share2 className="mr-2 h-4 w-4" />
+                          Manage Assignments
+                        </DropdownMenuItem>
+                      ) : null}
+                      {linkedResource && onViewRepositoryHistory ? (
+                        <DropdownMenuItem onSelect={() => onViewRepositoryHistory(linkedResource.id, content.title)}>
+                          <History className="mr-2 h-4 w-4" />
+                          View Version History
+                        </DropdownMenuItem>
+                      ) : null}
+                      {canDeleteContent && !isSharedAssignment ? (
+                        <DropdownMenuItem className="text-rose-700 focus:bg-rose-50 focus:text-rose-700" onSelect={() => onDeleteContent(content)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

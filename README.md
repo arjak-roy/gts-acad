@@ -96,10 +96,22 @@ If you already have an existing database and need the authored lesson course-con
 npm run db:sync:authored-content
 ```
 
+If you already have an existing database and need the Resource Repository tables plus the linked `source_content_id` column added without a full push, run:
+
+```bash
+npm run db:sync:resources
+```
+
 For the test database:
 
 ```bash
 npm run db:test:sync:authored-content
+```
+
+For the test database resource sync:
+
+```bash
+npm run db:test:sync:resources
 ```
 
 For the test database:

@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
   try {
     await requirePermission(request, "trainers.view");
     const { searchParams } = new URL(request.url);
-    const programName = searchParams.get("programName") ?? undefined;
-    const trainers = await listTrainersService(programName);
+    const courseName = searchParams.get("courseName") ?? searchParams.get("programName") ?? undefined;
+    const trainers = await listTrainersService(courseName);
     return apiSuccess(trainers);
   } catch (error) {
     return apiError(error);

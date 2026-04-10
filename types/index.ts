@@ -17,6 +17,15 @@ export const ProgramType = {
 
 export type ProgramType = (typeof ProgramType)[keyof typeof ProgramType];
 
+export const CourseStatus = {
+  DRAFT: "DRAFT",
+  IN_REVIEW: "IN_REVIEW",
+  PUBLISHED: "PUBLISHED",
+  ARCHIVED: "ARCHIVED",
+} as const;
+
+export type CourseStatus = (typeof CourseStatus)[keyof typeof CourseStatus];
+
 export const PlacementStatus = {
   NOT_READY: "NOT_READY",
   IN_REVIEW: "IN_REVIEW",
@@ -74,10 +83,27 @@ export const EnrollmentStatus = {
 
 export type EnrollmentStatus = (typeof EnrollmentStatus)[keyof typeof EnrollmentStatus];
 
+export type DashboardFilters = {
+  programType: ProgramType | null;
+  courseId: string | null;
+  programId: string | null;
+  batchId: string | null;
+};
+
+export type DashboardViewMode = "GLOBAL" | "FILTERED";
+
+export type DashboardScope = {
+  viewMode: DashboardViewMode;
+  programTypeLabel: string | null;
+  courseName: string | null;
+  programName: string | null;
+  batchName: string | null;
+};
+
 export type DashboardTrendPoint = {
   label: string;
-  activeLearners: number;
-  placementReady: number;
+  startedLearners: number;
+  completedLearners: number;
 };
 
 export type DashboardFunnelStage = {
@@ -93,14 +119,80 @@ export type DashboardAlert = {
   tone: "danger" | "info";
 };
 
-export type DashboardStats = {
+export type DashboardCourseStatusPoint = {
+  status: CourseStatus;
+  label: string;
+  value: number;
+  accent: string;
+};
+
+export type DashboardProgressPoint = {
+  key: "not_started" | "in_progress" | "completed";
+  label: string;
+  value: number;
+  helper: string;
+  accent: string;
+};
+
+export type DashboardTrainerWorkloadItem = {
+  id: string;
+  name: string;
+  specialization: string;
+  activeBatches: number;
   activeLearners: number;
+  upcomingSessions: number;
+  capacity: number;
+};
+
+export type DashboardRecentActivityItem = {
+  id: string;
+  title: string;
+  detail: string;
+  occurredAt: string;
+  tone: "default" | "info" | "warning" | "danger";
+};
+
+export type DashboardPendingActionItem = {
+  id: string;
+  title: string;
+  detail: string;
+  count: number;
+  tone: "default" | "info" | "warning" | "danger";
+  href: string;
+};
+
+export type DashboardStats = {
+  filters: DashboardFilters;
+  scope: DashboardScope;
+  activeCourses: number;
+  activePrograms: number;
   liveBatches: number;
+  publishedCurricula: number;
+  publishedResources: number;
+  publishedAssessments: number;
+  totalEnrolled: number;
+  activeLearners: number;
+  assessmentCleared: number;
+  placementReady: number;
+  learnersStarted: number;
+  learnersInProgress: number;
+  learnersCompletedRequired: number;
+  overallCompletionRate: number;
   averageAttendance: number;
   averageAssessmentScore: number;
-  certificatesIssuedYtd: number;
-  placementReady: number;
-  capacityUtilization: number;
+  totalCourses: number;
+  publishedCourses: number;
+  draftCourses: number;
+  archivedCourses: number;
+  totalQuizzes: number;
+  totalTrainers: number;
+  pendingCourseApprovals: number;
+  overdueAssignments: number;
+  courseStatusBreakdown: DashboardCourseStatusPoint[];
+  learnerProgress: DashboardProgressPoint[];
+  trainerWorkload: DashboardTrainerWorkloadItem[];
+  recentActivity: DashboardRecentActivityItem[];
+  pendingActions: DashboardPendingActionItem[];
   readinessFunnel: DashboardFunnelStage[];
   operationsSnapshot: DashboardAlert[];
   trends: DashboardTrendPoint[];

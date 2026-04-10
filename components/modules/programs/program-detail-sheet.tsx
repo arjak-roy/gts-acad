@@ -307,7 +307,7 @@ export function ProgramDetailSheet({ programId, open, onOpenChange, onEdit }: Pr
               {/* TRAINERS SECTION */}
               {program.trainers && program.trainers.length > 0 ? (
                 <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Assigned Trainers ({program.trainers.length})</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Inherited Course Trainers ({program.trainers.length})</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {program.trainers.map((trainer) => (
                       <span key={trainer.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">

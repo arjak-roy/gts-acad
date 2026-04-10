@@ -10,10 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-type ProgramOption = {
+function formatSelectedCourseNames(courseIds: string[], courseOptions: CourseOption[]) {
+  return courseOptions
+    .filter((course) => courseIds.includes(course.id))
+    .map((course) => course.name);
+}
+
+type CourseOption = {
   id: string;
   name: string;
-  type: "LANGUAGE" | "CLINICAL" | "TECHNICAL";
   isActive: boolean;
 };
 
@@ -26,7 +31,7 @@ type AddTrainerForm = {
   specialization: string;
   capacity: string;
   status: TrainerStatus;
-  programs: string[];
+  courseIds: string[];
   bio: string;
 };
 
@@ -37,7 +42,7 @@ const initialForm: AddTrainerForm = {
   specialization: "",
   capacity: "0",
   status: "ACTIVE",
-  programs: [],
+  courseIds: [],
   bio: "",
 };
 
@@ -46,8 +51,8 @@ export function AddTrainerSheet() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
   const [error, setError] = useState<string | null>(null);
-  const [programs, setPrograms] = useState<ProgramOption[]>([]);
-  const [isLoadingPrograms, setIsLoadingPrograms] = useState(false);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState<AddTrainerForm>(initialForm);
 
@@ -58,36 +63,36 @@ export function AddTrainerSheet() {
 
     let isActive = true;
 
-    const loadPrograms = async () => {
-      setIsLoadingPrograms(true);
+    const loadCourses = async () => {
+      setIsLoadingCourses(true);
 
       try {
-        const response = await fetch("/api/programs", { cache: "no-store" });
+        const response = await fetch("/api/courses", { cache: "no-store" });
         if (!response.ok) {
-          throw new Error("Failed to load programs.");
+          throw new Error("Failed to load courses.");
         }
 
-        const payload = (await response.json()) as { data?: ProgramOption[] };
+        const payload = (await response.json()) as { data?: CourseOption[] };
         if (!isActive) {
           return;
         }
 
-        setPrograms((payload.data ?? []).filter((program) => program.isActive));
+        setCourses((payload.data ?? []).filter((course) => course.isActive));
       } catch (loadError) {
         if (!isActive) {
           return;
         }
 
-        const message = loadError instanceof Error ? loadError.message : "Failed to load programs.";
+        const message = loadError instanceof Error ? loadError.message : "Failed to load courses.";
         setError(message);
       } finally {
         if (isActive) {
-          setIsLoadingPrograms(false);
+          setIsLoadingCourses(false);
         }
       }
     };
 
-    void loadPrograms();
+    void loadCourses();
 
     return () => {
       isActive = false;
@@ -107,12 +112,14 @@ export function AddTrainerSheet() {
     }
   };
 
-  const toggleProgram = (programName: string) => {
+  const selectedCourseNames = formatSelectedCourseNames(form.courseIds, courses);
+
+  const toggleCourse = (courseId: string) => {
     setForm((prev) => ({
       ...prev,
-      programs: prev.programs.includes(programName)
-        ? prev.programs.filter((program) => program !== programName)
-        : [...prev.programs, programName],
+      courseIds: prev.courseIds.includes(courseId)
+        ? prev.courseIds.filter((currentCourseId) => currentCourseId !== courseId)
+        : [...prev.courseIds, courseId],
     }));
   };
 
@@ -120,8 +127,8 @@ export function AddTrainerSheet() {
     event.preventDefault();
 
     const capacity = Number(form.capacity);
-    if (!form.fullName.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.programs.length === 0) {
-      setError("Please complete Name, Email, Specialization, Capacity, and select at least one program.");
+    if (!form.fullName.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.courseIds.length === 0) {
+      setError("Please complete Name, Email, Specialization, Capacity, and select at least one course.");
       return;
     }
 
@@ -146,7 +153,7 @@ export function AddTrainerSheet() {
           specialization: form.specialization,
           capacity: Number(form.capacity),
           status: form.status,
-          programs: form.programs,
+          courses: form.courseIds,
           bio: form.bio,
         }),
       });
@@ -217,21 +224,21 @@ export function AddTrainerSheet() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assigned Programs</label>
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assigned Courses</label>
                 <div className="grid max-h-60 gap-3 overflow-y-auto rounded-xl border border-[#dde1e6] p-3 sm:grid-cols-2">
-                  {isLoadingPrograms ? (
-                    <p className="text-sm text-slate-500">Loading programs...</p>
-                  ) : programs.length === 0 ? (
-                    <p className="text-sm text-slate-500">No programs available.</p>
+                  {isLoadingCourses ? (
+                    <p className="text-sm text-slate-500">Loading courses...</p>
+                  ) : courses.length === 0 ? (
+                    <p className="text-sm text-slate-500">No courses available.</p>
                   ) : (
-                    programs.map((program) => {
-                      const selected = form.programs.includes(program.name);
+                    courses.map((course) => {
+                      const selected = form.courseIds.includes(course.id);
 
                       return (
                         <button
-                          key={program.id}
+                          key={course.id}
                           type="button"
-                          onClick={() => toggleProgram(program.name)}
+                          onClick={() => toggleCourse(course.id)}
                           className={cn(
                             "rounded-xl border px-3 py-3 text-left transition-colors",
                             selected
@@ -240,14 +247,13 @@ export function AddTrainerSheet() {
                           )}
                           aria-pressed={selected}
                         >
-                          <p className="text-sm font-semibold">{program.name}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{program.type}</p>
+                          <p className="text-sm font-semibold">{course.name}</p>
                         </button>
                       );
                     })
                   )}
                 </div>
-                <p className="text-xs text-slate-500">Tap or click cards to select one or more programs.</p>
+                <p className="text-xs text-slate-500">Tap or click cards to select one or more courses.</p>
               </div>
 
               <div className="space-y-1.5">
@@ -292,7 +298,7 @@ export function AddTrainerSheet() {
                 <span className="font-semibold text-slate-900">Specialization:</span> {form.specialization.trim()}
               </p>
               <p>
-                <span className="font-semibold text-slate-900">Programs:</span> {form.programs.join(", ")}
+                <span className="font-semibold text-slate-900">Courses:</span> {selectedCourseNames.join(", ")}
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Status:</span> {form.status}

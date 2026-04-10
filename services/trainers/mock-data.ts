@@ -7,6 +7,6 @@ export const MOCK_TRAINERS: TrainerOption[] = [
     email: "markus.trainer@gts-academy.test",
     specialization: "German Language",
     isActive: true,
-    programs: ["German Language B1", "German Language B2"],
+    courses: ["German Language"],
   },
 ];

@@ -12,7 +12,6 @@ type PoolItem = {
   code: string;
   title: string;
   description: string | null;
-  courseName: string | null;
   questionType: string;
   difficultyLevel: string;
   totalMarks: number;
@@ -102,7 +101,11 @@ export function AssessmentPoolTab({
           <p className="text-sm text-muted-foreground">
             {pools.length} assessment{pools.length !== 1 ? "s" : ""} · {published} published
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">Guided create opens the new assessment directly in question builder after save.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {courseId
+              ? "Showing assessments already linked to the selected course. New assessments are always created in the shared pool first."
+              : "Guided create opens the new assessment directly in question builder after save, where you can add or import questions from the bank."}
+          </p>
         </div>
         <div className="flex gap-2">
           <CanAccess permission="assessment_pool.create">
@@ -147,8 +150,12 @@ export function AssessmentPoolTab({
 
       {pools.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-muted-foreground">
-          <p className="text-sm">No assessments in pool yet.</p>
-          <p className="text-xs mt-1">Create assessments and reuse them across multiple courses.</p>
+          <p className="text-sm">{courseId ? "No assessments are linked to this course yet." : "No assessments in pool yet."}</p>
+          <p className="text-xs mt-1">
+            {courseId
+              ? "Create the assessment in the pool, then link it to this course from the course or curriculum workflow."
+              : "Create assessments and reuse them across multiple courses."}
+          </p>
         </div>
       ) : (
         <div className="divide-y rounded-lg border">

@@ -12,10 +12,27 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 import { cn } from "@/lib/utils";
 
-type ProgramOption = {
+function mapCourseNamesToIds(courseNames: string[], courseOptions: CourseOption[]) {
+  const courseIdsByNormalizedName = new Map(
+    courseOptions.map((course) => [course.name.trim().toLowerCase(), course.id]),
+  );
+
+  return Array.from(new Set(
+    courseNames
+      .map((courseName) => courseIdsByNormalizedName.get(courseName.trim().toLowerCase()))
+      .filter((courseId): courseId is string => Boolean(courseId)),
+  ));
+}
+
+function formatSelectedCourseNames(courseIds: string[], courseOptions: CourseOption[]) {
+  return courseOptions
+    .filter((course) => courseIds.includes(course.id))
+    .map((course) => course.name);
+}
+
+type CourseOption = {
   id: string;
   name: string;
-  type: "LANGUAGE" | "CLINICAL" | "TECHNICAL";
   isActive: boolean;
 };
 
@@ -29,7 +46,7 @@ type TrainerDetail = {
   specialization: string;
   capacity: number;
   status: TrainerStatus;
-  programs: string[];
+  courses: string[];
   bio: string | null;
 };
 
@@ -40,7 +57,7 @@ type EditTrainerForm = {
   specialization: string;
   capacity: string;
   status: TrainerStatus;
-  programs: string[];
+  courseIds: string[];
   bio: string;
 };
 
@@ -51,7 +68,7 @@ const initialForm: EditTrainerForm = {
   specialization: "",
   capacity: "0",
   status: "ACTIVE",
-  programs: [],
+  courseIds: [],
   bio: "",
 };
 
@@ -65,7 +82,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
   const router = useRouter();
   const [step, setStep] = useState<"form" | "confirm" | "updated">("form");
   const [error, setError] = useState<string | null>(null);
-  const [programs, setPrograms] = useState<ProgramOption[]>([]);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState<EditTrainerForm>(initialForm);
@@ -82,23 +99,25 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
       setError(null);
 
       try {
-        const [trainerResponse, programsResponse] = await Promise.all([
+        const [trainerResponse, coursesResponse] = await Promise.all([
           fetch(`/api/trainers/${trainerId}`, { cache: "no-store" }),
-          fetch("/api/programs", { cache: "no-store" }),
+          fetch("/api/courses", { cache: "no-store" }),
         ]);
 
-        if (!trainerResponse.ok || !programsResponse.ok) {
+        if (!trainerResponse.ok || !coursesResponse.ok) {
           throw new Error("Failed to load trainer details.");
         }
 
         const trainerPayload = (await trainerResponse.json()) as { data?: TrainerDetail };
-        const programsPayload = (await programsResponse.json()) as { data?: ProgramOption[] };
+        const coursesPayload = (await coursesResponse.json()) as { data?: CourseOption[] };
 
         if (!active || !trainerPayload.data) {
           return;
         }
 
-        setPrograms((programsPayload.data ?? []).filter((program) => program.isActive));
+        const activeCourses = (coursesPayload.data ?? []).filter((course) => course.isActive);
+
+        setCourses(activeCourses);
         setForm({
           fullName: trainerPayload.data.fullName,
           email: trainerPayload.data.email,
@@ -106,7 +125,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
           specialization: trainerPayload.data.specialization,
           capacity: String(trainerPayload.data.capacity),
           status: trainerPayload.data.status,
-          programs: trainerPayload.data.programs,
+          courseIds: mapCourseNamesToIds(trainerPayload.data.courses, activeCourses),
           bio: trainerPayload.data.bio ?? "",
         });
       } catch (loadError) {
@@ -130,12 +149,14 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
     };
   }, [open, trainerId]);
 
-  const toggleProgram = (programName: string) => {
+  const selectedCourseNames = formatSelectedCourseNames(form.courseIds, courses);
+
+  const toggleCourse = (courseId: string) => {
     setForm((prev) => ({
       ...prev,
-      programs: prev.programs.includes(programName)
-        ? prev.programs.filter((program) => program !== programName)
-        : [...prev.programs, programName],
+      courseIds: prev.courseIds.includes(courseId)
+        ? prev.courseIds.filter((currentCourseId) => currentCourseId !== courseId)
+        : [...prev.courseIds, courseId],
     }));
   };
 
@@ -143,8 +164,8 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
     event.preventDefault();
 
     const capacity = Number(form.capacity);
-    if (!form.fullName.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.programs.length === 0) {
-      setError("Please complete Name, Email, Specialization, Capacity, and select at least one program.");
+    if (!form.fullName.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.courseIds.length === 0) {
+      setError("Please complete Name, Email, Specialization, Capacity, and select at least one course.");
       return;
     }
 
@@ -173,7 +194,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
           specialization: form.specialization,
           capacity: Number(form.capacity),
           status: form.status,
-          programs: form.programs,
+          courses: form.courseIds,
           bio: form.bio,
         }),
       });
@@ -288,19 +309,19 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assigned Programs</label>
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assigned Courses</label>
                 <div className="grid max-h-60 gap-3 overflow-y-auto rounded-xl border border-[#dde1e6] p-3 sm:grid-cols-2">
-                  {programs.length === 0 ? (
-                    <p className="text-sm text-slate-500">No programs available.</p>
+                  {courses.length === 0 ? (
+                    <p className="text-sm text-slate-500">No courses available.</p>
                   ) : (
-                    programs.map((program) => {
-                      const selected = form.programs.includes(program.name);
+                    courses.map((course) => {
+                      const selected = form.courseIds.includes(course.id);
 
                       return (
                         <button
-                          key={program.id}
+                          key={course.id}
                           type="button"
-                          onClick={() => toggleProgram(program.name)}
+                          onClick={() => toggleCourse(course.id)}
                           className={cn(
                             "rounded-xl border px-3 py-3 text-left transition-colors",
                             selected
@@ -309,8 +330,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
                           )}
                           aria-pressed={selected}
                         >
-                          <p className="text-sm font-semibold">{program.name}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{program.type}</p>
+                          <p className="text-sm font-semibold">{course.name}</p>
                         </button>
                       );
                     })

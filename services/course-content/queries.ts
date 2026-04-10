@@ -2,8 +2,87 @@ import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { parseAuthoredContentDocument } from "@/lib/authored-content";
+import { markCurriculumContentInProgressForLearnerService } from "@/services/curriculum/progress";
+import { listCourseIdsForBatchIds } from "@/services/lms/hierarchy";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
-import type { CandidateContentDetail, ContentDetail, ContentListItem } from "@/services/course-content/types";
+import type {
+  AssignedSharedContentListItem,
+  CandidateContentDetail,
+  ContentDetail,
+  ContentListItem,
+} from "@/services/course-content/types";
+
+type SharedContentSourceRecord = {
+  id: string;
+  courseId: string;
+  folderId: string | null;
+  title: string;
+  description: string | null;
+  excerpt: string | null;
+  contentType: ContentListItem["contentType"];
+  estimatedReadingMinutes: number | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  storagePath: string | null;
+  storageProvider: ContentListItem["storageProvider"];
+  sortOrder: number;
+  status: ContentListItem["status"];
+  isScorm: boolean;
+  createdAt: Date;
+  folder: { name: string } | null;
+  course: { name: string };
+};
+
+function mapSharedContentToCourseItem(args: {
+  sourceContent: SharedContentSourceRecord;
+  targetCourseId: string;
+  targetCourseName: string;
+  resourceId: string;
+  resourceStatus: AssignedSharedContentListItem["resourceStatus"];
+  resourceVisibility: AssignedSharedContentListItem["resourceVisibility"];
+  assignedAt: Date;
+  folderId: string | null;
+  folderName: string | null;
+  shareKind: AssignedSharedContentListItem["shareKind"];
+}): AssignedSharedContentListItem {
+  const { sourceContent } = args;
+
+  return {
+    id: sourceContent.id,
+    courseId: args.targetCourseId,
+    courseName: args.targetCourseName,
+    folderId: args.folderId,
+    folderName: args.folderName,
+    title: sourceContent.title,
+    description: sourceContent.description,
+    excerpt: sourceContent.excerpt,
+    contentType: sourceContent.contentType,
+    estimatedReadingMinutes: sourceContent.estimatedReadingMinutes,
+    fileUrl: sourceContent.fileUrl,
+    fileName: sourceContent.fileName,
+    fileSize: sourceContent.fileSize,
+    mimeType: sourceContent.mimeType,
+    storagePath: sourceContent.storagePath,
+    storageProvider: sourceContent.storageProvider,
+    sortOrder: sourceContent.sortOrder,
+    status: sourceContent.status,
+    isScorm: sourceContent.isScorm,
+    createdAt: sourceContent.createdAt,
+    targetCourseId: args.targetCourseId,
+    sourceCourseId: sourceContent.courseId,
+    sourceCourseName: sourceContent.course.name,
+    sourceFolderId: sourceContent.folderId,
+    sourceFolderName: sourceContent.folder?.name ?? null,
+    resourceId: args.resourceId,
+    resourceStatus: args.resourceStatus,
+    resourceVisibility: args.resourceVisibility,
+    assignedAt: args.assignedAt,
+    isSharedAssignment: true,
+    shareKind: args.shareKind,
+  };
+}
 
 export async function listCourseContentService(courseId?: string, folderId?: string): Promise<ContentListItem[]> {
   if (!isDatabaseConfigured) {
@@ -147,14 +226,116 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
   };
 }
 
+export async function listAssignedSharedCourseContentService(courseId?: string): Promise<AssignedSharedContentListItem[]> {
+  if (!isDatabaseConfigured) {
+    return [];
+  }
+
+  const assignments = await prisma.learningResourceAssignment.findMany({
+    where: {
+      targetType: "COURSE",
+      ...(courseId ? { targetId: courseId } : {}),
+      resource: {
+        sourceContentId: {
+          not: null,
+        },
+      },
+    },
+    orderBy: [{ assignedAt: "desc" }],
+    select: {
+      targetId: true,
+      assignedAt: true,
+      resource: {
+        select: {
+          id: true,
+          status: true,
+          visibility: true,
+          sourceContent: {
+            select: {
+              id: true,
+              courseId: true,
+              folderId: true,
+              title: true,
+              description: true,
+              excerpt: true,
+              contentType: true,
+              estimatedReadingMinutes: true,
+              fileUrl: true,
+              fileName: true,
+              fileSize: true,
+              mimeType: true,
+              storagePath: true,
+              storageProvider: true,
+              sortOrder: true,
+              status: true,
+              isScorm: true,
+              createdAt: true,
+              folder: { select: { name: true } },
+              course: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const targetCourseIds = Array.from(new Set(assignments.map((assignment) => assignment.targetId)));
+  const targetCourses = targetCourseIds.length > 0
+    ? await prisma.course.findMany({
+      where: {
+        id: {
+          in: targetCourseIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    })
+    : [];
+  const targetCourseMap = new Map(targetCourses.map((course) => [course.id, course.name]));
+
+  return assignments.flatMap((assignment) => {
+    const sourceContent = assignment.resource.sourceContent;
+
+    if (!sourceContent || sourceContent.courseId === assignment.targetId) {
+      return [];
+    }
+
+    return [mapSharedContentToCourseItem({
+      sourceContent,
+      targetCourseId: assignment.targetId,
+      targetCourseName: targetCourseMap.get(assignment.targetId) ?? "Assigned Course",
+      resourceId: assignment.resource.id,
+      resourceStatus: assignment.resource.status,
+      resourceVisibility: assignment.resource.visibility,
+      assignedAt: assignment.assignedAt,
+      folderId: null,
+      folderName: null,
+      shareKind: "COURSE_ASSIGNMENT",
+    })];
+  });
+}
+
 export async function getCandidateAccessibleContentByIdService(
   userId: string,
   contentId: string,
 ): Promise<CandidateContentDetail | null> {
   const profile = await getCandidateProfileByUserIdService(userId);
+
+  if (!profile) {
+    return null;
+  }
+
   const batchIds = Array.from(new Set(profile?.activeEnrollments.map((enrollment) => enrollment.batchId) ?? []));
 
   if (!isDatabaseConfigured || batchIds.length === 0) {
+    return null;
+  }
+
+  const courseIds = await listCourseIdsForBatchIds(batchIds);
+
+  if (courseIds.length === 0) {
     return null;
   }
 
@@ -163,6 +344,11 @@ export async function getCandidateAccessibleContentByIdService(
       id: contentId,
       status: "PUBLISHED",
       OR: [
+        {
+          courseId: {
+            in: courseIds,
+          },
+        },
         {
           batchContentMappings: {
             some: {
@@ -192,6 +378,7 @@ export async function getCandidateAccessibleContentByIdService(
     },
     select: {
       id: true,
+      courseId: true,
       title: true,
       description: true,
       excerpt: true,
@@ -208,6 +395,30 @@ export async function getCandidateAccessibleContentByIdService(
 
   if (!content) {
     return null;
+  }
+
+  try {
+    const relevantBatchIds = await prisma.batch.findMany({
+      where: {
+        id: {
+          in: batchIds,
+        },
+        program: {
+          courseId: content.courseId,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await markCurriculumContentInProgressForLearnerService({
+      learnerId: profile.id,
+      batchIds: relevantBatchIds.map((batch) => batch.id),
+      contentId: content.id,
+    });
+  } catch (error) {
+    console.warn("Candidate content access succeeded, but curriculum progress sync failed", error);
   }
 
   return {

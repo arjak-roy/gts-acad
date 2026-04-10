@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
+import { EmailTemplatePreviewPanel } from "@/components/modules/email-templates/email-template-preview-panel";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 
@@ -28,37 +29,6 @@ type EmailTemplateDetail = {
 };
 
 const readonlyTextareaClassName = "min-h-40 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 focus:outline-none";
-const PLACEHOLDER_PATTERN = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
-
-const previewDefaults: Record<string, string> = {
-  appName: "GTS Academy",
-  recipientName: "Template Tester",
-  recipientEmail: "admin@gts-academy.app",
-  supportEmail: "support@gts-academy.app",
-  loginUrl: "https://gts-acad.vercel.app",
-  code: "123456",
-  expiresInMinutes: "10",
-  purposeLabel: "verify your account",
-  learnerCode: "L-TEST-001",
-  programName: "Demo Medical German Program",
-  temporaryPassword: "TempPass#123",
-};
-
-function buildPreviewVariables(variables: string[]) {
-  const map: Record<string, string> = {};
-
-  for (const variable of variables) {
-    map[variable] = previewDefaults[variable] ?? `sample_${variable}`;
-  }
-
-  return map;
-}
-
-function applyTemplateVariables(source: string, variables: Record<string, string>) {
-  return source.replace(PLACEHOLDER_PATTERN, (_match, key: string) => {
-    return variables[key] ?? "";
-  });
-}
 
 type EmailTemplateDetailSheetProps = {
   templateId: string | null;
@@ -75,19 +45,6 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const previewVariables = useMemo(() => buildPreviewVariables(template?.variables ?? []), [template?.variables]);
-  const renderedPreview = useMemo(() => {
-    if (!template) {
-      return null;
-    }
-
-    return {
-      subject: applyTemplateVariables(template.subject, previewVariables),
-      html: applyTemplateVariables(template.htmlContent, previewVariables),
-      text: applyTemplateVariables(template.textContent, previewVariables),
-    };
-  }, [template, previewVariables]);
 
   useEffect(() => {
     if (!open || !templateId) {
@@ -243,25 +200,12 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
                 <textarea readOnly className={readonlyTextareaClassName} value={template.textContent} />
               </div>
 
-              <div className="space-y-3 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Rendered Preview</p>
-                <p className="text-xs text-slate-500">Preview uses deterministic sample values for detected placeholders.</p>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Preview Subject</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-800">{renderedPreview?.subject ?? template.subject}</p>
-                </div>
-
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <p className="border-b border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Preview HTML</p>
-                  <iframe title="Email HTML preview" className="h-72 w-full bg-white" srcDoc={renderedPreview?.html ?? template.htmlContent} />
-                </div>
-
-                <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Preview Plain Text</p>
-                  <pre className="whitespace-pre-wrap break-words text-xs text-slate-700">{renderedPreview?.text ?? template.textContent}</pre>
-                </div>
-              </div>
+              <EmailTemplatePreviewPanel
+                subject={template.subject}
+                htmlContent={template.htmlContent}
+                textContent={template.textContent}
+                variables={template.variables}
+              />
 
               <div className="space-y-3 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
                 <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Send Test Email</p>

@@ -14,8 +14,10 @@ export function sanitizeStoragePathSegment(value: string) {
   return normalized || "item";
 }
 
-export function buildCourseContentStorageScope(courseCode: string, courseName: string) {
-  return `${sanitizeStoragePathSegment(courseCode)}-${sanitizeStoragePathSegment(courseName)}`;
+const COURSE_CONTENT_STORAGE_SCOPE = sanitizeStoragePathSegment("GTS ACADEMY");
+
+export function buildCourseContentStorageScope(_courseCode: string, _courseName: string) {
+  return COURSE_CONTENT_STORAGE_SCOPE;
 }
 
 function toCamelCase(value: string) {
@@ -51,6 +53,14 @@ export function buildLocalCourseContentStoragePath(fileName: string, courseScope
   return buildLocalScopedStoragePath(path.posix.join("course-content", courseScope), fileName);
 }
 
+export function buildLocalLearningResourceStoragePath(fileName: string) {
+  return buildLocalScopedStoragePath("learning-resources", fileName);
+}
+
+export function buildLocalEmailTemplateStoragePath(fileName: string) {
+  return buildLocalScopedStoragePath(path.posix.join("email-templates", "inline-images"), fileName);
+}
+
 function buildS3ScopedStoragePath(prefix: string, fileName: string, namingStrategy: string) {
   const extension = sanitizeExtension(fileName);
   const baseName = sanitizeBaseName(fileName);
@@ -71,4 +81,12 @@ export function buildS3TemporaryStoragePath(fileName: string, namingStrategy: st
 
 export function buildS3CourseContentStoragePath(fileName: string, namingStrategy: string, courseScope: string) {
   return buildS3ScopedStoragePath(path.posix.join("course-content", courseScope), fileName, namingStrategy);
+}
+
+export function buildS3LearningResourceStoragePath(fileName: string, namingStrategy: string) {
+  return buildS3ScopedStoragePath("learning-resources", fileName, namingStrategy);
+}
+
+export function buildS3EmailTemplateStoragePath(fileName: string, namingStrategy: string) {
+  return buildS3ScopedStoragePath(path.posix.join("email-templates", "inline-images"), fileName, namingStrategy);
 }
