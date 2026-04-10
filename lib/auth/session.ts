@@ -71,7 +71,8 @@ function getAuthSessionCookiePolicy(request: NextRequest) {
 }
 
 export async function createAuthSessionToken(claims: AuthSessionClaims, maxAgeSeconds: number) {
-  const { issuedAt: _issuedAt, ...tokenClaims } = claims;
+  const tokenClaims = { ...claims };
+  delete tokenClaims.issuedAt;
 
   let builder = new SignJWT(tokenClaims)
     .setProtectedHeader({ alg: "HS256" })

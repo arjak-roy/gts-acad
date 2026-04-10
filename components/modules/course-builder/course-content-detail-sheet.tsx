@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ExternalLink, FileText, ImageIcon, Link2, Video } from "lucide-react";
 import { toast } from "sonner";
@@ -113,7 +114,17 @@ function PreviewBlock({ detail, previewEnabled }: { detail: ContentDetail; previ
   if (detail.mimeType?.startsWith("image/")) {
     return (
       <div className="overflow-hidden rounded-xl border bg-slate-50 p-2">
-        <img src={detail.fileUrl} alt={detail.title} className="max-h-[420px] w-full rounded-lg object-contain bg-white" />
+        <div className="relative h-[420px] w-full overflow-hidden rounded-lg bg-white">
+          <Image
+            src={detail.fileUrl}
+            alt={detail.title}
+            fill
+            unoptimized
+            loader={({ src }) => src}
+            sizes="(max-width: 768px) 100vw, 720px"
+            className="object-contain"
+          />
+        </div>
       </div>
     );
   }

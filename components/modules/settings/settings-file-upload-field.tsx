@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Loader2, Upload } from "lucide-react";
 
 import type { SettingDefinitionItem, SettingsAssetValue } from "@/services/settings/types";
@@ -31,7 +32,17 @@ export function SettingsFileUploadField({ setting, asset, disabled, isUploading,
             </a>
           </div>
           {isImageAsset ? (
-            <img src={asset.url} alt={setting.label} className="mt-3 max-h-32 rounded-xl border border-slate-100 object-contain" />
+            <div className="relative mt-3 h-32 overflow-hidden rounded-xl border border-slate-100 bg-white">
+              <Image
+                src={asset.url}
+                alt={setting.label}
+                fill
+                unoptimized
+                loader={({ src }) => src}
+                sizes="(max-width: 768px) 100vw, 16rem"
+                className="object-contain"
+              />
+            </div>
           ) : null}
         </div>
       ) : (

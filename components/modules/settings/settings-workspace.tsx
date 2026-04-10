@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowUpRight,
   Bell,
@@ -78,8 +78,6 @@ type DefinitionFormState = {
   isActive: boolean;
 };
 
-const INPUT_CLASS_NAME =
-  "flex h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
 const TEXTAREA_CLASS_NAME =
   "flex min-h-[104px] w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
 const SELECT_CLASS_NAME =
@@ -444,7 +442,7 @@ export function SettingsWorkspace() {
   const [editingDefinitionId, setEditingDefinitionId] = useState<string | null>(null);
   const [definitionForm, setDefinitionForm] = useState<DefinitionFormState>(buildEmptyDefinitionForm());
 
-  async function loadOverview(preferredCategoryCode?: string | null) {
+  const loadOverview = useCallback(async (preferredCategoryCode?: string | null) => {
     setIsLoadingOverview(true);
 
     try {
@@ -463,24 +461,24 @@ export function SettingsWorkspace() {
         return;
       }
 
-      const nextSelectedCode =
-        preferredCategoryCode && payload.data.categories.some((category) => category.code === preferredCategoryCode)
-          ? preferredCategoryCode
-          : selectedCategoryCode && payload.data.categories.some((category) => category.code === selectedCategoryCode)
-            ? selectedCategoryCode
-            : payload.data.categories[0].code;
+      setSelectedCategoryCode((currentSelectedCategoryCode) => {
+        const nextSelectedCode =
+          preferredCategoryCode && payload.data.categories.some((category) => category.code === preferredCategoryCode)
+            ? preferredCategoryCode
+            : currentSelectedCategoryCode && payload.data.categories.some((category) => category.code === currentSelectedCategoryCode)
+              ? currentSelectedCategoryCode
+              : payload.data.categories[0].code;
 
-      if (nextSelectedCode !== selectedCategoryCode) {
-        setSelectedCategoryCode(nextSelectedCode);
-      }
+        return nextSelectedCode === currentSelectedCategoryCode ? currentSelectedCategoryCode : nextSelectedCode;
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load settings overview.");
     } finally {
       setIsLoadingOverview(false);
     }
-  }
+  }, []);
 
-  async function loadCategory(categoryCode: string) {
+  const loadCategory = useCallback(async (categoryCode: string) => {
     setIsLoadingCategory(true);
 
     try {
@@ -497,11 +495,11 @@ export function SettingsWorkspace() {
     } finally {
       setIsLoadingCategory(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadOverview();
-  }, []);
+  }, [loadOverview]);
 
   useEffect(() => {
     if (!selectedCategoryCode) {
@@ -509,7 +507,7 @@ export function SettingsWorkspace() {
     }
 
     void loadCategory(selectedCategoryCode);
-  }, [selectedCategoryCode]);
+  }, [loadCategory, selectedCategoryCode]);
 
   const groupedSettings = selectedCategory ? groupSettings(selectedCategory.settings) : [];
 

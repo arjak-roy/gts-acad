@@ -24,12 +24,6 @@ function mapCourseNamesToIds(courseNames: string[], courseOptions: CourseOption[
   ));
 }
 
-function formatSelectedCourseNames(courseIds: string[], courseOptions: CourseOption[]) {
-  return courseOptions
-    .filter((course) => courseIds.includes(course.id))
-    .map((course) => course.name);
-}
-
 type CourseOption = {
   id: string;
   name: string;
@@ -148,8 +142,6 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
       active = false;
     };
   }, [open, trainerId]);
-
-  const selectedCourseNames = formatSelectedCourseNames(form.courseIds, courses);
 
   const toggleCourse = (courseId: string) => {
     setForm((prev) => ({
