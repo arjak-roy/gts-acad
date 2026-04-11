@@ -60,6 +60,7 @@ const navGroups: NavGroup[] = [
       { href: "/schedule", label: "Schedule", icon: CalendarCheck, requiredPermission: routePermissionMap["/schedule"] },
       { href: "/attendance", label: "Attendance", icon: CalendarCheck, requiredPermission: routePermissionMap["/attendance"] },
       { href: "/assessments", label: "Assessments", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments"] },
+      { href: "/assessments/reviews", label: "Assessment Reviews", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments/reviews"] },
       { href: "/certifications", label: "Certifications", icon: Award, requiredPermission: routePermissionMap["/certifications"] },
       { href: "/readiness", label: "Readiness Engine", icon: HeartPulse, requiredPermission: routePermissionMap["/readiness"] },
       { href: "/language-lab", label: "Language Lab", icon: Mic2, requiredPermission: routePermissionMap["/language-lab"] },

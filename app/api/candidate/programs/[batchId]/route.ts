@@ -15,6 +15,26 @@ type RouteContext = {
   };
 };
 
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60_000);
+}
+
+function selectLinkedAssessmentEvent(
+  schedule: Awaited<ReturnType<typeof listScheduleEventsService>>["items"],
+  assessmentPoolId: string,
+) {
+  return (
+    schedule
+      .filter((event) => event.linkedAssessmentPoolId === assessmentPoolId && event.status !== "CANCELLED")
+      .sort((left, right) => {
+        const leftTime = new Date(left.startsAt).getTime();
+        const rightTime = new Date(right.startsAt).getTime();
+
+        return leftTime - rightTime;
+      })[0] ?? null
+  );
+}
+
 export function OPTIONS(request: NextRequest) {
   return handleCorsPreflight(request, ["GET", "OPTIONS"]);
 }
@@ -54,10 +74,27 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       assignedCurricula: curriculumWorkspace.assignedCurricula,
     };
 
+    const candidateAssessments = assessments.map((assessment) => {
+      const linkedEvent = selectLinkedAssessmentEvent(scheduleResponse.items, assessment.assessmentPoolId);
+      const opensAt = linkedEvent ? new Date(linkedEvent.startsAt) : assessment.scheduledAt;
+      const closesAt = linkedEvent?.endsAt
+        ? new Date(linkedEvent.endsAt)
+        : opensAt && assessment.timeLimitMinutes
+        ? addMinutes(opensAt, assessment.timeLimitMinutes)
+        : null;
+
+      return {
+        ...assessment,
+        scheduledAt: opensAt,
+        opensAt,
+        closesAt,
+      };
+    });
+
     const response = apiSuccess({
       enrollment,
       curriculum,
-      assessments,
+      assessments: candidateAssessments,
       resources,
       schedule: scheduleResponse.items,
     });

@@ -7,61 +7,37 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent } from "@/components/ui/card";
+import { buildTrainerCourseSelections, type TrainerCourseOption } from "@/components/modules/trainers/course-selection";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
+import { TRAINER_AVAILABILITY_LABELS, type TrainerAvailabilityStatus, type TrainerDetail, type TrainerStatus } from "@/services/trainers/types";
 import { cn } from "@/lib/utils";
 
-function mapCourseNamesToIds(courseNames: string[], courseOptions: CourseOption[]) {
-  const courseIdsByNormalizedName = new Map(
-    courseOptions.map((course) => [course.name.trim().toLowerCase(), course.id]),
-  );
-
-  return Array.from(new Set(
-    courseNames
-      .map((courseName) => courseIdsByNormalizedName.get(courseName.trim().toLowerCase()))
-      .filter((courseId): courseId is string => Boolean(courseId)),
-  ));
-}
-
-type CourseOption = {
-  id: string;
-  name: string;
-  isActive: boolean;
-};
-
-type TrainerStatus = "ACTIVE" | "INACTIVE";
-
-type TrainerDetail = {
-  id: string;
-  fullName: string;
-  email: string;
-  phone: string | null;
-  specialization: string;
-  capacity: number;
-  status: TrainerStatus;
-  courses: string[];
-  bio: string | null;
-};
+type CourseOption = TrainerCourseOption;
 
 type EditTrainerForm = {
   fullName: string;
+  employeeCode: string;
   email: string;
   phone: string;
   specialization: string;
   capacity: string;
   status: TrainerStatus;
+  availabilityStatus: TrainerAvailabilityStatus;
   courseIds: string[];
   bio: string;
 };
 
 const initialForm: EditTrainerForm = {
   fullName: "",
+  employeeCode: "",
   email: "",
   phone: "",
   specialization: "",
   capacity: "0",
   status: "ACTIVE",
+  availabilityStatus: "AVAILABLE",
   courseIds: [],
   bio: "",
 };
@@ -70,9 +46,11 @@ type EditTrainerSheetProps = {
   trainerId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onUpdated?: () => void;
+  onArchived?: () => void;
 };
 
-export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerSheetProps) {
+export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onArchived }: EditTrainerSheetProps) {
   const router = useRouter();
   const [step, setStep] = useState<"form" | "confirm" | "updated">("form");
   const [error, setError] = useState<string | null>(null);
@@ -109,17 +87,22 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
           return;
         }
 
-        const activeCourses = (coursesPayload.data ?? []).filter((course) => course.isActive);
+        const { options, selectedValues } = buildTrainerCourseSelections(
+          coursesPayload.data ?? [],
+          trainerPayload.data.courses,
+        );
 
-        setCourses(activeCourses);
+        setCourses(options);
         setForm({
           fullName: trainerPayload.data.fullName,
+          employeeCode: trainerPayload.data.employeeCode,
           email: trainerPayload.data.email,
           phone: trainerPayload.data.phone ?? "",
           specialization: trainerPayload.data.specialization,
           capacity: String(trainerPayload.data.capacity),
           status: trainerPayload.data.status,
-          courseIds: mapCourseNamesToIds(trainerPayload.data.courses, activeCourses),
+          availabilityStatus: trainerPayload.data.availabilityStatus,
+          courseIds: selectedValues,
           bio: trainerPayload.data.bio ?? "",
         });
       } catch (loadError) {
@@ -156,8 +139,8 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
     event.preventDefault();
 
     const capacity = Number(form.capacity);
-    if (!form.fullName.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.courseIds.length === 0) {
-      setError("Please complete Name, Email, Specialization, Capacity, and select at least one course.");
+    if (!form.fullName.trim() || !form.employeeCode.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.courseIds.length === 0) {
+      setError("Please complete Name, Employee Code, Email, Specialization, Capacity, and select at least one course.");
       return;
     }
 
@@ -181,11 +164,13 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
         },
         body: JSON.stringify({
           fullName: form.fullName,
+          employeeCode: form.employeeCode,
           email: form.email,
           phone: form.phone,
           specialization: form.specialization,
           capacity: Number(form.capacity),
           status: form.status,
+          availabilityStatus: form.availabilityStatus,
           courses: form.courseIds,
           bio: form.bio,
         }),
@@ -198,6 +183,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
 
       setStep("updated");
       router.refresh();
+  onUpdated?.();
       toast.success("Trainer updated successfully.");
     } catch (updateError) {
       const message = updateError instanceof Error ? updateError.message : "Failed to update trainer.";
@@ -228,6 +214,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
 
       onOpenChange(false);
       router.refresh();
+  onArchived?.();
       toast.success("Trainer archived successfully.");
     } catch (archiveError) {
       const message = archiveError instanceof Error ? archiveError.message : "Failed to archive trainer.";
@@ -272,6 +259,10 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
                   <Input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Employee Code</label>
+                  <Input value={form.employeeCode} onChange={(event) => setForm((prev) => ({ ...prev, employeeCode: event.target.value.toUpperCase() }))} />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Email</label>
                   <Input type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} />
                 </div>
@@ -298,6 +289,18 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
                     <option value="INACTIVE">Inactive</option>
                   </select>
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Availability</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                    value={form.availabilityStatus}
+                    onChange={(event) => setForm((prev) => ({ ...prev, availabilityStatus: event.target.value as TrainerAvailabilityStatus }))}
+                  >
+                    {Object.entries(TRAINER_AVAILABILITY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -322,7 +325,14 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange }: EditTrainerS
                           )}
                           aria-pressed={selected}
                         >
-                          <p className="text-sm font-semibold">{course.name}</p>
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold">{course.name}</p>
+                              {!course.isActive ? (
+                                <p className="text-[11px] font-medium text-amber-700">
+                                  {course.source === "legacy" ? "Saved assignment not found in the course catalog." : "Inactive course retained from the current assignment."}
+                                </p>
+                              ) : null}
+                            </div>
                         </button>
                       );
                     })

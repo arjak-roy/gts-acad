@@ -4,8 +4,8 @@ import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
 import type { QuestionDetail, GradeResult, GradingReport } from "@/services/assessment-pool/types";
 
 /**
- * Auto-grade objective question types: MCQ, NUMERIC, FILL_IN_THE_BLANK.
- * Returns null for subjective types (ESSAY, MULTI_INPUT_REASONING, TWO_PART_ANALYSIS).
+ * Auto-grade objective question types where the correct answer can be resolved immediately.
+ * Returns null for question types that require manual review.
  */
 function gradeQuestion(question: QuestionDetail, answer: unknown): GradeResult | null {
   const base = {
@@ -117,6 +117,7 @@ export async function gradeSubmissionService(
   const questionMap = new Map(pool.questions.map((q) => [q.id, q as QuestionDetail]));
   const results: GradeResult[] = [];
   let marksObtained = 0;
+  let requiresManualReview = false;
 
   for (const submission of answers) {
     const question = questionMap.get(submission.questionId);
@@ -127,13 +128,15 @@ export async function gradeSubmissionService(
       results.push(result);
       marksObtained += result.marksAwarded;
     } else {
-      // Subjective — mark as 0 pending manual review
+      requiresManualReview = true;
       results.push({
         questionId: submission.questionId,
-        isCorrect: false,
+        isCorrect: null,
         marksAwarded: 0,
         maxMarks: question.marks,
         correctAnswer: null,
+        requiresManualReview: true,
+        feedback: null,
       });
     }
   }
@@ -145,6 +148,7 @@ export async function gradeSubmissionService(
     marksObtained,
     percentage,
     passed: marksObtained >= pool.passingMarks,
+    requiresManualReview,
     results,
   };
 }

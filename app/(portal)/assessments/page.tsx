@@ -10,6 +10,7 @@ import { AssessmentDetailSheet } from "@/components/modules/assessment-pool/asse
 import { AssessmentPoolTab } from "@/components/modules/assessment-pool/assessment-pool-tab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const selectClassName = "block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
@@ -142,6 +143,14 @@ export default function AssessmentsPage() {
                       Content Library
                     </Link>
                   </Button>
+                  <CanAccess permission="assessment_reviews.view">
+                    <Button asChild variant="ghost">
+                      <Link href="/assessments/reviews">
+                        <ClipboardList className="h-4 w-4" />
+                        Review Queue
+                      </Link>
+                    </Button>
+                  </CanAccess>
                 </div>
               </div>
             </div>

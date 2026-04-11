@@ -1,8 +1,10 @@
 .next
+.next-build
 node_modules
 .env
 .env.local
 coverage
 dist
+*.tsbuildinfo
 *.log
 docker-compose.*

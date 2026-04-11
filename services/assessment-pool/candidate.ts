@@ -1,9 +1,10 @@
 import "server-only";
 
-import { AssessmentMode, AssessmentType, EvaluationStatus, Prisma, QuestionType } from "@prisma/client";
+import { AssessmentAttemptStatus, AssessmentMode, AssessmentType, EvaluationStatus, Prisma, QuestionType } from "@prisma/client";
 
 import type { GradeSubmissionInput } from "@/lib/validation-schemas/assessment-pool";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { buildCandidateAttemptFeedback, parseCandidateAttemptFeedback } from "@/services/assessment-pool/candidate-attempt-feedback";
 import { gradeSubmissionService } from "@/services/assessment-pool/grading";
 import {
   markCurriculumAssessmentCompletedForLearnerService,
@@ -19,23 +20,16 @@ import type {
 } from "@/services/assessment-pool/types";
 import { recomputeLearnerReadiness } from "@/services/readiness-service";
 
-const AUTO_GRADABLE_QUESTION_TYPES = new Set<QuestionType>([
+const SUPPORTED_IN_APP_QUESTION_TYPES = new Set<QuestionType>([
   "MCQ",
   "NUMERIC",
+  "ESSAY",
   "FILL_IN_THE_BLANK",
+  "MULTI_INPUT_REASONING",
   "TWO_PART_ANALYSIS",
 ]);
 
-const CANDIDATE_ATTEMPT_FEEDBACK_TYPE = "candidate-assessment-submission";
 const FALLBACK_ASSESSMENT_PREFIX = "[BATCH-ASSESSMENT:";
-
-type CandidateAttemptFeedback = {
-  type: typeof CANDIDATE_ATTEMPT_FEEDBACK_TYPE;
-  marksObtained: number;
-  totalMarks: number;
-  percentage: number;
-  passed: boolean;
-};
 
 type CandidateAssessmentContext = {
   learnerId: string;
@@ -44,6 +38,7 @@ type CandidateAssessmentContext = {
   programId: string;
   assignmentId: string;
   opensAt: Date | null;
+  closesAt: Date | null;
   pool: {
     id: string;
     code: string;
@@ -68,52 +63,77 @@ function buildFallbackAssessmentTitle(mappingId: string, title: string) {
   return `${FALLBACK_ASSESSMENT_PREFIX}${mappingId}] ${title}`;
 }
 
-function parseCandidateAttemptFeedback(feedback: string | null) {
-  if (!feedback) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(feedback) as CandidateAttemptFeedback;
-
-    if (parsed?.type !== CANDIDATE_ATTEMPT_FEEDBACK_TYPE) {
-      return null;
-    }
-
-    return parsed;
-  } catch {
-    return null;
-  }
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60_000);
 }
 
-function buildCandidateAttemptFeedback(report: { marksObtained: number; totalMarks: number; percentage: number; passed: boolean }) {
-  return JSON.stringify({
-    type: CANDIDATE_ATTEMPT_FEEDBACK_TYPE,
-    marksObtained: report.marksObtained,
-    totalMarks: report.totalMarks,
-    percentage: report.percentage,
-    passed: report.passed,
-  } satisfies CandidateAttemptFeedback);
+function resolveAssessmentWindow(options: {
+  mappedOpensAt: Date | null | undefined;
+  linkedOpensAt: Date | null | undefined;
+  linkedClosesAt: Date | null | undefined;
+  timeLimitMinutes: number | null | undefined;
+}) {
+  const opensAt = options.linkedOpensAt ?? options.mappedOpensAt ?? null;
+  const closesAt = options.linkedClosesAt ?? (opensAt && options.timeLimitMinutes ? addMinutes(opensAt, options.timeLimitMinutes) : null);
+
+  return {
+    opensAt,
+    closesAt,
+  };
 }
 
 function buildAttemptSummary(options: {
   assessmentId: string;
+  status: CandidateAssessmentAttemptSummary["status"];
+  submittedAt: Date;
   gradedAt: Date;
-  storedScore: number;
+  storedScore: number | null;
   storedFeedback: string | null;
   passingMarks: number;
   totalMarks: number;
+  requiresManualReview: boolean;
+  passed?: boolean | null;
+  marksObtained?: number | null;
 }): CandidateAssessmentAttemptSummary {
   const parsedFeedback = parseCandidateAttemptFeedback(options.storedFeedback);
   const fallbackPassedThreshold = options.totalMarks > 0 ? Math.round((options.passingMarks / options.totalMarks) * 100) : 0;
+  const resolvedPercentage = parsedFeedback?.percentage ?? options.storedScore;
+  const resolvedPassed = parsedFeedback?.passed ?? options.passed ?? (typeof resolvedPercentage === "number" ? resolvedPercentage >= fallbackPassedThreshold : null);
 
   return {
     assessmentId: options.assessmentId,
-    percentage: parsedFeedback?.percentage ?? options.storedScore,
-    passed: parsedFeedback?.passed ?? options.storedScore >= fallbackPassedThreshold,
-    gradedAt: options.gradedAt,
-    marksObtained: parsedFeedback?.marksObtained ?? null,
+    status: options.status,
+    percentage: resolvedPercentage,
+    passed: resolvedPassed,
+    submittedAt: options.submittedAt,
+    gradedAt: options.status === "GRADED" ? options.gradedAt : null,
+    marksObtained: parsedFeedback?.marksObtained ?? options.marksObtained ?? null,
     totalMarks: parsedFeedback?.totalMarks ?? options.totalMarks,
+    requiresManualReview: options.requiresManualReview,
+  };
+}
+
+function buildAttemptSummaryFromAttempt(options: {
+  assessmentId: string;
+  status: AssessmentAttemptStatus;
+  submittedAt: Date;
+  gradedAt: Date | null;
+  marksObtained: number | null;
+  totalMarks: number;
+  percentage: number | null;
+  passed: boolean | null;
+  requiresManualReview: boolean;
+}): CandidateAssessmentAttemptSummary {
+  return {
+    assessmentId: options.assessmentId,
+    status: options.status,
+    percentage: options.percentage,
+    passed: options.passed,
+    submittedAt: options.submittedAt,
+    gradedAt: options.gradedAt,
+    marksObtained: options.marksObtained,
+    totalMarks: options.totalMarks,
+    requiresManualReview: options.requiresManualReview,
   };
 }
 
@@ -316,10 +336,16 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
       type: true,
       classMode: true,
       startsAt: true,
+      endsAt: true,
     },
   });
 
-  const opensAt = mapping?.scheduledAt ?? linkedEvent?.startsAt ?? null;
+  const { opensAt, closesAt } = resolveAssessmentWindow({
+    mappedOpensAt: mapping?.scheduledAt,
+    linkedOpensAt: linkedEvent?.startsAt,
+    linkedClosesAt: linkedEvent?.endsAt,
+    timeLimitMinutes: pool.timeLimitMinutes,
+  });
   const fallbackAssessment = !linkedEvent?.linkedAssessmentId
     ? await prisma.assessment.findFirst({
         where: {
@@ -337,6 +363,28 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
 
   const assessmentId = linkedEvent?.linkedAssessmentId ?? fallbackAssessment?.id ?? null;
   const score = assessmentId
+    ? await prisma.assessmentAttempt.findUnique({
+        where: {
+          assessmentId_learnerId: {
+            assessmentId,
+            learnerId: learner.id,
+          },
+        },
+        select: {
+          assessmentId: true,
+          status: true,
+          submittedAt: true,
+          gradedAt: true,
+          marksObtained: true,
+          totalMarks: true,
+          percentage: true,
+          passed: true,
+          requiresManualReview: true,
+        },
+      })
+    : null;
+
+  const legacyScore = assessmentId && !score
     ? await prisma.assessmentScore.findUnique({
         where: {
           assessmentId_learnerId: {
@@ -360,6 +408,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     programId: batch.programId,
     assignmentId,
     opensAt,
+    closesAt,
     pool: {
       id: pool.id,
       code: pool.code,
@@ -377,22 +426,37 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     linkedClassMode: linkedEvent?.classMode ?? null,
     fallbackAssessmentId: fallbackAssessment?.id ?? null,
     attempt: score
-      ? buildAttemptSummary({
+      ? buildAttemptSummaryFromAttempt({
           assessmentId: score.assessmentId,
+          status: score.status,
+          submittedAt: score.submittedAt,
           gradedAt: score.gradedAt,
-          storedScore: score.score,
-          storedFeedback: score.feedback,
+          marksObtained: score.marksObtained,
+          totalMarks: score.totalMarks,
+          percentage: score.percentage,
+          passed: score.passed,
+          requiresManualReview: score.requiresManualReview,
+        })
+      : legacyScore
+      ? buildAttemptSummary({
+          assessmentId: legacyScore.assessmentId,
+          status: "GRADED",
+          submittedAt: legacyScore.gradedAt,
+          gradedAt: legacyScore.gradedAt,
+          storedScore: legacyScore.score,
+          storedFeedback: legacyScore.feedback,
           passingMarks: pool.passingMarks,
           totalMarks: pool.totalMarks,
+          requiresManualReview: false,
         })
       : null,
-    supportsInAppAttempt: pool.questions.every((question) => AUTO_GRADABLE_QUESTION_TYPES.has(question.questionType)),
+    supportsInAppAttempt: pool.questions.every((question) => SUPPORTED_IN_APP_QUESTION_TYPES.has(question.questionType)),
   };
 }
 
 function getAvailabilityMessage(context: CandidateAssessmentContext, now: number) {
   if (!context.supportsInAppAttempt) {
-    return "This assessment includes question types that still need manual evaluation, so it cannot be taken in the app yet.";
+    return "This assessment includes question types that are not supported in the candidate app yet.";
   }
 
   if (!context.opensAt) {
@@ -401,6 +465,10 @@ function getAvailabilityMessage(context: CandidateAssessmentContext, now: number
 
   if (context.opensAt.getTime() > now) {
     return "This assessment will unlock once the scheduled start time has been crossed.";
+  }
+
+  if (context.closesAt && context.closesAt.getTime() < now) {
+    return "This assessment window has already closed.";
   }
 
   return null;
@@ -413,7 +481,8 @@ export async function getCandidateAssessmentDetailService(options: {
 }): Promise<CandidateAssessmentDetail> {
   const context = await resolveCandidateAssessmentContext(options.userId, options.batchId, options.assessmentPoolId);
   const now = Date.now();
-  const isOpen = Boolean(context.opensAt && context.opensAt.getTime() <= now);
+  const isClosed = Boolean(context.closesAt && context.closesAt.getTime() < now);
+  const isOpen = Boolean(context.opensAt && context.opensAt.getTime() <= now && !isClosed);
 
   if (isOpen && context.supportsInAppAttempt && !context.attempt) {
     try {
@@ -441,7 +510,9 @@ export async function getCandidateAssessmentDetailService(options: {
     timeLimitMinutes: context.pool.timeLimitMinutes,
     scheduledAt: context.opensAt,
     opensAt: context.opensAt,
+    closesAt: context.closesAt,
     isOpen,
+    isClosed,
     supportsInAppAttempt: context.supportsInAppAttempt,
     availabilityMessage: getAvailabilityMessage(context, now),
     questionCount: context.questions.length,
@@ -490,6 +561,10 @@ export async function submitCandidateAssessmentService(options: {
     throw new Error("Invalid request: assessment is not open yet.");
   }
 
+  if (context.closesAt && context.closesAt.getTime() < Date.now()) {
+    throw new Error("Invalid request: assessment window has closed.");
+  }
+
   const report = await gradeSubmissionService(
     options.assessmentPoolId,
     options.answers.map((answer) => ({
@@ -498,12 +573,12 @@ export async function submitCandidateAssessmentService(options: {
     })),
   );
 
-  const feedback = buildCandidateAttemptFeedback(report);
   const fallbackTitle = buildFallbackAssessmentTitle(context.assignmentId, context.pool.title);
-  const gradedAt = new Date();
+  const submittedAt = new Date();
+  const feedback = buildCandidateAttemptFeedback(report);
 
   try {
-    const assessmentId = await prisma.$transaction(async (tx) => {
+    const { assessmentId, attempt } = await prisma.$transaction(async (tx) => {
       let resolvedAssessmentId = context.linkedAssessmentId ?? context.fallbackAssessmentId;
 
       if (!resolvedAssessmentId) {
@@ -542,7 +617,7 @@ export async function submitCandidateAssessmentService(options: {
         resolvedAssessmentId = createdAssessment.id;
       }
 
-      const existingScore = await tx.assessmentScore.findUnique({
+      const existingAttempt = await tx.assessmentAttempt.findUnique({
         where: {
           assessmentId_learnerId: {
             assessmentId: resolvedAssessmentId,
@@ -554,50 +629,112 @@ export async function submitCandidateAssessmentService(options: {
         },
       });
 
-      if (existingScore) {
+      if (existingAttempt) {
         throw new Error("Assessment already submitted.");
       }
 
-      await tx.assessmentScore.create({
+      const attempt = await tx.assessmentAttempt.create({
         data: {
           assessmentId: resolvedAssessmentId,
+          assessmentPoolId: context.pool.id,
           learnerId: context.learnerId,
-          score: report.percentage,
-          feedback,
-          gradedAt,
+          batchId: context.batchId,
+          status: report.requiresManualReview ? AssessmentAttemptStatus.PENDING_REVIEW : AssessmentAttemptStatus.GRADED,
+          answers: options.answers as Prisma.InputJsonValue,
+          gradingReport: report as Prisma.InputJsonValue,
+          requiresManualReview: report.requiresManualReview,
+          marksObtained: report.requiresManualReview ? null : report.marksObtained,
+          totalMarks: report.totalMarks,
+          percentage: report.requiresManualReview ? null : report.percentage,
+          passed: report.requiresManualReview ? null : report.passed,
+          submittedAt,
+          gradedAt: report.requiresManualReview ? null : submittedAt,
+        },
+        select: {
+          assessmentId: true,
+          status: true,
+          submittedAt: true,
+          gradedAt: true,
+          marksObtained: true,
+          totalMarks: true,
+          percentage: true,
+          passed: true,
+          requiresManualReview: true,
         },
       });
 
-      return resolvedAssessmentId;
+      if (!report.requiresManualReview) {
+        await tx.assessmentScore.create({
+          data: {
+            assessmentId: resolvedAssessmentId,
+            learnerId: context.learnerId,
+            score: report.percentage,
+            feedback,
+            gradedAt: submittedAt,
+          },
+        });
+      }
+
+      return {
+        assessmentId: resolvedAssessmentId,
+        attempt,
+      };
     });
 
-    try {
-      await markCurriculumAssessmentCompletedForLearnerService({
-        learnerId: context.learnerId,
-        batchId: context.batchId,
-        assessmentPoolId: context.pool.id,
-      });
-    } catch (error) {
-      console.warn("Candidate assessment submission saved, but curriculum completion sync failed", error);
-    }
+    if (report.requiresManualReview) {
+      try {
+        await markCurriculumAssessmentInProgressForLearnerService({
+          learnerId: context.learnerId,
+          batchId: context.batchId,
+          assessmentPoolId: context.pool.id,
+        });
+      } catch (error) {
+        console.warn("Candidate assessment submission saved, but curriculum in-progress sync failed", error);
+      }
+    } else {
+      try {
+        await markCurriculumAssessmentCompletedForLearnerService({
+          learnerId: context.learnerId,
+          batchId: context.batchId,
+          assessmentPoolId: context.pool.id,
+        });
+      } catch (error) {
+        console.warn("Candidate assessment submission saved, but curriculum completion sync failed", error);
+      }
 
-    try {
-      await recomputeLearnerReadiness(context.learnerId);
-    } catch (error) {
-      console.warn("Candidate assessment submission saved, but readiness recomputation failed", error);
+      try {
+        await recomputeLearnerReadiness(context.learnerId);
+      } catch (error) {
+        console.warn("Candidate assessment submission saved, but readiness recomputation failed", error);
+      }
     }
 
     return {
       batchId: context.batchId,
       assessmentPoolId: context.pool.id,
-      attempt: buildAttemptSummary({
-        assessmentId,
-        gradedAt,
-        storedScore: report.percentage,
-        storedFeedback: feedback,
-        passingMarks: context.pool.passingMarks,
-        totalMarks: context.pool.totalMarks,
-      }),
+      attempt: report.requiresManualReview
+        ? buildAttemptSummaryFromAttempt({
+            assessmentId: attempt.assessmentId,
+            status: attempt.status,
+            submittedAt: attempt.submittedAt,
+            gradedAt: attempt.gradedAt,
+            marksObtained: attempt.marksObtained,
+            totalMarks: attempt.totalMarks,
+            percentage: attempt.percentage,
+            passed: attempt.passed,
+            requiresManualReview: attempt.requiresManualReview,
+          })
+        : buildAttemptSummary({
+            assessmentId,
+            status: "GRADED",
+            submittedAt,
+            gradedAt: submittedAt,
+            storedScore: report.percentage,
+            storedFeedback: feedback,
+            passingMarks: context.pool.passingMarks,
+            totalMarks: context.pool.totalMarks,
+            requiresManualReview: false,
+          }),
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

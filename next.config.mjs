@@ -1,6 +1,9 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
+
+/** @type {(phase: string) => import('next').NextConfig} */
+const createNextConfig = (phase) => ({
   output: 'standalone',
+  distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next' : '.next-build',
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
@@ -14,6 +17,6 @@ const nextConfig = {
       },
     ],
   },
-};
+});
 
-export default nextConfig;
+export default createNextConfig;

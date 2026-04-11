@@ -143,6 +143,15 @@ enum BatchMode {
   @@map("batch_mode")
 }
 
+enum TrainerAvailabilityStatus {
+  AVAILABLE   @map("available")
+  LIMITED     @map("limited")
+  UNAVAILABLE @map("unavailable")
+  ON_LEAVE    @map("on_leave")
+
+  @@map("trainer_availability_status")
+}
+
 enum AssessmentType {
   DIAGNOSTIC @map("diagnostic")
   MODULE     @map("module")
@@ -367,6 +376,14 @@ enum AssessmentPoolStatus {
   @@map("assessment_pool_status")
 }
 
+enum AssessmentAttemptStatus {
+  PENDING_REVIEW @map("pending_review")
+  IN_REVIEW      @map("in_review")
+  GRADED         @map("graded")
+
+  @@map("assessment_attempt_status")
+}
+
 enum AiJobStatus {
   PENDING    @map("pending")
   PROCESSING @map("processing")
@@ -461,6 +478,7 @@ model User {
   createdCourseContents    CourseContent[]          @relation("ContentCreatedBy")
   createdCourseContentFolders CourseContentFolder[] @relation("ContentFolderCreatedBy")
   createdAssessmentPools   AssessmentPool[]         @relation("AssessmentPoolCreatedBy")
+  assignedTrainerAssessments TrainerAssessmentAssignment[] @relation("TrainerAssessmentAssignedBy")
   createdQuestionBankQuestions QuestionBankQuestion[] @relation("QuestionBankCreatedBy")
   createdCurricula         Curriculum[]             @relation("CurriculumCreatedBy")
   createdLearningResources LearningResource[]       @relation("LearningResourceCreatedBy")
@@ -472,6 +490,7 @@ model User {
   assignedBatchAssessments BatchAssessmentMapping[] @relation("BatchAssessmentAssignedBy")
   assignedBatchCurricula   BatchCurriculumMapping[] @relation("BatchCurriculumAssignedBy")
   aiAssessmentJobs         AiAssessmentJob[]        @relation("AiJobCreatedBy")
+  reviewedAssessmentAttempts AssessmentAttempt[]    @relation("AssessmentAttemptReviewedBy")
   createdEmailTemplates    EmailTemplate[]          @relation("EmailTemplateCreatedBy")
   updatedEmailTemplates    EmailTemplate[]          @relation("EmailTemplateUpdatedBy")
   emailTemplateVersions    EmailTemplateVersion[]   @relation("EmailTemplateVersionUpdatedBy")
@@ -778,20 +797,24 @@ model UserActivityLog {
 model TrainerProfile {
   id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("trainer_id")
   userId         String         @unique @db.Uuid @map("user_id")
+  employeeCode   String         @unique(map: "trainers_employee_code_key") @map("employee_code") @db.VarChar(50)
   specialization String         @db.VarChar(255)
   bio            String?
   rating         Decimal        @default(0) @map("rating_avg") @db.Decimal(3, 2)
   capacity       Int            @default(0)
   isActive       Boolean        @default(true) @map("is_active")
+  availabilityStatus TrainerAvailabilityStatus @default(AVAILABLE) @map("availability_status")
   joinedAt       DateTime       @default(now()) @map("joined_at") @db.Date
   courses        String[]       @map("programs")
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   leadBatches    Batch[]        @relation("BatchLeadTrainer")
   batches        Batch[]        @relation("BatchTrainers")
+  assessmentAssignments TrainerAssessmentAssignment[]
   roleplays      Roleplay[]
   trainerPmsLogs TrainerPmsLog[]
 
   @@index([userId], map: "idx_trainers_user")
+  @@index([availabilityStatus], map: "idx_trainers_availability_status")
   @@map("trainers")
 }
 
@@ -885,6 +908,7 @@ model Batch {
   enrollments        BatchEnrollment[]
   scheduleEvents     BatchScheduleEvent[]
   assessments        Assessment[]
+  assessmentAttempts AssessmentAttempt[]
   performanceMetrics PerformanceMetric[]
   roleplays          Roleplay[]
   trainerPmsLogs     TrainerPmsLog[]
@@ -936,6 +960,7 @@ model Learner {
   performanceMetrics         PerformanceMetric[]
   roleplays                  Roleplay[]
   interviews                 Interview[]
+  assessmentAttempts         AssessmentAttempt[]
   curriculumItemProgress     LearnerCurriculumItemProgress[]
 
   @@index([userId], map: "idx_candidates_user")
@@ -1018,6 +1043,7 @@ model Assessment {
   batch       Batch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
   scheduleEvent BatchScheduleEvent? @relation("ScheduleEventAssessment")
   scores      AssessmentScore[]
+  attempts    AssessmentAttempt[]
 
   @@index([batchId], map: "idx_assessments_batch")
   @@map("assessments")
@@ -1068,6 +1094,39 @@ model AssessmentScore {
   @@unique([assessmentId, learnerId])
   @@index([learnerId, gradedAt], map: "idx_assessment_scores_candidate")
   @@map("assessment_scores")
+}
+
+model AssessmentAttempt {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("attempt_id")
+  assessmentId       String                  @db.Uuid @map("assessment_id")
+  assessmentPoolId   String                  @db.Uuid @map("assessment_pool_id")
+  learnerId          String                  @db.Uuid @map("candidate_id")
+  batchId            String                  @db.Uuid @map("batch_id")
+  status             AssessmentAttemptStatus @default(PENDING_REVIEW)
+  answers            Json
+  gradingReport      Json?                   @map("grading_report")
+  requiresManualReview Boolean               @default(false) @map("requires_manual_review")
+  marksObtained      Int?                    @map("marks_obtained")
+  totalMarks         Int                     @map("total_marks")
+  percentage         Int?
+  passed             Boolean?
+  reviewerFeedback   String?                 @map("reviewer_feedback")
+  reviewStartedAt    DateTime?               @map("review_started_at") @db.Timestamptz(6)
+  reviewedByUserId   String?                 @db.Uuid @map("reviewed_by_user_id")
+  submittedAt        DateTime                @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  gradedAt           DateTime?               @map("graded_at") @db.Timestamptz(6)
+  assessment         Assessment              @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  assessmentPool     AssessmentPool          @relation(fields: [assessmentPoolId], references: [id], onDelete: Cascade)
+  learner            Learner                 @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  batch              Batch                   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  reviewedByUser     User?                   @relation("AssessmentAttemptReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([assessmentId, learnerId])
+  @@index([assessmentPoolId, status], map: "idx_assessment_attempts_pool_status")
+  @@index([learnerId, submittedAt], map: "idx_assessment_attempts_candidate_submitted")
+  @@index([reviewedByUserId, status], map: "idx_assessment_attempts_reviewer_status")
+  @@index([batchId, status], map: "idx_assessment_attempts_batch_status")
+  @@map("assessment_attempts")
 }
 
 model ReadinessEngineRule {
@@ -1505,6 +1564,8 @@ model AssessmentPool {
   questions            AssessmentQuestion[]
   courseAssessmentLinks CourseAssessmentLink[]
   batchAssessmentMappings BatchAssessmentMapping[]
+  trainerAssignments   TrainerAssessmentAssignment[]
+  assessmentAttempts   AssessmentAttempt[]
   scheduleEvents       BatchScheduleEvent[] @relation("ScheduleEventAssessmentPool")
   curriculumStageItems CurriculumStageItem[] @relation("CurriculumAssessmentItems")
   aiJobs               AiAssessmentJob[]
@@ -1530,6 +1591,28 @@ model AssessmentQuestion {
 
   @@index([assessmentPoolId, sortOrder], map: "idx_assessment_questions_pool_order")
   @@map("assessment_questions")
+}
+
+model TrainerAssessmentAssignment {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("assignment_id")
+  trainerId            String         @db.Uuid @map("trainer_id")
+  assessmentPoolId     String         @db.Uuid @map("assessment_pool_id")
+  canReviewSubmissions Boolean        @default(true) @map("can_review_submissions")
+  canManageAttempts    Boolean        @default(false) @map("can_manage_attempts")
+  canManualGrade       Boolean        @default(false) @map("can_manual_grade")
+  notes                String?        @db.VarChar(1000)
+  isActive             Boolean        @default(true) @map("is_active")
+  assignedById         String?        @db.Uuid @map("assigned_by_user_id")
+  assignedAt           DateTime       @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  updatedAt            DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  trainer              TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assessmentPool       AssessmentPool @relation(fields: [assessmentPoolId], references: [id], onDelete: Cascade)
+  assignedBy           User?          @relation("TrainerAssessmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([trainerId, assessmentPoolId])
+  @@index([trainerId, isActive], map: "idx_trainer_assessment_assignments_trainer_active")
+  @@index([assessmentPoolId, isActive], map: "idx_trainer_assessment_assignments_pool_active")
+  @@map("trainer_assessment_assignments")
 }
 
 model QuestionBankQuestion {

@@ -35,6 +35,7 @@ export type BatchAssessmentItem = {
   status: AssessmentPoolStatus;
   questionCount: number;
   totalMarks: number;
+  timeLimitMinutes: number | null;
   assignedByName: string | null;
   scheduledAt: Date | null;
   assignedAt: Date;

@@ -12,11 +12,15 @@ import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
 import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
-import { TrainerCreateResult, TrainerOption } from "@/services/trainers/types";
-import { CreateTrainerInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
+import { TrainerCreateResult, TrainerDetail, TrainerOption, TrainerStatus } from "@/services/trainers/types";
+import { CreateTrainerInput, UpdateTrainerCoursesInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
 
 function normalizeCourseList(courses: string[]) {
   return Array.from(new Set(courses.map((course) => course.trim()).filter(Boolean)));
+}
+
+function normalizeEmployeeCode(employeeCode: string) {
+  return employeeCode.trim().toUpperCase();
 }
 
 function isUuidLike(value: string) {
@@ -132,6 +136,7 @@ async function sendTrainerWelcomeEmail(input: {
 
 export async function createTrainerService(input: CreateTrainerInput): Promise<TrainerCreateResult> {
   const normalizedFullName = input.fullName.trim();
+  const normalizedEmployeeCode = normalizeEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
@@ -145,23 +150,31 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
       id: mockId,
       userId: `mock-user-${Date.now()}`,
       fullName: normalizedFullName,
+      employeeCode: normalizedEmployeeCode,
       email: normalizedEmail,
       phone: normalizedPhone,
       specialization: normalizedSpecialization,
       bio: normalizedBio,
       capacity: input.capacity,
       status: input.status,
+      availabilityStatus: input.availabilityStatus,
       courses: normalizedCourses,
+      lastActiveAt: null,
     };
   }
 
-  const [existingUser, resolvedCourses] = await Promise.all([
+  const [existingUser, existingTrainerCode, resolvedCourses] = await Promise.all([
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+    prisma.trainerProfile.findFirst({ where: { employeeCode: normalizedEmployeeCode }, select: { id: true } }),
     resolveSelectedCourseNames(normalizedCourses),
   ]);
 
   if (existingUser) {
     throw new Error("Email already exists.");
+  }
+
+  if (existingTrainerCode) {
+    throw new Error("Employee code already exists.");
   }
 
   const temporaryPassword = randomUUID();
@@ -196,10 +209,12 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
     const profile = await tx.trainerProfile.create({
       data: {
         userId: user.id,
+        employeeCode: normalizedEmployeeCode,
         specialization: normalizedSpecialization,
         bio: normalizedBio,
         capacity: input.capacity,
         isActive,
+        availabilityStatus: input.availabilityStatus,
         courses: resolvedCourses,
       },
       select: {
@@ -208,6 +223,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         bio: true,
         capacity: true,
         isActive: true,
+        availabilityStatus: true,
       },
     });
 
@@ -267,18 +283,22 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
     id: trainer.profile.id,
     userId: trainer.user.id,
     fullName: trainer.user.name,
+    employeeCode: normalizedEmployeeCode,
     email: trainer.user.email,
     phone: trainer.user.phone,
     specialization: trainer.profile.specialization,
     bio: trainer.profile.bio,
     capacity: trainer.profile.capacity,
     status: trainer.profile.isActive ? "ACTIVE" : "INACTIVE",
+    availabilityStatus: trainer.profile.availabilityStatus,
     courses: resolvedCourses,
+    lastActiveAt: null,
   };
 }
 
 export async function updateTrainerService(input: UpdateTrainerInput): Promise<TrainerCreateResult> {
   const normalizedFullName = input.fullName.trim();
+  const normalizedEmployeeCode = normalizeEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
@@ -291,13 +311,16 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       id: input.trainerId,
       userId: `mock-user-${input.trainerId}`,
       fullName: normalizedFullName,
+      employeeCode: normalizedEmployeeCode,
       email: normalizedEmail,
       phone: normalizedPhone,
       specialization: normalizedSpecialization,
       bio: normalizedBio,
       capacity: input.capacity,
       status: input.status,
+      availabilityStatus: input.availabilityStatus,
       courses: normalizedCourses,
+      lastActiveAt: null,
     };
   }
 
@@ -310,11 +333,18 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     throw new Error("Trainer not found.");
   }
 
-  const [existingUser, resolvedCourses] = await Promise.all([
+  const [existingUser, existingTrainerCode, resolvedCourses] = await Promise.all([
     prisma.user.findFirst({
       where: {
         id: { not: trainer.userId },
         email: normalizedEmail,
+      },
+      select: { id: true },
+    }),
+    prisma.trainerProfile.findFirst({
+      where: {
+        id: { not: input.trainerId },
+        employeeCode: normalizedEmployeeCode,
       },
       select: { id: true },
     }),
@@ -323,6 +353,10 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
 
   if (existingUser) {
     throw new Error("Email already exists.");
+  }
+
+  if (existingTrainerCode) {
+    throw new Error("Employee code already exists.");
   }
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -345,10 +379,12 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     const profile = await tx.trainerProfile.update({
       where: { id: input.trainerId },
       data: {
+        employeeCode: normalizedEmployeeCode,
         specialization: normalizedSpecialization,
         bio: normalizedBio,
         capacity: input.capacity,
         isActive,
+        availabilityStatus: input.availabilityStatus,
         courses: resolvedCourses,
       },
       select: {
@@ -357,6 +393,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
         bio: true,
         capacity: true,
         isActive: true,
+        availabilityStatus: true,
       },
     });
 
@@ -367,17 +404,22 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     id: updated.profile.id,
     userId: updated.user.id,
     fullName: updated.user.name,
+    employeeCode: normalizedEmployeeCode,
     email: updated.user.email,
     phone: updated.user.phone,
     specialization: updated.profile.specialization,
     bio: updated.profile.bio,
     capacity: updated.profile.capacity,
     status: updated.profile.isActive ? "ACTIVE" : "INACTIVE",
+    availabilityStatus: updated.profile.availabilityStatus,
     courses: resolvedCourses,
+    lastActiveAt: null,
   };
 }
 
-export async function archiveTrainerService(trainerId: string): Promise<TrainerOption> {
+export async function updateTrainerStatusService(trainerId: string, status: TrainerStatus): Promise<TrainerOption> {
+  const isActive = status === "ACTIVE";
+
   if (!isDatabaseConfigured) {
     const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
     if (!trainer) {
@@ -386,7 +428,8 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
 
     return {
       ...trainer,
-      isActive: false,
+      isActive,
+      availabilityStatus: isActive ? trainer.availabilityStatus : "UNAVAILABLE",
     };
   }
 
@@ -402,12 +445,150 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
   const updated = await prisma.$transaction(async (tx) => {
     const profile = await tx.trainerProfile.update({
       where: { id: trainerId },
-      data: { isActive: false },
+      data: {
+        isActive,
+        ...(isActive ? {} : { availabilityStatus: "UNAVAILABLE" }),
+      },
       include: {
         user: {
           select: {
             name: true,
             email: true,
+            phone: true,
+            lastLoginAt: true,
+          },
+        },
+      },
+    });
+
+    await tx.user.update({
+      where: { id: trainer.userId },
+      data: { isActive },
+    });
+
+    return profile;
+  });
+
+  return {
+    id: updated.id,
+    fullName: updated.user.name,
+    employeeCode: updated.employeeCode,
+    email: updated.user.email,
+    specialization: updated.specialization,
+    isActive: updated.isActive,
+    availabilityStatus: updated.availabilityStatus,
+    courses: updated.courses,
+    lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
+  };
+}
+
+export async function updateTrainerCoursesService(trainerId: string, input: UpdateTrainerCoursesInput): Promise<TrainerDetail> {
+  const normalizedCourses = normalizeCourseList(input.courses);
+
+  if (!isDatabaseConfigured) {
+    const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
+    if (!trainer) {
+      throw new Error("Trainer not found.");
+    }
+
+    return {
+      id: trainer.id,
+      userId: `mock-user-${trainer.id}`,
+      fullName: trainer.fullName,
+      employeeCode: trainer.employeeCode,
+      email: trainer.email,
+      phone: null,
+      specialization: trainer.specialization,
+      bio: null,
+      capacity: 0,
+      status: trainer.isActive ? "ACTIVE" : "INACTIVE",
+      availabilityStatus: trainer.availabilityStatus,
+      courses: normalizedCourses,
+      lastActiveAt: trainer.lastActiveAt,
+    };
+  }
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { id: true },
+  });
+
+  if (!trainer) {
+    throw new Error("Trainer not found.");
+  }
+
+  const resolvedCourses = await resolveSelectedCourseNames(normalizedCourses);
+
+  const updated = await prisma.trainerProfile.update({
+    where: { id: trainerId },
+    data: { courses: resolvedCourses },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          lastLoginAt: true,
+        },
+      },
+    },
+  });
+
+  return {
+    id: updated.id,
+    userId: updated.user.id,
+    fullName: updated.user.name,
+    employeeCode: updated.employeeCode,
+    email: updated.user.email,
+    phone: updated.user.phone,
+    specialization: updated.specialization,
+    bio: updated.bio,
+    capacity: updated.capacity,
+    status: updated.isActive ? "ACTIVE" : "INACTIVE",
+    availabilityStatus: updated.availabilityStatus,
+    courses: updated.courses,
+    lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
+  };
+}
+
+export async function archiveTrainerService(trainerId: string): Promise<TrainerOption> {
+  if (!isDatabaseConfigured) {
+    const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
+    if (!trainer) {
+      throw new Error("Trainer not found.");
+    }
+
+    return {
+      ...trainer,
+      isActive: false,
+      availabilityStatus: "UNAVAILABLE",
+    };
+  }
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { userId: true },
+  });
+
+  if (!trainer) {
+    throw new Error("Trainer not found.");
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const profile = await tx.trainerProfile.update({
+      where: { id: trainerId },
+      data: {
+        isActive: false,
+        availabilityStatus: "UNAVAILABLE",
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            lastLoginAt: true,
           },
         },
       },
@@ -424,9 +605,12 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
   return {
     id: updated.id,
     fullName: updated.user.name,
+    employeeCode: updated.employeeCode,
     email: updated.user.email,
     specialization: updated.specialization,
     isActive: updated.isActive,
+    availabilityStatus: updated.availabilityStatus,
     courses: updated.courses,
+    lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
   };
 }

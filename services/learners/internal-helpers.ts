@@ -6,7 +6,7 @@ import { GetLearnersInput } from "@/lib/validation-schemas/learners";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
-import { LearnerActiveEnrollment, LearnerDetail, LearnerListItem, LearnersResponse } from "@/types";
+import { LearnerActiveEnrollment, LearnerDetail, LearnerEnrollmentTrainer, LearnerListItem, LearnersResponse } from "@/types";
 
 const MOCK_LEARNERS: LearnerListItem[] = [
   {
@@ -59,6 +59,71 @@ const MOCK_LEARNERS: LearnerListItem[] = [
   },
 ];
 
+const MOCK_TRAINER_CATALOG: Record<string, LearnerEnrollmentTrainer> = {
+  "Dr. Markus S.": {
+    id: "mock-trainer-markus",
+    employeeCode: "TR-2401",
+    fullName: "Dr. Markus Schneider",
+    email: "markus.schneider@gts-academy.test",
+    phone: "+49 170 555 0101",
+    specialization: "German Language Fluency",
+    bio: "Focuses on language immersion, pronunciation, and Goethe-aligned exam readiness.",
+    availabilityStatus: "AVAILABLE",
+    lastActiveAt: new Date("2026-04-11T09:15:00Z").toISOString(),
+  },
+  "Dr. Leena P.": {
+    id: "mock-trainer-leena",
+    employeeCode: "TR-2402",
+    fullName: "Dr. Leena Philip",
+    email: "leena.philip@gts-academy.test",
+    phone: "+91 98470 22110",
+    specialization: "Clinical Bridging",
+    bio: "Guides bridging learners through clinical communication, documentation, and ward simulation workflows.",
+    availabilityStatus: "LIMITED",
+    lastActiveAt: new Date("2026-04-10T16:40:00Z").toISOString(),
+  },
+  "Coach Priya Nair": {
+    id: "mock-trainer-priya",
+    employeeCode: "TR-2403",
+    fullName: "Priya Nair",
+    email: "priya.nair@gts-academy.test",
+    phone: "+91 98950 11882",
+    specialization: "Healthcare IT Enablement",
+    bio: "Supports digital workflows, healthcare IT orientation, and productivity systems for online cohorts.",
+    availabilityStatus: "AVAILABLE",
+    lastActiveAt: new Date("2026-04-11T07:55:00Z").toISOString(),
+  },
+};
+
+function slugifyTrainerName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function buildMockTrainerContact(name: string): LearnerEnrollmentTrainer {
+  const fromCatalog = MOCK_TRAINER_CATALOG[name];
+
+  if (fromCatalog) {
+    return fromCatalog;
+  }
+
+  const slug = slugifyTrainerName(name);
+
+  return {
+    id: `mock-trainer-${slug || "unknown"}`,
+    employeeCode: `TR-${(slug || "00").slice(0, 4).toUpperCase()}`,
+    fullName: name,
+    email: `${slug || "trainer"}@gts-academy.test`,
+    phone: null,
+    specialization: "Academy Trainer",
+    bio: null,
+    availabilityStatus: "AVAILABLE",
+    lastActiveAt: null,
+  };
+}
+
 const MOCK_ENROLLMENT_CATALOG: Record<
   string,
   Omit<LearnerActiveEnrollment, "id" | "status" | "joinedAt" | "completedAt">
@@ -79,6 +144,7 @@ const MOCK_ENROLLMENT_CATALOG: Record<
     courseCode: "C-GER-001",
     courseName: "German Language",
     trainerNames: ["Dr. Markus S."],
+    trainers: [buildMockTrainerContact("Dr. Markus S.")],
   },
   "B-CLI-OCT": {
     batchId: "mock-batch-2",
@@ -96,6 +162,7 @@ const MOCK_ENROLLMENT_CATALOG: Record<
     courseCode: "C-CLI-001",
     courseName: "Clinical Foundations",
     trainerNames: ["Dr. Leena P."],
+    trainers: [buildMockTrainerContact("Dr. Leena P.")],
   },
   "B-GER-OCT-01": {
     batchId: "mock-batch-3",
@@ -113,6 +180,7 @@ const MOCK_ENROLLMENT_CATALOG: Record<
     courseCode: "C-GER-001",
     courseName: "German Language",
     trainerNames: ["Dr. Markus S."],
+    trainers: [buildMockTrainerContact("Dr. Markus S.")],
   },
   "B-TECH-APR": {
     batchId: "mock-batch-4",
@@ -130,6 +198,7 @@ const MOCK_ENROLLMENT_CATALOG: Record<
     courseCode: "C-TECH-001",
     courseName: "Healthcare IT",
     trainerNames: ["Coach Priya Nair"],
+    trainers: [buildMockTrainerContact("Coach Priya Nair")],
   },
 };
 
@@ -222,16 +291,37 @@ export function buildMockActiveEnrollment(batchCode: string, idSuffix: string): 
 }
 
 export function getBatchTrainerNames(batch: LearnerEnrollmentRecord["batch"] | Prisma.BatchGetPayload<typeof batchDetailArgs>) {
+  return getBatchTrainers(batch).map((trainer) => trainer.fullName);
+}
+
+export function getBatchTrainers(batch: LearnerEnrollmentRecord["batch"] | Prisma.BatchGetPayload<typeof batchDetailArgs>): LearnerEnrollmentTrainer[] {
+  const trainerProfiles = [batch.trainer, ...batch.trainers].filter(
+    (trainer): trainer is NonNullable<typeof trainer> => Boolean(trainer?.user?.id),
+  );
+
   return Array.from(
-    new Set(
-      [batch.trainer?.user.name, ...batch.trainers.map((trainer) => trainer.user.name)].filter(
-        (trainerName): trainerName is string => Boolean(trainerName),
-      ),
-    ),
+    new Map(
+      trainerProfiles.map((trainer) => [
+        trainer.id,
+        {
+          id: trainer.id,
+          employeeCode: trainer.employeeCode,
+          fullName: trainer.user.name,
+          email: trainer.user.email,
+          phone: trainer.user.phone ?? null,
+          specialization: trainer.specialization,
+          bio: trainer.bio ?? null,
+          availabilityStatus: trainer.availabilityStatus,
+          lastActiveAt: trainer.user.lastLoginAt?.toISOString() ?? null,
+        } satisfies LearnerEnrollmentTrainer,
+      ]),
+    ).values(),
   );
 }
 
 function mapEnrollmentToActiveEnrollment(enrollment: LearnerEnrollmentRecord): LearnerActiveEnrollment {
+  const trainers = getBatchTrainers(enrollment.batch);
+
   return {
     id: enrollment.id,
     status: enrollment.status,
@@ -251,7 +341,8 @@ function mapEnrollmentToActiveEnrollment(enrollment: LearnerEnrollmentRecord): L
     programType: enrollment.batch.program.type,
     courseCode: enrollment.batch.program.course.code,
     courseName: enrollment.batch.program.course.name,
-    trainerNames: getBatchTrainerNames(enrollment.batch),
+    trainerNames: trainers.map((trainer) => trainer.fullName),
+    trainers,
   };
 }
 

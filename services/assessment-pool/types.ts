@@ -44,10 +44,12 @@ export type AssessmentPoolCreateResult = {
 
 export type GradeResult = {
   questionId: string;
-  isCorrect: boolean;
+  isCorrect: boolean | null;
   marksAwarded: number;
   maxMarks: number;
   correctAnswer: unknown;
+  requiresManualReview?: boolean;
+  feedback?: string | null;
 };
 
 export type GradingReport = {
@@ -55,6 +57,7 @@ export type GradingReport = {
   marksObtained: number;
   percentage: number;
   passed: boolean;
+  requiresManualReview: boolean;
   results: GradeResult[];
 };
 
@@ -69,11 +72,14 @@ export type CandidateAssessmentQuestion = {
 
 export type CandidateAssessmentAttemptSummary = {
   assessmentId: string;
-  percentage: number;
-  passed: boolean;
-  gradedAt: Date;
+  status: "PENDING_REVIEW" | "IN_REVIEW" | "GRADED";
+  percentage: number | null;
+  passed: boolean | null;
+  submittedAt: Date;
+  gradedAt: Date | null;
   marksObtained: number | null;
   totalMarks: number;
+  requiresManualReview: boolean;
 };
 
 export type CandidateAssessmentDetail = {
@@ -90,7 +96,9 @@ export type CandidateAssessmentDetail = {
   timeLimitMinutes: number | null;
   scheduledAt: Date | null;
   opensAt: Date | null;
+  closesAt: Date | null;
   isOpen: boolean;
+  isClosed: boolean;
   supportsInAppAttempt: boolean;
   availabilityMessage: string | null;
   questionCount: number;

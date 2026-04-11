@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { TRAINER_AVAILABILITY_LABELS, type TrainerAvailabilityStatus, type TrainerStatus } from "@/services/trainers/types";
 import { cn } from "@/lib/utils";
 
 function formatSelectedCourseNames(courseIds: string[], courseOptions: CourseOption[]) {
@@ -22,31 +23,37 @@ type CourseOption = {
   isActive: boolean;
 };
 
-type TrainerStatus = "ACTIVE" | "INACTIVE";
-
 type AddTrainerForm = {
   fullName: string;
+  employeeCode: string;
   email: string;
   phone: string;
   specialization: string;
   capacity: string;
   status: TrainerStatus;
+  availabilityStatus: TrainerAvailabilityStatus;
   courseIds: string[];
   bio: string;
 };
 
 const initialForm: AddTrainerForm = {
   fullName: "",
+  employeeCode: "",
   email: "",
   phone: "",
   specialization: "",
   capacity: "0",
   status: "ACTIVE",
+  availabilityStatus: "AVAILABLE",
   courseIds: [],
   bio: "",
 };
 
-export function AddTrainerSheet() {
+type AddTrainerSheetProps = {
+  onCreated?: () => void;
+};
+
+export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
@@ -127,8 +134,8 @@ export function AddTrainerSheet() {
     event.preventDefault();
 
     const capacity = Number(form.capacity);
-    if (!form.fullName.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.courseIds.length === 0) {
-      setError("Please complete Name, Email, Specialization, Capacity, and select at least one course.");
+    if (!form.fullName.trim() || !form.employeeCode.trim() || !form.email.trim() || !form.specialization.trim() || !Number.isFinite(capacity) || capacity < 0 || form.courseIds.length === 0) {
+      setError("Please complete Name, Employee Code, Email, Specialization, Capacity, and select at least one course.");
       return;
     }
 
@@ -148,11 +155,13 @@ export function AddTrainerSheet() {
         },
         body: JSON.stringify({
           fullName: form.fullName,
+          employeeCode: form.employeeCode,
           email: form.email,
           phone: form.phone,
           specialization: form.specialization,
           capacity: Number(form.capacity),
           status: form.status,
+          availabilityStatus: form.availabilityStatus,
           courses: form.courseIds,
           bio: form.bio,
         }),
@@ -165,6 +174,7 @@ export function AddTrainerSheet() {
 
       setStep("created");
       router.refresh();
+  onCreated?.();
       toast.success("Trainer created successfully.");
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : "Failed to create trainer.";
@@ -195,6 +205,10 @@ export function AddTrainerSheet() {
                   <Input value={form.fullName} placeholder="Trainer name" onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Employee Code</label>
+                  <Input value={form.employeeCode} placeholder="TRN-0001" onChange={(event) => setForm((prev) => ({ ...prev, employeeCode: event.target.value.toUpperCase() }))} />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Email</label>
                   <Input type="email" value={form.email} placeholder="trainer@example.com" onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} />
                 </div>
@@ -219,6 +233,18 @@ export function AddTrainerSheet() {
                   >
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Availability</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                    value={form.availabilityStatus}
+                    onChange={(event) => setForm((prev) => ({ ...prev, availabilityStatus: event.target.value as TrainerAvailabilityStatus }))}
+                  >
+                    {Object.entries(TRAINER_AVAILABILITY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -292,6 +318,9 @@ export function AddTrainerSheet() {
                 <span className="font-semibold text-slate-900">Trainer:</span> {form.fullName.trim()}
               </p>
               <p>
+                <span className="font-semibold text-slate-900">Employee Code:</span> {form.employeeCode.trim().toUpperCase()}
+              </p>
+              <p>
                 <span className="font-semibold text-slate-900">Email:</span> {form.email.trim().toLowerCase()}
               </p>
               <p>
@@ -302,6 +331,9 @@ export function AddTrainerSheet() {
               </p>
               <p>
                 <span className="font-semibold text-slate-900">Status:</span> {form.status}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-900">Availability:</span> {TRAINER_AVAILABILITY_LABELS[form.availabilityStatus]}
               </p>
             </div>
 

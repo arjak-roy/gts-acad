@@ -8,20 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
-
-type TrainerStatus = "ACTIVE" | "INACTIVE";
-
-type TrainerDetail = {
-  id: string;
-  fullName: string;
-  email: string;
-  phone: string | null;
-  specialization: string;
-  capacity: number;
-  status: TrainerStatus;
-  courses: string[];
-  bio: string | null;
-};
+import { TRAINER_AVAILABILITY_LABELS, type TrainerDetail } from "@/services/trainers/types";
 
 type TrainerDetailSheetProps = {
   trainerId: string | null;
@@ -67,6 +54,14 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
       setTrainer(null);
       setError(null);
     }
+  };
+
+  const formatDate = (value: string | null) => {
+    if (!value) {
+      return "Never";
+    }
+
+    return new Date(value).toLocaleString();
   };
 
   return (
@@ -126,6 +121,11 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Employee Code</p>
+                  <p className="mt-3 text-sm font-semibold text-slate-900">{trainer.employeeCode}</p>
+                </div>
+
+                <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Specialization</p>
                   <div className="mt-3 flex items-start gap-3">
                     <UserRound className="mt-0.5 h-4 w-4 text-primary" />
@@ -139,6 +139,20 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
                     <Star className="mt-0.5 h-4 w-4 text-primary" />
                     <p className="text-sm font-semibold text-slate-900">{trainer.capacity} learners</p>
                   </div>
+                </div>
+
+                <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Availability</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant={trainer.availabilityStatus === "AVAILABLE" ? "success" : trainer.availabilityStatus === "LIMITED" ? "warning" : trainer.availabilityStatus === "UNAVAILABLE" ? "danger" : "info"}>
+                      {TRAINER_AVAILABILITY_LABELS[trainer.availabilityStatus]}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Last Active</p>
+                  <p className="mt-3 text-sm font-semibold text-slate-900">{formatDate(trainer.lastActiveAt)}</p>
                 </div>
               </div>
 

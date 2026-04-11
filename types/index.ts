@@ -245,6 +245,18 @@ export type LearnersResponse = {
   pageCount: number;
 };
 
+export type LearnerEnrollmentTrainer = {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  specialization: string;
+  bio: string | null;
+  availabilityStatus: string;
+  lastActiveAt: string | null;
+};
+
 export type LearnerActiveEnrollment = {
   id: string;
   status: EnrollmentStatus;
@@ -265,6 +277,7 @@ export type LearnerActiveEnrollment = {
   courseCode: string;
   courseName: string;
   trainerNames: string[];
+  trainers: LearnerEnrollmentTrainer[];
 };
 
 export type LearnerDetail = LearnerListItem & {

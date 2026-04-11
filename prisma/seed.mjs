@@ -14,6 +14,7 @@ import {
   ProgramType,
   SettingType,
   SyncStatus,
+  TrainerAvailabilityStatus,
 } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
 import settingsCatalog from "../lib/settings/settings-catalog.json" with { type: "json" };
@@ -44,6 +45,34 @@ const deriveCodePrefix = (value) => {
 };
 
 const formatEntityCode = (kind, value, sequence) => `${kind}-${deriveCodePrefix(value)}-${String(sequence).padStart(3, "0")}`;
+const formatTrainerEmployeeCode = (sequence) => `TRN-${String(sequence).padStart(4, "0")}`;
+
+async function resolveTrainerEmployeeCode({ userId, sequence }) {
+  const existingTrainer = await prisma.trainerProfile.findUnique({
+    where: { userId },
+    select: { employeeCode: true },
+  });
+
+  if (existingTrainer?.employeeCode) {
+    return existingTrainer.employeeCode;
+  }
+
+  let candidateSequence = sequence;
+
+  while (true) {
+    const candidateCode = formatTrainerEmployeeCode(candidateSequence);
+    const conflictingTrainer = await prisma.trainerProfile.findFirst({
+      where: { employeeCode: candidateCode },
+      select: { userId: true },
+    });
+
+    if (!conflictingTrainer || conflictingTrainer.userId === userId) {
+      return candidateCode;
+    }
+
+    candidateSequence += 1;
+  }
+}
 
 const COURSES = [
   {
@@ -237,7 +266,7 @@ const PERMISSION_DEFINITIONS = [
   { module: "trainers", action: "view", key: "trainers.view", description: "View trainers" },
   { module: "trainers", action: "create", key: "trainers.create", description: "Create trainers" },
   { module: "trainers", action: "edit", key: "trainers.edit", description: "Edit trainers" },
-  { module: "trainers", action: "delete", key: "trainers.delete", description: "Delete trainers" },
+  { module: "trainers", action: "delete", key: "trainers.delete", description: "Archive trainers" },
   { module: "trainers", action: "manage", key: "trainers.manage", description: "Manage trainer assignments" },
   { module: "schedule", action: "view", key: "schedule.view", description: "View schedule" },
   { module: "schedule", action: "create", key: "schedule.create", description: "Create schedule events" },
@@ -299,6 +328,9 @@ const PERMISSION_DEFINITIONS = [
   { module: "assessment_pool", action: "edit", key: "assessment_pool.edit", description: "Edit assessment pool items" },
   { module: "assessment_pool", action: "delete", key: "assessment_pool.delete", description: "Delete assessment pool items" },
   { module: "assessment_pool", action: "publish", key: "assessment_pool.publish", description: "Publish assessment pool items" },
+  { module: "assessment_reviews", action: "view", key: "assessment_reviews.view", description: "View assessment review queue" },
+  { module: "assessment_reviews", action: "manage", key: "assessment_reviews.manage", description: "Manage assessment review attempts" },
+  { module: "assessment_reviews", action: "grade", key: "assessment_reviews.grade", description: "Manual grade assessment attempts" },
   { module: "batch_content", action: "view", key: "batch_content.view", description: "View batch content mappings" },
   { module: "batch_content", action: "assign", key: "batch_content.assign", description: "Assign content to batches" },
   { module: "batch_content", action: "remove", key: "batch_content.remove", description: "Remove content from batches" },
@@ -340,6 +372,7 @@ const ROLE_PERMISSION_MAP = {
     "learning_resources.view", "learning_resources.create", "learning_resources.edit", "learning_resources.delete", "learning_resources.assign",
     "course_content_folder.view", "course_content_folder.create", "course_content_folder.edit", "course_content_folder.delete",
     "assessment_pool.view", "assessment_pool.create", "assessment_pool.edit", "assessment_pool.delete", "assessment_pool.publish",
+    "assessment_reviews.view", "assessment_reviews.manage", "assessment_reviews.grade",
     "batch_content.view", "batch_content.assign", "batch_content.remove",
     "curriculum.view", "curriculum.create", "curriculum.edit", "curriculum.delete", "curriculum.publish",
   ],
@@ -362,6 +395,7 @@ const ROLE_PERMISSION_MAP = {
     "learning_resources.view",
     "course_content_folder.view",
     "assessment_pool.view",
+    "assessment_reviews.view", "assessment_reviews.manage", "assessment_reviews.grade",
     "batch_content.view", "batch_content.assign", "batch_content.remove",
     "curriculum.view",
   ],
@@ -783,24 +817,32 @@ async function seed() {
       courseByType.get(programRecords[i % programRecords.length].type)?.name,
       courseByType.get(programRecords[(i + 3) % programRecords.length].type)?.name,
     ].filter(Boolean);
+    const employeeCode = await resolveTrainerEmployeeCode({
+      userId: user.id,
+      sequence: i + 1,
+    });
 
     const trainer = await prisma.trainerProfile.upsert({
       where: { userId: user.id },
       update: {
+        employeeCode,
         specialization: profile.specialization,
         bio: `${profile.specialization} trainer focused on measurable outcomes.`,
         rating: profile.rating,
         capacity: 4,
         isActive: true,
+        availabilityStatus: TrainerAvailabilityStatus.AVAILABLE,
         courses: assignedCourses,
       },
       create: {
         userId: user.id,
+        employeeCode,
         specialization: profile.specialization,
         bio: `${profile.specialization} trainer focused on measurable outcomes.`,
         rating: profile.rating,
         capacity: 4,
         isActive: true,
+        availabilityStatus: TrainerAvailabilityStatus.AVAILABLE,
         courses: assignedCourses,
       },
     });
