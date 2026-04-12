@@ -1,36 +1,30 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import {
+  CandidateEnrollmentPathFields,
+  type CandidateBatchSelection,
+  type CandidateCourseSelection,
+  type CandidateProgramSelection,
+} from "@/components/modules/candidates/candidate-enrollment-path-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-type ProgramOption = {
-  id: string;
-  name: string;
-  type: "LANGUAGE" | "CLINICAL" | "TECHNICAL";
-  isActive: boolean;
-};
-
-type BatchOption = {
-  id: string;
-  code: string;
-  name: string;
-  programName: string;
-  campus: string | null;
-  status: "DRAFT" | "PLANNED" | "IN_SESSION" | "COMPLETED" | "ARCHIVED" | "CANCELLED";
-};
-
 type EnrollCandidateForm = {
   fullName: string;
   email: string;
   phone: string;
+  courseId: string;
+  courseName: string;
+  programId: string;
   programName: string;
   batchCode: string;
+  batchName: string;
   campus: string;
 };
 
@@ -38,8 +32,12 @@ const initialForm: EnrollCandidateForm = {
   fullName: "",
   email: "",
   phone: "",
+  courseId: "",
+  courseName: "",
+  programId: "",
   programName: "",
   batchCode: "",
+  batchName: "",
   campus: "",
 };
 
@@ -48,112 +46,11 @@ export function EnrollCandidateSheet() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
   const [error, setError] = useState<string | null>(null);
-  const [programs, setPrograms] = useState<ProgramOption[]>([]);
-  const [batches, setBatches] = useState<BatchOption[]>([]);
-  const [isLoadingPrograms, setIsLoadingPrograms] = useState(false);
-  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdLearnerCode, setCreatedLearnerCode] = useState<string | null>(null);
   const [form, setForm] = useState<EnrollCandidateForm>(initialForm);
 
   const normalizedEmail = useMemo(() => form.email.trim().toLowerCase(), [form.email]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    let isActive = true;
-
-    const loadPrograms = async () => {
-      setIsLoadingPrograms(true);
-
-      try {
-        const response = await fetch("/api/programs", { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("Failed to load programs.");
-        }
-
-        const payload = (await response.json()) as { data?: ProgramOption[] };
-        const nextPrograms = payload.data ?? [];
-
-        if (!isActive) {
-          return;
-        }
-
-        setPrograms(nextPrograms.filter((program) => program.isActive));
-      } catch (loadError) {
-        if (!isActive) {
-          return;
-        }
-
-        const message = loadError instanceof Error ? loadError.message : "Failed to load programs.";
-        setError(message);
-      } finally {
-        if (isActive) {
-          setIsLoadingPrograms(false);
-        }
-      }
-    };
-
-    void loadPrograms();
-
-    return () => {
-      isActive = false;
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    if (!form.programName) {
-      setBatches([]);
-      setIsLoadingBatches(false);
-      return;
-    }
-
-    let isActive = true;
-
-    const loadBatches = async () => {
-      setIsLoadingBatches(true);
-
-      try {
-        const params = new URLSearchParams({ programName: form.programName });
-        const response = await fetch(`/api/batches?${params.toString()}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("Failed to load batches.");
-        }
-
-        const payload = (await response.json()) as { data?: BatchOption[] };
-        const nextBatches = payload.data ?? [];
-
-        if (!isActive) {
-          return;
-        }
-
-        setBatches(nextBatches.filter((batch) => batch.status === "PLANNED" || batch.status === "IN_SESSION"));
-      } catch (loadError) {
-        if (!isActive) {
-          return;
-        }
-
-        const message = loadError instanceof Error ? loadError.message : "Failed to load batches.";
-        setError(message);
-      } finally {
-        if (isActive) {
-          setIsLoadingBatches(false);
-        }
-      }
-    };
-
-    void loadBatches();
-
-    return () => {
-      isActive = false;
-    };
-  }, [form.programName, open]);
 
   const resetFlow = () => {
     setStep("form");
@@ -172,8 +69,8 @@ export function EnrollCandidateSheet() {
   const handleDone = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!form.fullName.trim() || !normalizedEmail || !form.programName.trim()) {
-      setError("Please complete Full Name, Email, and Program before continuing.");
+    if (!form.fullName.trim() || !normalizedEmail || !form.courseId || !form.programId || !form.batchCode) {
+      setError("Please complete Full Name, Email, Course, Program, and Batch before continuing.");
       return;
     }
 
@@ -226,6 +123,42 @@ export function EnrollCandidateSheet() {
     }
   };
 
+  const handleCourseChange = (course: CandidateCourseSelection | null) => {
+    setError(null);
+    setForm((prev) => ({
+      ...prev,
+      courseId: course?.id ?? "",
+      courseName: course?.name ?? "",
+      programId: "",
+      programName: "",
+      batchCode: "",
+      batchName: "",
+      campus: "",
+    }));
+  };
+
+  const handleProgramChange = (program: CandidateProgramSelection | null) => {
+    setError(null);
+    setForm((prev) => ({
+      ...prev,
+      programId: program?.id ?? "",
+      programName: program?.name ?? "",
+      batchCode: "",
+      batchName: "",
+      campus: "",
+    }));
+  };
+
+  const handleBatchChange = (batch: CandidateBatchSelection | null) => {
+    setError(null);
+    setForm((prev) => ({
+      ...prev,
+      batchCode: batch?.code ?? "",
+      batchName: batch?.name ?? "",
+      campus: batch?.campus ?? "",
+    }));
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
@@ -235,7 +168,7 @@ export function EnrollCandidateSheet() {
         <SheetHeader>
           <SheetTitle>Enroll Candidate</SheetTitle>
           <SheetDescription>
-            Add candidate details, click Done to confirm, then create the candidate.
+            Add candidate details, choose the course, program, and batch in order, then confirm the enrollment.
           </SheetDescription>
         </SheetHeader>
 
@@ -267,52 +200,24 @@ export function EnrollCandidateSheet() {
                   onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Program</label>
-                <select
-                  className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
-                  value={form.programName}
-                  onChange={(event) => setForm((prev) => ({ ...prev, programName: event.target.value, batchCode: "" }))}
-                  disabled={isLoadingPrograms || programs.length === 0}
-                >
-                  <option value="">{isLoadingPrograms ? "Loading programs..." : programs.length === 0 ? "No programs available" : "Select a program"}</option>
-                  {programs.map((program) => (
-                    <option key={program.id} value={program.name}>
-                      {program.name} ({program.type})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Batch</label>
-                <select
-                  className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
-                  value={form.batchCode}
-                  onChange={(event) => setForm((prev) => ({ ...prev, batchCode: event.target.value }))}
-                  disabled={!form.programName || isLoadingBatches || batches.length === 0}
-                >
-                  <option value="">
-                    {!form.programName
-                      ? "Select a program first"
-                      : isLoadingBatches
-                        ? "Loading batches..."
-                        : batches.length === 0
-                          ? "No batches available"
-                          : "Select a batch"}
-                  </option>
-                  {batches.map((batch) => (
-                    <option key={batch.id} value={batch.code}>
-                      {batch.name} ({batch.code}){batch.campus ? ` - ${batch.campus}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
+
+            <CandidateEnrollmentPathFields
+              open={open}
+              value={{
+                courseId: form.courseId,
+                programId: form.programId,
+                batchCode: form.batchCode,
+              }}
+              onCourseChange={handleCourseChange}
+              onProgramChange={handleProgramChange}
+              onBatchChange={handleBatchChange}
+            />
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Campus</label>
               <Input
-                placeholder="Main Campus"
+                placeholder="Auto-filled from batch, or adjust if needed"
                 value={form.campus}
                 onChange={(event) => setForm((prev) => ({ ...prev, campus: event.target.value }))}
               />
@@ -326,7 +231,9 @@ export function EnrollCandidateSheet() {
               <Button variant="secondary" type="button" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit">Done</Button>
+              <Button type="submit" disabled={!form.fullName.trim() || !normalizedEmail || !form.courseId || !form.programId || !form.batchCode}>
+                Done
+              </Button>
             </SheetFooter>
           </form>
         ) : null}
@@ -351,10 +258,13 @@ export function EnrollCandidateSheet() {
                 <span className="font-semibold text-slate-900">Email:</span> {normalizedEmail}
               </p>
               <p>
+                <span className="font-semibold text-slate-900">Course:</span> {form.courseName}
+              </p>
+              <p>
                 <span className="font-semibold text-slate-900">Program:</span> {form.programName}
               </p>
               <p>
-                <span className="font-semibold text-slate-900">Batch:</span> {(batches.find((batch) => batch.code === form.batchCode)?.name ?? form.batchCode) || "Not assigned"}
+                <span className="font-semibold text-slate-900">Batch:</span> {form.batchName ? `${form.batchName} (${form.batchCode})` : form.batchCode}
               </p>
             </div>
 

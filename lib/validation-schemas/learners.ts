@@ -19,7 +19,7 @@ export const createLearnerSchema = z.object({
   email: z.string().trim().email().max(255),
   phone: z.string().trim().max(20).optional().default(""),
   programName: z.string().trim().min(2).max(255),
-  batchCode: z.string().trim().max(50).optional().default(""),
+  batchCode: z.string().trim().min(2, "Batch is required.").max(50),
   campus: z.string().trim().max(120).optional().default(""),
 });
 
