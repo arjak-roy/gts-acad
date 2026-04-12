@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 
 type CourseOption = {
   id: string;
@@ -25,15 +26,6 @@ type QuestionBankQuestionItem = {
   explanation: string | null;
   tags: string[];
   marks: number;
-};
-
-const questionTypeLabels: Record<string, string> = {
-  MCQ: "Multiple Choice",
-  NUMERIC: "Numeric",
-  ESSAY: "Essay",
-  FILL_IN_THE_BLANK: "Fill in the Blank",
-  MULTI_INPUT_REASONING: "Multi-Input Reasoning",
-  TWO_PART_ANALYSIS: "Two-Part Analysis",
 };
 
 export function ImportQuestionBankDialog({
@@ -252,7 +244,7 @@ export function ImportQuestionBankDialog({
                 className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
               >
                 <option value="">All types</option>
-                {Object.entries(questionTypeLabels).map(([value, label]) => (
+                {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
               </select>
@@ -335,7 +327,7 @@ export function ImportQuestionBankDialog({
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="info">{questionTypeLabels[question.questionType] ?? question.questionType}</Badge>
+                          <Badge variant="info">{QUESTION_TYPE_LABELS[question.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? question.questionType}</Badge>
                           <Badge variant="default">{question.marks} mark{question.marks === 1 ? "" : "s"}</Badge>
                           <span className="text-xs text-slate-500">{question.courseName ?? "All courses bank"}</span>
                         </div>

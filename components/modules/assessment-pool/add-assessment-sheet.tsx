@@ -7,15 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-
-const QUESTION_TYPES = [
-  { value: "MCQ", label: "Multiple Choice" },
-  { value: "NUMERIC", label: "Numeric" },
-  { value: "ESSAY", label: "Essay" },
-  { value: "FILL_IN_THE_BLANK", label: "Fill in the Blank" },
-  { value: "MULTI_INPUT_REASONING", label: "Multi-Input Reasoning" },
-  { value: "TWO_PART_ANALYSIS", label: "Two-Part Analysis" },
-];
+import { QUESTION_TYPE_OPTIONS } from "@/lib/question-types";
 
 const DIFFICULTY_LEVELS = [
   { value: "EASY", label: "Easy" },
@@ -412,7 +404,7 @@ export function AddAssessmentSheet({
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Default Question Type</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {QUESTION_TYPES.map((type) => (
+                    {QUESTION_TYPE_OPTIONS.map((type) => (
                       <button
                         key={type.value}
                         type="button"
@@ -514,7 +506,7 @@ export function AddAssessmentSheet({
                   </div>
                   <div className="rounded-xl border border-slate-200 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Question Type</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{QUESTION_TYPES.find((type) => type.value === form.questionType)?.label ?? form.questionType}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{QUESTION_TYPE_OPTIONS.find((type) => type.value === form.questionType)?.label ?? form.questionType}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Difficulty</p>

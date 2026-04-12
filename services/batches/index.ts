@@ -10,6 +10,7 @@ export {
 	searchBatchesService,
 } from "@/services/batches/queries";
 export {
+	assignTrainerToBatchService,
 	archiveBatchService,
 	bulkEnrollLearnersToBatchService,
 	createBatchService,

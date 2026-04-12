@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { QUESTION_TYPE_OPTIONS } from "@/lib/question-types";
 
 type QuestionForm = {
   questionText: string;
@@ -36,20 +37,16 @@ type QuestionBuilderPayload = {
 
 type QuestionBuilderContext = "assessment" | "question-bank";
 
-const QUESTION_TYPES = [
-  { value: "MCQ", label: "MCQ" },
-  { value: "NUMERIC", label: "Numeric" },
-  { value: "ESSAY", label: "Essay" },
-  { value: "FILL_IN_THE_BLANK", label: "Fill in Blank" },
-  { value: "MULTI_INPUT_REASONING", label: "Multi-Input" },
-  { value: "TWO_PART_ANALYSIS", label: "Two-Part" },
-];
-
 const DEFAULT_MCQ_OPTIONS = [
   { label: "A", text: "" },
   { label: "B", text: "" },
   { label: "C", text: "" },
   { label: "D", text: "" },
+];
+
+const TRUE_FALSE_OPTIONS = [
+  { label: "True", value: true },
+  { label: "False", value: false },
 ];
 
 const DEFAULT_TWO_PART_OPTIONS = ["", "", "", ""];
@@ -129,6 +126,34 @@ function getInitialNumericAnswer(correctAnswer: unknown) {
     : 0;
 
   return { value, tolerance };
+}
+
+function getInitialTrueFalseAnswer(correctAnswer: unknown) {
+  if (typeof correctAnswer === "boolean") {
+    return correctAnswer;
+  }
+
+  if (typeof correctAnswer === "string") {
+    const normalized = correctAnswer.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+
+  if (typeof correctAnswer === "number") {
+    if (correctAnswer === 1) {
+      return true;
+    }
+
+    if (correctAnswer === 0) {
+      return false;
+    }
+  }
+
+  return null;
 }
 
 function getInitialFillAnswers(correctAnswer: unknown) {
@@ -322,6 +347,46 @@ function FillBlankAnswer({
   );
 }
 
+function TrueFalseAnswer({
+  value,
+  onChange,
+}: {
+  value: boolean | null;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <label className="text-sm font-medium">Correct Answer</label>
+        <p className="text-xs text-muted-foreground">Choose whether the statement should be treated as true or false.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {TRUE_FALSE_OPTIONS.map((option) => {
+          const isSelected = value === option.value;
+
+          return (
+            <button
+              key={option.label}
+              type="button"
+              className={`rounded-xl border px-4 py-4 text-left transition-colors ${
+                isSelected
+                  ? "border-green-500 bg-green-50 text-green-700"
+                  : "border-border bg-background hover:border-primary/40"
+              }`}
+              onClick={() => onChange(option.value)}
+            >
+              <span className="block text-sm font-semibold">{option.label}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {option.value ? "Learners should confirm this statement is correct." : "Learners should identify this statement as incorrect."}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TwoPartOptions({
   options,
   correctPartA,
@@ -471,6 +536,7 @@ export function QuestionBuilder({
   // Type-specific state
   const [mcqOptions, setMcqOptions] = useState<{ label: string; text: string }[]>(() => getInitialMcqOptions(initialQuestion?.options));
   const [mcqCorrect, setMcqCorrect] = useState(() => getInitialMcqCorrectAnswer(initialQuestion?.correctAnswer, getInitialMcqOptions(initialQuestion?.options)));
+  const [trueFalseAnswer, setTrueFalseAnswer] = useState<boolean | null>(() => getInitialTrueFalseAnswer(initialQuestion?.correctAnswer));
   const [numericValue, setNumericValue] = useState<number | string>(() => getInitialNumericAnswer(initialQuestion?.correctAnswer).value);
   const [numericTolerance, setNumericTolerance] = useState<number | string>(() => getInitialNumericAnswer(initialQuestion?.correctAnswer).tolerance);
   const [fillAnswers, setFillAnswers] = useState<string[]>(() => getInitialFillAnswers(initialQuestion?.correctAnswer));
@@ -524,6 +590,7 @@ export function QuestionBuilder({
       setForm(buildInitialForm(defaultType, initialQuestion));
       setMcqOptions(nextMcqOptions);
       setMcqCorrect(getInitialMcqCorrectAnswer(initialQuestion.correctAnswer, nextMcqOptions));
+      setTrueFalseAnswer(getInitialTrueFalseAnswer(initialQuestion.correctAnswer));
       setNumericValue(nextNumeric.value);
       setNumericTolerance(nextNumeric.tolerance);
       setFillAnswers(getInitialFillAnswers(initialQuestion.correctAnswer));
@@ -538,6 +605,7 @@ export function QuestionBuilder({
     setForm(buildInitialForm(defaultType));
     setMcqOptions(cloneMcqOptions(DEFAULT_MCQ_OPTIONS));
     setMcqCorrect("");
+    setTrueFalseAnswer(null);
     setNumericValue("");
     setNumericTolerance(0);
     setFillAnswers([""]);
@@ -562,6 +630,9 @@ export function QuestionBuilder({
         correctAnswer = mcqCorrect;
         break;
       }
+      case "TRUE_FALSE":
+        correctAnswer = trueFalseAnswer;
+        break;
       case "NUMERIC":
         correctAnswer = { value: Number(numericValue), tolerance: Number(numericTolerance) };
         break;
@@ -613,6 +684,10 @@ export function QuestionBuilder({
       if (!selectedOption || selectedOption.text.trim().length === 0) {
         return "Select a valid correct option for this MCQ.";
       }
+    }
+
+    if (form.questionType === "TRUE_FALSE" && trueFalseAnswer === null) {
+      return "Select whether the correct answer is true or false.";
     }
 
     if (form.questionType === "NUMERIC") {
@@ -712,6 +787,7 @@ export function QuestionBuilder({
         }));
         setMcqOptions(cloneMcqOptions(DEFAULT_MCQ_OPTIONS));
         setMcqCorrect("");
+        setTrueFalseAnswer(null);
         setNumericValue("");
         setNumericTolerance(0);
         setFillAnswers([""]);
@@ -748,7 +824,7 @@ export function QuestionBuilder({
 
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
-          {QUESTION_TYPES.map((type) => (
+          {QUESTION_TYPE_OPTIONS.map((type) => (
             <button
               key={type.value}
               type="button"
@@ -781,6 +857,8 @@ export function QuestionBuilder({
           placeholder={
             form.questionType === "FILL_IN_THE_BLANK"
               ? "Use ____ for blanks. e.g., The capital of Germany is ____."
+              : form.questionType === "TRUE_FALSE"
+                ? "Enter a clear statement learners must judge as true or false."
               : form.questionType === "TWO_PART_ANALYSIS"
                 ? "Provide the scenario or passage for analysis…"
                 : form.questionType === "MULTI_INPUT_REASONING"
@@ -800,6 +878,10 @@ export function QuestionBuilder({
           correctAnswer={mcqCorrect}
           onChange={(opts, correct) => { setMcqOptions(opts); setMcqCorrect(correct); }}
         />
+      )}
+
+      {form.questionType === "TRUE_FALSE" && (
+        <TrueFalseAnswer value={trueFalseAnswer} onChange={setTrueFalseAnswer} />
       )}
 
       {form.questionType === "NUMERIC" && (

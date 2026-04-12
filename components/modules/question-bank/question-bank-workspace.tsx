@@ -12,6 +12,7 @@ import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 
 type CourseOption = {
   id: string;
@@ -33,15 +34,6 @@ type QuestionBankQuestionItem = {
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
-};
-
-const questionTypeLabels: Record<string, string> = {
-  MCQ: "Multiple Choice",
-  NUMERIC: "Numeric",
-  ESSAY: "Essay",
-  FILL_IN_THE_BLANK: "Fill in the Blank",
-  MULTI_INPUT_REASONING: "Multi-Input Reasoning",
-  TWO_PART_ANALYSIS: "Two-Part Analysis",
 };
 
 function formatDate(value: string) {
@@ -331,7 +323,7 @@ export function QuestionBankWorkspace() {
                   className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
                 >
                   <option value="">All types</option>
-                  {Object.entries(questionTypeLabels).map(([value, label]) => (
+                  {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
@@ -435,7 +427,7 @@ export function QuestionBankWorkspace() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-mono text-muted-foreground">QB{index + 1}</span>
                         <Badge variant="info" className="px-1.5 py-0 text-[10px]">
-                          {questionTypeLabels[question.questionType] ?? question.questionType}
+                          {QUESTION_TYPE_LABELS[question.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? question.questionType}
                         </Badge>
                         <span className="text-xs text-muted-foreground">{question.courseName ?? "All courses bank"}</span>
                         <span className="text-xs text-muted-foreground">{question.marks} mark{question.marks === 1 ? "" : "s"}</span>

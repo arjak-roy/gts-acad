@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CanAccess } from "@/components/ui/can-access";
 import { QuestionBuilder } from "@/components/modules/assessment-pool/question-builder";
 import { ImportQuestionBankDialog } from "@/components/modules/question-bank/import-question-bank-dialog";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 
 type QuestionItem = {
   id: string;
@@ -71,15 +72,6 @@ type AssessmentMetadataForm = {
 };
 
 type AssessmentMetadataErrors = Partial<Record<keyof AssessmentMetadataForm, string>>;
-
-const questionTypeLabels: Record<string, string> = {
-  MCQ: "Multiple Choice",
-  NUMERIC: "Numeric",
-  ESSAY: "Essay",
-  FILL_IN_THE_BLANK: "Fill in the Blank",
-  MULTI_INPUT_REASONING: "Multi-Input Reasoning",
-  TWO_PART_ANALYSIS: "Two-Part Analysis",
-};
 
 const DIFFICULTY_OPTIONS = ["EASY", "MEDIUM", "HARD"];
 
@@ -603,7 +595,7 @@ export function AssessmentDetailSheet({
                 {!isEditingMetadata ? (
                   <>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="info">{questionTypeLabels[detail.questionType] ?? detail.questionType}</Badge>
+                      <Badge variant="info">{QUESTION_TYPE_LABELS[detail.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? detail.questionType}</Badge>
                       <Badge variant="info">{detail.difficultyLevel}</Badge>
                       {detail.isAiGenerated && <Badge variant="accent">✦ AI Generated</Badge>}
                       {detail.courseLinksCount > 0 && (
@@ -636,7 +628,7 @@ export function AssessmentDetailSheet({
                           onChange={(event) => setMetadataForm((prev) => prev ? { ...prev, questionType: event.target.value } : prev)}
                           className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
                         >
-                          {Object.entries(questionTypeLabels).map(([value, label]) => (
+                          {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
                             <option key={value} value={value}>{label}</option>
                           ))}
                         </select>
@@ -903,7 +895,7 @@ export function AssessmentDetailSheet({
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-muted-foreground">Q{i + 1}</span>
                             <Badge variant="info" className="text-[10px] px-1 py-0">
-                              {questionTypeLabels[q.questionType] ?? q.questionType}
+                              {QUESTION_TYPE_LABELS[q.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? q.questionType}
                             </Badge>
                             {editingQuestion?.id === q.id ? (
                               <Badge variant="info" className="text-[10px] px-1 py-0">

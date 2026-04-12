@@ -9,6 +9,10 @@ export const INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "internal-us
 export const USER_INVITATION_EMAIL_TEMPLATE_KEY = "user-invitation";
 export const COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY = "course-enrollment-confirmation";
 export const COURSE_COMPLETION_EMAIL_TEMPLATE_KEY = "course-completion";
+export const BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY = "batch-event-notification";
+export const ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY = "assessment-scheduled";
+export const ASSESSMENT_COMPLETED_EMAIL_TEMPLATE_KEY = "assessment-completed";
+export const ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY = "assessment-result";
 export const QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY = "quiz-assigned";
 export const QUIZ_RESULT_EMAIL_TEMPLATE_KEY = "quiz-result";
 export const TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY = "trainer-assignment";
@@ -65,6 +69,26 @@ export const EMAIL_TEMPLATE_KEY_OPTIONS: EmailTemplateKeyOption[] = [
     key: COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
     label: "Course Completion",
     description: "Email sent when a learner completes a course.",
+  },
+  {
+    key: BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+    label: "Batch Event Notification",
+    description: "Email sent to candidates when a new batch event is scheduled.",
+  },
+  {
+    key: ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
+    label: "Assessment Scheduled",
+    description: "Email sent when a new assessment is scheduled for a batch.",
+  },
+  {
+    key: ASSESSMENT_COMPLETED_EMAIL_TEMPLATE_KEY,
+    label: "Assessment Completed",
+    description: "Email sent after a candidate submits an assessment.",
+  },
+  {
+    key: ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
+    label: "Assessment Result",
+    description: "Email sent when an assessment result is available, including reviewer context.",
   },
   {
     key: QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,

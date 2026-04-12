@@ -6,6 +6,7 @@ import type { GradeAssessmentAttemptInput, UpdateAssessmentAttemptStatusInput } 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { buildCandidateAttemptFeedback } from "@/services/assessment-pool/candidate-attempt-feedback";
 import { gradeSubmissionService } from "@/services/assessment-pool/grading";
+import { sendCandidateAssessmentResultNotification } from "@/services/candidate-notifications";
 import type { GradeResult } from "@/services/assessment-pool/types";
 import {
   markCurriculumAssessmentCompletedForLearnerService,
@@ -276,6 +277,19 @@ export async function gradeAssessmentAttemptService(options: {
     await recomputeLearnerReadiness(attempt.learnerId);
   } catch (error) {
     console.warn("Assessment graded, but readiness recomputation failed", error);
+  }
+
+  try {
+    const notificationSummary = await sendCandidateAssessmentResultNotification({
+      attemptId: options.attemptId,
+      actorUserId: options.userId,
+    });
+
+    if (notificationSummary.failedCount > 0) {
+      console.warn("Candidate assessment result email partially failed.", notificationSummary);
+    }
+  } catch (error) {
+    console.warn("Candidate assessment result email dispatch failed.", error);
   }
 
   return getAssessmentReviewDetailService({

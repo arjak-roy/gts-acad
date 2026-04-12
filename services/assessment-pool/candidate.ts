@@ -7,6 +7,10 @@ import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { buildCandidateAttemptFeedback, parseCandidateAttemptFeedback } from "@/services/assessment-pool/candidate-attempt-feedback";
 import { gradeSubmissionService } from "@/services/assessment-pool/grading";
 import {
+  sendCandidateAssessmentCompletionNotification,
+  sendCandidateAssessmentResultNotification,
+} from "@/services/candidate-notifications";
+import {
   markCurriculumAssessmentCompletedForLearnerService,
   markCurriculumAssessmentInProgressForLearnerService,
 } from "@/services/curriculum/progress";
@@ -22,6 +26,7 @@ import { recomputeLearnerReadiness } from "@/services/readiness-service";
 
 const SUPPORTED_IN_APP_QUESTION_TYPES = new Set<QuestionType>([
   "MCQ",
+  "TRUE_FALSE",
   "NUMERIC",
   "ESSAY",
   "FILL_IN_THE_BLANK",
@@ -140,6 +145,13 @@ function buildAttemptSummaryFromAttempt(options: {
 function sanitizeQuestionOptions(question: QuestionDetail): unknown {
   if (question.questionType === "MCQ") {
     return Array.isArray(question.options) ? question.options : [];
+  }
+
+  if (question.questionType === "TRUE_FALSE") {
+    return [
+      { label: "True", value: true },
+      { label: "False", value: false },
+    ];
   }
 
   if (question.questionType === "TWO_PART_ANALYSIS") {
@@ -651,6 +663,7 @@ export async function submitCandidateAssessmentService(options: {
           gradedAt: report.requiresManualReview ? null : submittedAt,
         },
         select: {
+          id: true,
           assessmentId: true,
           status: true,
           submittedAt: true,
@@ -706,6 +719,37 @@ export async function submitCandidateAssessmentService(options: {
         await recomputeLearnerReadiness(context.learnerId);
       } catch (error) {
         console.warn("Candidate assessment submission saved, but readiness recomputation failed", error);
+      }
+    }
+
+    try {
+      const notificationSummary = await sendCandidateAssessmentCompletionNotification({
+        learnerId: context.learnerId,
+        batchId: context.batchId,
+        assessmentTitle: context.pool.title,
+        submittedAt,
+        requiresManualReview: report.requiresManualReview,
+      });
+
+      if (notificationSummary.failedCount > 0) {
+        console.warn("Candidate assessment completion email partially failed.", notificationSummary);
+      }
+    } catch (error) {
+      console.warn("Candidate assessment completion email dispatch failed.", error);
+    }
+
+    if (!report.requiresManualReview) {
+      try {
+        const notificationSummary = await sendCandidateAssessmentResultNotification({
+          attemptId: attempt.id,
+          reviewerNameFallback: "System auto-evaluation",
+        });
+
+        if (notificationSummary.failedCount > 0) {
+          console.warn("Candidate assessment result email partially failed.", notificationSummary);
+        }
+      } catch (error) {
+        console.warn("Candidate assessment result email dispatch failed.", error);
       }
     }
 

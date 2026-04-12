@@ -10,6 +10,7 @@ import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
 import { addRoleToUser, assignRolesToUser, invalidateUserPermissionCache } from "@/services/rbac-service";
 import { requestPasswordReset } from "@/services/auth";
+import { sendCandidateCourseEnrollmentNotification } from "@/services/candidate-notifications";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import {
   getMetadataRecord,
@@ -131,7 +132,7 @@ export async function onboardCandidateService(
         });
       }
 
-      return { createdUser, generatedLearnerCode };
+      return { createdUser, generatedLearnerCode, learnerId: createdLearner.id };
     },
     { maxWait: 10_000, timeout: 15_000 },
   );
@@ -142,7 +143,7 @@ export async function onboardCandidateService(
   }
 
   try {
-    await sendCandidateEnrollmentCredentialsEmail({
+    const delivery = await sendCandidateEnrollmentCredentialsEmail({
       recipientEmail: createdResult.createdUser.email,
       recipientName: createdResult.createdUser.name,
       temporaryPassword,
@@ -154,8 +155,8 @@ export async function onboardCandidateService(
       where: { id: createdResult.createdUser.id },
       data: {
         metadata: mergeMetadata(createdResult.createdUser.metadata, {
-          welcomeCredentialsEmailStatus: "sent",
-          welcomeCredentialsLastSentAt: new Date().toISOString(),
+          welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
+          ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
           welcomeCredentialsFailureReason: null,
         }) as Prisma.InputJsonValue,
       },
@@ -197,6 +198,23 @@ export async function onboardCandidateService(
   const detail = await getCandidateUserByIdService(createdResult.createdUser.id);
   if (!detail) {
     throw new Error("User not found after creation.");
+  }
+
+  if (normalizedBatchCode) {
+    try {
+      const notificationSummary = await sendCandidateCourseEnrollmentNotification({
+        learnerId: createdResult.learnerId,
+        batchId: batch?.id ?? null,
+        batchCode: normalizedBatchCode,
+        actorUserId: actorUserId ?? null,
+      });
+
+      if (notificationSummary.failedCount > 0) {
+        console.warn("Candidate course enrollment email partially failed.", notificationSummary);
+      }
+    } catch (error) {
+      console.warn("Candidate course enrollment email dispatch failed.", error);
+    }
   }
 
   return detail;
@@ -387,7 +405,7 @@ export async function resendCandidateWelcomeService(
   });
 
   try {
-    await sendCandidateEnrollmentCredentialsEmail({
+    const delivery = await sendCandidateEnrollmentCredentialsEmail({
       recipientEmail: castRecord.email,
       recipientName: castRecord.name,
       temporaryPassword,
@@ -400,8 +418,8 @@ export async function resendCandidateWelcomeService(
       data: {
         metadata: {
           ...nextMetadata,
-          welcomeCredentialsEmailStatus: "sent",
-          welcomeCredentialsLastSentAt: new Date().toISOString(),
+          welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
+          ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
           welcomeCredentialsFailureReason: null,
         } as Prisma.InputJsonValue,
       },
@@ -485,7 +503,7 @@ export async function sendCandidateCustomMailService(
     throw new Error("Candidate user not found.");
   }
 
-  await deliverLoggedEmail({
+  const delivery = await deliverLoggedEmail({
     to: record.email,
     subject: input.subject,
     text: input.body,
@@ -502,10 +520,10 @@ export async function sendCandidateCustomMailService(
     entityType: "CANDIDATE",
     entityId: userId,
     action: "UPDATED",
-    message: `Custom email sent to candidate ${record.email}: ${input.subject}`,
+    message: `${delivery.status === "SENT" ? "Custom email sent" : "Custom email queued"} for candidate ${record.email}: ${input.subject}`,
     metadata: { subject: input.subject },
     actorUserId: actorUserId ?? null,
   });
 
-  return { ok: true };
+  return { ok: true, deliveryStatus: delivery.status };
 }

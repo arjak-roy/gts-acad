@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import { useRbac } from "@/lib/rbac-context";
 import { cn } from "@/lib/utils";
 
@@ -966,7 +967,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                     <Badge variant="info">{assignmentSourceLabels[assessment.assignmentSource]}</Badge>
                                   </div>
                                   <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-500">
-                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{assessment.questionType}</span>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{QUESTION_TYPE_LABELS[assessment.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? assessment.questionType}</span>
                                     <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{assessment.difficultyLevel}</span>
                                     <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{assessment.questionCount} questions</span>
                                     <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{assessment.totalMarks} marks</span>

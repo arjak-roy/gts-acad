@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma-client";
 import { MOCK_TRAINERS } from "@/services/batches/mock-data";
 import { BatchOption, BatchRecord, TrainerSummary } from "@/services/batches/types";
+import { trainerHasCourseId } from "@/services/trainers/course-assignment-helpers";
 
 export function normalizeTrainerIds(trainerIds: string[]) {
   return Array.from(new Set(trainerIds.map((trainerId) => trainerId.trim()).filter(Boolean)));
@@ -74,7 +75,7 @@ export async function resolveProgramAndTrainers(programName: string, trainerIds:
   const [program, trainers] = await Promise.all([
     prisma.program.findFirst({
       where: { name: { equals: programName, mode: "insensitive" } },
-      select: { id: true, name: true, slug: true, course: { select: { name: true } } },
+      select: { id: true, name: true, slug: true, course: { select: { id: true, name: true } } },
     }),
     normalizedTrainerIds.length > 0
       ? prisma.trainerProfile.findMany({
@@ -83,7 +84,20 @@ export async function resolveProgramAndTrainers(programName: string, trainerIds:
               in: normalizedTrainerIds,
             },
           },
-          include: { user: { select: { name: true } } },
+          include: {
+            user: { select: { name: true } },
+            courseAssignments: {
+              select: {
+                course: {
+                  select: {
+                    id: true,
+                    name: true,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -96,20 +110,9 @@ export async function resolveProgramAndTrainers(programName: string, trainerIds:
     throw new Error("Invalid trainer selection.");
   }
 
-  const allowedCourseKeys = new Set(
-    [program.course.name]
-      .map((value) => value?.trim())
-      .filter((value): value is string => Boolean(value))
-      .map((value) => normalizeCourseKey(value)),
-  );
-
   if (
     trainers.some(
-      (trainer) =>
-        !trainer.courses.some((assignedCourse) => {
-          const normalizedAssignedCourse = normalizeCourseKey(assignedCourse);
-          return allowedCourseKeys.has(normalizedAssignedCourse);
-        }),
+      (trainer) => !trainerHasCourseId(trainer, program.course.id),
     )
   ) {
     throw new Error("One or more selected trainers are not assigned to the selected course.");
@@ -117,6 +120,7 @@ export async function resolveProgramAndTrainers(programName: string, trainerIds:
 
   return {
     program,
+    courseId: program.course.id,
     courseName: program.course.name,
     trainerIds: normalizedTrainerIds,
   };
@@ -128,12 +132,25 @@ export async function resolveProgramAndTrainersWithAutoCourseMapping(programName
   const [program, trainers] = await Promise.all([
     prisma.program.findFirst({
       where: { name: { equals: programName, mode: "insensitive" } },
-      select: { id: true, name: true, slug: true, course: { select: { name: true } } },
+      select: { id: true, name: true, slug: true, course: { select: { id: true, name: true } } },
     }),
     normalizedTrainerIds.length > 0
       ? prisma.trainerProfile.findMany({
           where: { id: { in: normalizedTrainerIds } },
-          include: { user: { select: { name: true } } },
+          include: {
+            user: { select: { name: true } },
+            courseAssignments: {
+              select: {
+                course: {
+                  select: {
+                    id: true,
+                    name: true,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -146,23 +163,13 @@ export async function resolveProgramAndTrainersWithAutoCourseMapping(programName
     throw new Error("Invalid trainer selection.");
   }
 
-  const allowedCourseKeys = new Set(
-    [program.course.name]
-      .map((value) => value?.trim())
-      .filter((value): value is string => Boolean(value))
-      .map((value) => normalizeCourseKey(value)),
-  );
-
   const trainersToAddToCourse = trainers.filter(
-    (trainer) =>
-      !trainer.courses.some((assignedCourse) => {
-        const normalizedAssignedCourse = normalizeCourseKey(assignedCourse);
-        return allowedCourseKeys.has(normalizedAssignedCourse);
-      }),
+    (trainer) => !trainerHasCourseId(trainer, program.course.id),
   );
 
   return {
     program,
+    courseId: program.course.id,
     courseName: program.course.name,
     trainerIds: normalizedTrainerIds,
     trainersToAddToCourse: trainersToAddToCourse.map((trainer) => trainer.id),

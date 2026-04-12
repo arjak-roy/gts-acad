@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import { useRbac } from "@/lib/rbac-context";
 import { cn } from "@/lib/utils";
 
@@ -174,14 +175,7 @@ const contentTypeLabels: Record<string, string> = {
   OTHER: "Other",
 };
 
-const questionTypeLabels: Record<string, string> = {
-  MCQ: "Multiple Choice",
-  NUMERIC: "Numeric",
-  ESSAY: "Essay",
-  FILL_IN_THE_BLANK: "Fill in the Blank",
-  MULTI_INPUT_REASONING: "Multi-Input Reasoning",
-  TWO_PART_ANALYSIS: "Two-Part Analysis",
-};
+const questionTypeLabels: Record<string, string> = QUESTION_TYPE_LABELS;
 
 const assignmentSourceLabels: Record<CurriculumBatchMapping["assignmentSource"], string> = {
   COURSE: "Inherited from course",
@@ -2287,7 +2281,7 @@ export default function CurriculumBuilderPage() {
                       <div key={item.id} className="rounded-xl border border-[#dde1e6] bg-white p-4">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                          <Badge variant="info">{item.questionType}</Badge>
+                          <Badge variant="info">{QUESTION_TYPE_LABELS[item.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? item.questionType}</Badge>
                           <Badge variant="info">{item.difficultyLevel}</Badge>
                           <Badge variant={statusVariant[item.status] ?? "info"}>{item.status}</Badge>
                         </div>

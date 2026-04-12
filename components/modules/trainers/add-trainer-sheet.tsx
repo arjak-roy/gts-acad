@@ -51,9 +51,17 @@ const initialForm: AddTrainerForm = {
 
 type AddTrainerSheetProps = {
   onCreated?: () => void;
+  initialCourseId?: string | null;
+  lockCourseSelection?: boolean;
+  triggerLabel?: string;
 };
 
-export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
+export function AddTrainerSheet({
+  onCreated,
+  initialCourseId = null,
+  lockCourseSelection = false,
+  triggerLabel = "Add Trainer",
+}: AddTrainerSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
@@ -84,7 +92,14 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
           return;
         }
 
-        setCourses((payload.data ?? []).filter((course) => course.isActive));
+        const availableCourses = (payload.data ?? []).filter((course) => course.isActive);
+        setCourses(availableCourses);
+        if (initialCourseId && availableCourses.some((course) => course.id === initialCourseId)) {
+          setForm((current) => ({
+            ...current,
+            courseIds: current.courseIds.includes(initialCourseId) ? current.courseIds : [...current.courseIds, initialCourseId],
+          }));
+        }
       } catch (loadError) {
         if (!isActive) {
           return;
@@ -104,7 +119,7 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
     return () => {
       isActive = false;
     };
-  }, [open]);
+  }, [initialCourseId, open]);
 
   const resetFlow = () => {
     setStep("form");
@@ -120,8 +135,15 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
   };
 
   const selectedCourseNames = formatSelectedCourseNames(form.courseIds, courses);
+  const visibleCourses = lockCourseSelection && initialCourseId
+    ? courses.filter((course) => course.id === initialCourseId)
+    : courses;
 
   const toggleCourse = (courseId: string) => {
+    if (lockCourseSelection && initialCourseId) {
+      return;
+    }
+
     setForm((prev) => ({
       ...prev,
       courseIds: prev.courseIds.includes(courseId)
@@ -174,7 +196,7 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
 
       setStep("created");
       router.refresh();
-  onCreated?.();
+        onCreated?.();
       toast.success("Trainer created successfully.");
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : "Failed to create trainer.";
@@ -188,7 +210,7 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
-        <Button>Add Trainer</Button>
+        <Button>{triggerLabel}</Button>
       </SheetTrigger>
       <SheetContent>
         <SheetHeader>
@@ -257,7 +279,7 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
                   ) : courses.length === 0 ? (
                     <p className="text-sm text-slate-500">No courses available.</p>
                   ) : (
-                    courses.map((course) => {
+                    visibleCourses.map((course) => {
                       const selected = form.courseIds.includes(course.id);
 
                       return (
@@ -265,11 +287,13 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
                           key={course.id}
                           type="button"
                           onClick={() => toggleCourse(course.id)}
+                          disabled={lockCourseSelection && initialCourseId === course.id}
                           className={cn(
                             "rounded-xl border px-3 py-3 text-left transition-colors",
                             selected
                               ? "border-[#0d3b84] bg-blue-50 text-slate-900"
                               : "border-[#dde1e6] bg-white text-slate-700 hover:bg-slate-50",
+                            lockCourseSelection && initialCourseId === course.id ? "cursor-default" : undefined,
                           )}
                           aria-pressed={selected}
                         >
@@ -279,7 +303,11 @@ export function AddTrainerSheet({ onCreated }: AddTrainerSheetProps) {
                     })
                   )}
                 </div>
-                <p className="text-xs text-slate-500">Tap or click cards to select one or more courses.</p>
+                <p className="text-xs text-slate-500">
+                  {lockCourseSelection && initialCourseId
+                    ? "This trainer will be created under the current course and can be assigned to batches below."
+                    : "Tap or click cards to select one or more courses."}
+                </p>
               </div>
 
               <div className="space-y-1.5">

@@ -49,5 +49,6 @@ export async function sendTestEmailTemplateService(input: {
     recipientEmail: input.recipientEmail,
     emailLogId: delivery.emailLogId,
     providerMessageId: delivery.providerMessageId,
+    status: delivery.status === "SENT" ? "SENT" : "PENDING",
   };
 }

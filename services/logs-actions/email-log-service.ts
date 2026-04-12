@@ -9,20 +9,220 @@ import {
   EMAIL_LOG_STATUS,
   MAX_PAGE_SIZE,
 } from "@/services/logs-actions/constants";
+import { createAuditLogEntry } from "@/services/logs-actions/audit-log-service";
 import { prismaWithLogs } from "@/services/logs-actions/prisma";
 import {
   DeliverLoggedEmailInput,
   EmailLogListResponse,
   EmailLogRow,
   ListEmailLogsInput,
+  LoggedEmailDeliveryResult,
+  ProcessEmailLogsInput,
+  ProcessEmailLogsResult,
   RetryBulkInput,
   RetryBulkResult,
 } from "@/services/logs-actions/types";
 import { mapEmailLog, resolvePagination, toErrorMessage } from "@/services/logs-actions/utils";
 import type { EmailLogCategory, EmailLogStatus } from "@/services/logs-actions/constants";
-import { createAuditLogEntry } from "@/services/logs-actions/audit-log-service";
 
-export async function deliverLoggedEmail(input: DeliverLoggedEmailInput) {
+const emailLogListSelect = {
+  id: true,
+  category: true,
+  templateKey: true,
+  toEmail: true,
+  subject: true,
+  status: true,
+  attemptCount: true,
+  errorMessage: true,
+  providerMessageId: true,
+  createdAt: true,
+  updatedAt: true,
+  sentAt: true,
+  lastAttemptAt: true,
+} satisfies Prisma.EmailLogSelect;
+
+const emailLogDeliverySelect = {
+  ...emailLogListSelect,
+  textBody: true,
+  htmlBody: true,
+  metadata: true,
+  triggeredById: true,
+} satisfies Prisma.EmailLogSelect;
+
+type EmailLogDeliveryRecord = Prisma.EmailLogGetPayload<{
+  select: typeof emailLogDeliverySelect;
+}>;
+
+function isQueuedEmailStatus(status: EmailLogStatus) {
+  return status === EMAIL_LOG_STATUS.PENDING || status === EMAIL_LOG_STATUS.RETRYING;
+}
+
+async function loadEmailLogForDelivery(emailLogId: string) {
+  return (await prismaWithLogs.emailLog.findUnique({
+    where: { id: emailLogId },
+    select: emailLogDeliverySelect,
+  })) as EmailLogDeliveryRecord | null;
+}
+
+async function processQueuedEmailLogService(emailLogId: string) {
+  const log = await loadEmailLogForDelivery(emailLogId);
+
+  if (!log) {
+    throw new Error("Email log not found.");
+  }
+
+  if (log.status === EMAIL_LOG_STATUS.SENT) {
+    throw new Error("This email is already marked as sent.");
+  }
+
+  if (!isQueuedEmailStatus(log.status)) {
+    throw new Error("This email is not queued for delivery.");
+  }
+
+  const claimResult = await prismaWithLogs.emailLog.updateMany({
+    where: {
+      id: log.id,
+      status: log.status,
+    },
+    data: {
+      status: EMAIL_LOG_STATUS.RETRYING,
+      errorMessage: null,
+    },
+  });
+
+  if (claimResult.count === 0) {
+    const current = await loadEmailLogForDelivery(emailLogId);
+
+    if (!current) {
+      throw new Error("Email log not found.");
+    }
+
+    if (current.status === EMAIL_LOG_STATUS.SENT) {
+      throw new Error("This email is already marked as sent.");
+    }
+
+    if (current.status === EMAIL_LOG_STATUS.FAILED) {
+      throw new Error("This email must be re-queued before delivery.");
+    }
+
+    throw new Error("This email is already being processed.");
+  }
+
+  try {
+    const mailResult = await sendMail({
+      to: log.toEmail,
+      subject: log.subject,
+      text: log.textBody ?? "",
+      html: log.htmlBody ?? "",
+    });
+
+    const updated = (await prismaWithLogs.emailLog.update({
+      where: { id: log.id },
+      data: {
+        status: EMAIL_LOG_STATUS.SENT,
+        attemptCount: { increment: 1 },
+        errorMessage: null,
+        providerMessageId: mailResult.messageId ?? null,
+        lastAttemptAt: new Date(),
+        sentAt: new Date(),
+      },
+      select: emailLogListSelect,
+    })) as EmailLogRow;
+
+    const isRetryDelivery = log.status === EMAIL_LOG_STATUS.RETRYING || log.attemptCount > 0;
+
+    await createAuditLogEntry({
+      entityType: AUDIT_ENTITY_TYPE.EMAIL,
+      entityId: log.id,
+      action: isRetryDelivery ? AUDIT_ACTION_TYPE.MAIL_RETRIED : AUDIT_ACTION_TYPE.MAIL_SENT,
+      level: AUDIT_LOG_LEVEL.INFO,
+      status: EMAIL_LOG_STATUS.SENT,
+      message: isRetryDelivery ? `Retry successful for email ${log.id}` : `Email sent to ${log.toEmail}`,
+      metadata: {
+        category: log.category,
+        templateKey: log.templateKey,
+      },
+      actorUserId: log.triggeredById ?? null,
+      emailLogId: log.id,
+    });
+
+    return mapEmailLog(updated);
+  } catch (error) {
+    const errorMessage = toErrorMessage(error);
+    const isRetryDelivery = log.status === EMAIL_LOG_STATUS.RETRYING || log.attemptCount > 0;
+
+    await prismaWithLogs.emailLog.update({
+      where: { id: log.id },
+      data: {
+        status: EMAIL_LOG_STATUS.FAILED,
+        attemptCount: { increment: 1 },
+        errorMessage,
+        lastAttemptAt: new Date(),
+      },
+    });
+
+    await createAuditLogEntry({
+      entityType: AUDIT_ENTITY_TYPE.EMAIL,
+      entityId: log.id,
+      action: AUDIT_ACTION_TYPE.MAIL_FAILED,
+      level: AUDIT_LOG_LEVEL.ERROR,
+      status: EMAIL_LOG_STATUS.FAILED,
+      message: isRetryDelivery ? `Retry failed for email ${log.id}: ${errorMessage}` : `Email failed for ${log.toEmail}: ${errorMessage}`,
+      metadata: {
+        category: log.category,
+        templateKey: log.templateKey,
+      },
+      actorUserId: log.triggeredById ?? null,
+      emailLogId: log.id,
+    });
+
+    throw error;
+  }
+}
+
+async function queueRetryEmailLog(emailLogId: string) {
+  const log = await loadEmailLogForDelivery(emailLogId);
+
+  if (!log) {
+    throw new Error("Email log not found.");
+  }
+
+  if (log.status === EMAIL_LOG_STATUS.SENT) {
+    throw new Error("This email is already marked as sent.");
+  }
+
+  if (isQueuedEmailStatus(log.status)) {
+    return mapEmailLog(log as EmailLogRow);
+  }
+
+  const updated = (await prismaWithLogs.emailLog.update({
+    where: { id: log.id },
+    data: {
+      status: EMAIL_LOG_STATUS.RETRYING,
+      errorMessage: null,
+    },
+    select: emailLogListSelect,
+  })) as EmailLogRow;
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.EMAIL,
+    entityId: log.id,
+    action: AUDIT_ACTION_TYPE.RETRY,
+    level: AUDIT_LOG_LEVEL.INFO,
+    status: EMAIL_LOG_STATUS.RETRYING,
+    message: `Retry queued for email ${log.id}`,
+    metadata: {
+      category: log.category,
+      templateKey: log.templateKey,
+    },
+    actorUserId: log.triggeredById ?? null,
+    emailLogId: log.id,
+  });
+
+  return mapEmailLog(updated);
+}
+
+export async function deliverLoggedEmail(input: DeliverLoggedEmailInput): Promise<LoggedEmailDeliveryResult> {
   if (!isDatabaseConfigured) {
     const result = await sendMail({
       to: input.to,
@@ -32,7 +232,7 @@ export async function deliverLoggedEmail(input: DeliverLoggedEmailInput) {
     });
 
     return {
-      emailLogId: null as string | null,
+      emailLogId: null,
       providerMessageId: result.messageId ?? null,
       status: EMAIL_LOG_STATUS.SENT,
     };
@@ -53,76 +253,21 @@ export async function deliverLoggedEmail(input: DeliverLoggedEmailInput) {
     select: { id: true },
   });
 
-  try {
-    const mailResult = await sendMail({
-      to: input.to,
-      subject: input.subject,
-      text: input.text,
-      html: input.html,
-    });
-
-    await prismaWithLogs.emailLog.update({
-      where: { id: emailLog.id },
-      data: {
-        status: EMAIL_LOG_STATUS.SENT,
-        attemptCount: { increment: 1 },
-        errorMessage: null,
-        providerMessageId: mailResult.messageId ?? null,
-        lastAttemptAt: new Date(),
-        sentAt: new Date(),
-      },
-    });
-
-    await createAuditLogEntry({
-      entityType: input.audit?.entityType ?? AUDIT_ENTITY_TYPE.EMAIL,
-      entityId: input.audit?.entityId ?? emailLog.id,
-      action: AUDIT_ACTION_TYPE.MAIL_SENT,
-      level: AUDIT_LOG_LEVEL.INFO,
-      status: EMAIL_LOG_STATUS.SENT,
-      message: `Email sent to ${input.to}`,
-      metadata: {
-        category: input.category,
-        templateKey: input.templateKey ?? null,
-      },
-      actorUserId: input.audit?.actorUserId ?? null,
-      emailLogId: emailLog.id,
-    });
+  if (input.deliveryMode !== "queued") {
+    const processed = await processQueuedEmailLogService(emailLog.id);
 
     return {
-      emailLogId: emailLog.id,
-      providerMessageId: mailResult.messageId ?? null,
-      status: EMAIL_LOG_STATUS.SENT,
+      emailLogId: processed.id,
+      providerMessageId: processed.providerMessageId,
+      status: processed.status,
     };
-  } catch (error) {
-    const errorMessage = toErrorMessage(error);
-
-    await prismaWithLogs.emailLog.update({
-      where: { id: emailLog.id },
-      data: {
-        status: EMAIL_LOG_STATUS.FAILED,
-        attemptCount: { increment: 1 },
-        errorMessage,
-        lastAttemptAt: new Date(),
-      },
-    });
-
-    await createAuditLogEntry({
-      entityType: input.audit?.entityType ?? AUDIT_ENTITY_TYPE.EMAIL,
-      entityId: input.audit?.entityId ?? emailLog.id,
-      action: AUDIT_ACTION_TYPE.MAIL_FAILED,
-      level: AUDIT_LOG_LEVEL.ERROR,
-      status: EMAIL_LOG_STATUS.FAILED,
-      message: `Email failed for ${input.to}: ${errorMessage}`,
-      metadata: {
-        category: input.category,
-        templateKey: input.templateKey ?? null,
-      },
-      actorUserId: input.audit?.actorUserId ?? null,
-      emailLogId: emailLog.id,
-    });
-
-    throw error;
   }
+
+  return {
+    emailLogId: emailLog.id,
+    providerMessageId: null,
+    status: EMAIL_LOG_STATUS.PENDING,
+  };
 }
 
 export async function listEmailLogsService(input: ListEmailLogsInput): Promise<EmailLogListResponse> {
@@ -138,7 +283,7 @@ export async function listEmailLogsService(input: ListEmailLogsInput): Promise<E
     };
   }
 
-  const where = {
+  const where: Prisma.EmailLogWhereInput = {
     ...(input.status && input.status !== "ALL" ? { status: input.status } : {}),
     ...(input.category && input.category !== "ALL" ? { category: input.category } : {}),
     ...(input.search?.trim()
@@ -158,21 +303,7 @@ export async function listEmailLogsService(input: ListEmailLogsInput): Promise<E
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      select: {
-        id: true,
-        category: true,
-        templateKey: true,
-        toEmail: true,
-        subject: true,
-        status: true,
-        attemptCount: true,
-        errorMessage: true,
-        providerMessageId: true,
-        createdAt: true,
-        updatedAt: true,
-        sentAt: true,
-        lastAttemptAt: true,
-      },
+      select: emailLogListSelect,
     }),
   ]);
 
@@ -192,125 +323,8 @@ export async function retryEmailLogService(emailLogId: string) {
     throw new Error("Email retry requires database configuration.");
   }
 
-  const log = (await prismaWithLogs.emailLog.findUnique({
-    where: { id: emailLogId },
-    select: {
-      id: true,
-      category: true,
-      templateKey: true,
-      toEmail: true,
-      subject: true,
-      textBody: true,
-      htmlBody: true,
-      status: true,
-      metadata: true,
-    },
-  })) as {
-    id: string;
-    category: EmailLogCategory;
-    templateKey: string | null;
-    toEmail: string;
-    subject: string;
-    textBody: string | null;
-    htmlBody: string | null;
-    status: EmailLogStatus;
-    metadata: Prisma.JsonValue;
-  } | null;
-
-  if (!log) {
-    throw new Error("Email log not found.");
-  }
-
-  if (log.status === EMAIL_LOG_STATUS.SENT) {
-    throw new Error("This email is already marked as sent.");
-  }
-
-  await prismaWithLogs.emailLog.update({
-    where: { id: log.id },
-    data: {
-      status: EMAIL_LOG_STATUS.RETRYING,
-      errorMessage: null,
-    },
-  });
-
-  try {
-    const result = await sendMail({
-      to: log.toEmail,
-      subject: log.subject,
-      text: log.textBody ?? "",
-      html: log.htmlBody ?? "",
-    });
-
-    const updated = (await prismaWithLogs.emailLog.update({
-      where: { id: log.id },
-      data: {
-        status: EMAIL_LOG_STATUS.SENT,
-        attemptCount: { increment: 1 },
-        providerMessageId: result.messageId ?? null,
-        sentAt: new Date(),
-        lastAttemptAt: new Date(),
-      },
-      select: {
-        id: true,
-        category: true,
-        templateKey: true,
-        toEmail: true,
-        subject: true,
-        status: true,
-        attemptCount: true,
-        errorMessage: true,
-        providerMessageId: true,
-        createdAt: true,
-        updatedAt: true,
-        sentAt: true,
-        lastAttemptAt: true,
-      },
-    })) as EmailLogRow;
-
-    await createAuditLogEntry({
-      entityType: AUDIT_ENTITY_TYPE.EMAIL,
-      entityId: log.id,
-      action: AUDIT_ACTION_TYPE.MAIL_RETRIED,
-      level: AUDIT_LOG_LEVEL.INFO,
-      status: EMAIL_LOG_STATUS.SENT,
-      message: `Retry successful for email ${log.id}`,
-      metadata: {
-        category: log.category,
-        templateKey: log.templateKey,
-      },
-      emailLogId: log.id,
-    });
-
-    return mapEmailLog(updated);
-  } catch (error) {
-    const errorMessage = toErrorMessage(error);
-
-    await prismaWithLogs.emailLog.update({
-      where: { id: log.id },
-      data: {
-        status: EMAIL_LOG_STATUS.FAILED,
-        attemptCount: { increment: 1 },
-        errorMessage,
-        lastAttemptAt: new Date(),
-      },
-    });
-
-    await createAuditLogEntry({
-      entityType: AUDIT_ENTITY_TYPE.EMAIL,
-      entityId: log.id,
-      action: AUDIT_ACTION_TYPE.MAIL_FAILED,
-      level: AUDIT_LOG_LEVEL.ERROR,
-      status: EMAIL_LOG_STATUS.FAILED,
-      message: `Retry failed for email ${log.id}: ${errorMessage}`,
-      metadata: {
-        category: log.category,
-        templateKey: log.templateKey,
-      },
-      emailLogId: log.id,
-    });
-
-    throw error;
-  }
+  await queueRetryEmailLog(emailLogId);
+  return processQueuedEmailLogService(emailLogId);
 }
 
 export async function bulkRetryEmailLogsService(input: RetryBulkInput): Promise<RetryBulkResult> {
@@ -365,6 +379,76 @@ export async function bulkRetryEmailLogsService(input: RetryBulkInput): Promise<
   return {
     requested: targetIds.length,
     retried,
+    failed,
+    results,
+  };
+}
+
+export async function processEmailLogsService(input: ProcessEmailLogsInput): Promise<ProcessEmailLogsResult> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Email processing requires database configuration.");
+  }
+
+  const targetIds =
+    input.mode === "selected"
+      ? (
+          await prismaWithLogs.emailLog.findMany({
+            where: {
+              id: { in: Array.from(new Set(input.ids)) },
+              status: { in: [EMAIL_LOG_STATUS.PENDING, EMAIL_LOG_STATUS.RETRYING] },
+            },
+            select: { id: true },
+            orderBy: { createdAt: "asc" },
+          })
+        ).map((row) => (row as { id: string }).id)
+      : (
+          await prismaWithLogs.emailLog.findMany({
+            where: {
+              status: { in: [EMAIL_LOG_STATUS.PENDING, EMAIL_LOG_STATUS.RETRYING] },
+            },
+            select: { id: true },
+            orderBy: { createdAt: "asc" },
+            take: input.limit,
+          })
+        ).map((row) => (row as { id: string }).id);
+
+  if (targetIds.length === 0) {
+    return {
+      requested: 0,
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      results: [],
+    };
+  }
+
+  const results: ProcessEmailLogsResult["results"] = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (const id of targetIds) {
+    try {
+      await processQueuedEmailLogService(id);
+      sent += 1;
+      results.push({
+        id,
+        status: "sent",
+        message: "Email sent successfully.",
+      });
+    } catch (error) {
+      failed += 1;
+      results.push({
+        id,
+        status: "failed",
+        message: toErrorMessage(error),
+      });
+    }
+  }
+
+  return {
+    requested: targetIds.length,
+    processed: results.length,
+    sent,
     failed,
     results,
   };

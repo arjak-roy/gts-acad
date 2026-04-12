@@ -814,8 +814,8 @@ async function seed() {
     await assignUserRole(user.id, roleRecords.TRAINER.id);
 
     const assignedCourses = [
-      courseByType.get(programRecords[i % programRecords.length].type)?.name,
-      courseByType.get(programRecords[(i + 3) % programRecords.length].type)?.name,
+      courseByType.get(programRecords[i % programRecords.length].type),
+      courseByType.get(programRecords[(i + 3) % programRecords.length].type),
     ].filter(Boolean);
     const employeeCode = await resolveTrainerEmployeeCode({
       userId: user.id,
@@ -832,7 +832,6 @@ async function seed() {
         capacity: 4,
         isActive: true,
         availabilityStatus: TrainerAvailabilityStatus.AVAILABLE,
-        courses: assignedCourses,
       },
       create: {
         userId: user.id,
@@ -843,20 +842,36 @@ async function seed() {
         capacity: 4,
         isActive: true,
         availabilityStatus: TrainerAvailabilityStatus.AVAILABLE,
-        courses: assignedCourses,
       },
     });
 
-    trainerRecords.push(trainer);
+    await prisma.trainerCourseAssignment.deleteMany({
+      where: { trainerId: trainer.id },
+    });
+
+    if (assignedCourses.length > 0) {
+      await prisma.trainerCourseAssignment.createMany({
+        data: assignedCourses.map((course) => ({
+          trainerId: trainer.id,
+          courseId: course.id,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    trainerRecords.push({
+      ...trainer,
+      courseIds: assignedCourses.map((course) => course.id),
+    });
   }
 
   const batchRecords = [];
   for (let i = 0; i < programRecords.length; i += 1) {
     const program = programRecords[i];
     const centre = centreRecords[i % centreRecords.length];
-    const courseName = courseByType.get(program.type)?.name;
+    const courseId = courseByType.get(program.type)?.id;
     const eligibleTrainers = trainerRecords.filter((trainer) =>
-      Array.isArray(trainer.courses) && courseName ? trainer.courses.includes(courseName) : false
+      Array.isArray(trainer.courseIds) && courseId ? trainer.courseIds.includes(courseId) : false
     );
 
     const primaryTrainer = eligibleTrainers[0] ?? trainerRecords[i % trainerRecords.length];

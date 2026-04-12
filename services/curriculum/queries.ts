@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { QuestionType } from "@prisma/client";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { listCurriculumItemProgressForLearnerService } from "@/services/curriculum/progress";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
@@ -79,7 +80,7 @@ type CurriculumDetailRecord = {
           code: string;
           title: string;
           description: string | null;
-          questionType: "MCQ" | "NUMERIC" | "ESSAY" | "FILL_IN_THE_BLANK" | "MULTI_INPUT_REASONING" | "TWO_PART_ANALYSIS";
+          questionType: QuestionType;
           difficultyLevel: "EASY" | "MEDIUM" | "HARD";
           status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
         } | null;

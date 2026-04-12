@@ -530,7 +530,7 @@ export async function sendCandidateEnrollmentCredentialsEmail(input: {
     programName: input.programName,
   });
 
-  await deliverLoggedEmail({
+  return deliverLoggedEmail({
     to: input.recipientEmail,
     subject: template.subject,
     text: template.text,

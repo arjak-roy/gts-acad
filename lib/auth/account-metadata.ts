@@ -76,6 +76,13 @@ export function buildActivationEmailSentMetadata(value: Prisma.JsonValue | null 
   });
 }
 
+export function buildActivationEmailQueuedMetadata(value: Prisma.JsonValue | null | undefined) {
+  return mergeAccountMetadata(value, {
+    activationEmailStatus: "pending",
+    activationFailureReason: null,
+  });
+}
+
 export function buildActivationEmailFailedMetadata(value: Prisma.JsonValue | null | undefined, reason: string) {
   return mergeAccountMetadata(value, {
     activationEmailStatus: "failed",

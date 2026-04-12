@@ -306,7 +306,7 @@ export async function sendInternalUserWelcomeEmail(input: {
     roleSummary: buildRoleSummary(input.roles),
   });
 
-  await deliverLoggedEmail({
+  return deliverLoggedEmail({
     to: input.recipientEmail,
     subject: template.subject,
     text: template.text,

@@ -41,6 +41,19 @@ type EmailLogsResponse = {
   pageCount: number;
 };
 
+type RetryBulkResponse = {
+  requested: number;
+  retried: number;
+  failed: number;
+};
+
+type ProcessEmailQueueResponse = {
+  requested: number;
+  processed: number;
+  sent: number;
+  failed: number;
+};
+
 type AuditLogItem = {
   id: string;
   entityType: "BATCH" | "CANDIDATE" | "COURSE" | "EMAIL" | "AUTH" | "SYSTEM";
@@ -364,13 +377,46 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
         body: JSON.stringify({ mode, ids }),
       });
 
-      const result = await parseResponse<{ requested: number; retried: number; failed: number }>(response);
-      setActionMessage(`Retry completed: ${result.retried}/${result.requested} succeeded.`);
-      toast.success(`Retry completed: ${result.retried}/${result.requested} succeeded.`);
+      const result = await parseResponse<RetryBulkResponse>(response);
+      const message =
+        result.requested === 0
+          ? "No failed emails were available to retry."
+          : `Retry completed: ${result.retried}/${result.requested} email${result.requested === 1 ? "" : "s"} sent.`;
+      setActionMessage(message);
+      toast.success(message);
       setSelectedEmailIds([]);
       await fetchLogs();
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Bulk retry failed.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const processQueuedEmails = async () => {
+    setActionLoading(true);
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/logs-actions/email/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "all-queued", limit: 25 }),
+      });
+
+      const result = await parseResponse<ProcessEmailQueueResponse>(response);
+      const message =
+        result.requested === 0
+          ? "No queued emails were available to process."
+          : `Queue processed: ${result.sent}/${result.requested} email${result.requested === 1 ? "" : "s"} sent.`;
+      setActionMessage(message);
+      toast.success(message);
+      await fetchLogs();
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "Queue processing failed.";
       setError(message);
       toast.error(message);
     } finally {
@@ -386,8 +432,8 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
     try {
       const response = await fetch(`/api/logs-actions/email/${emailLogId}/retry`, { method: "POST" });
       await parseResponse(response);
-      setActionMessage("Email retry queued successfully.");
-      toast.success("Email retry queued successfully.");
+      setActionMessage("Email retried successfully.");
+      toast.success("Email retried successfully.");
       await fetchLogs();
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Retry failed.";
@@ -549,7 +595,7 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
         <Card>
           <CardHeader>
             <CardTitle>Email Delivery Logs</CardTitle>
-            <CardDescription>Retry failed deliveries individually or in bulk.</CardDescription>
+            <CardDescription>Retry failed deliveries immediately, or process any remaining queued emails manually.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -563,6 +609,9 @@ export function LogsActionsSection({ title, description }: LogsActionsSectionPro
                 </Button>
                 <Button type="button" size="sm" variant="default" disabled={actionLoading} onClick={() => void submitBulkRetry("all-failed", [])}>
                   Retry All Failed
+                </Button>
+                <Button type="button" size="sm" variant="secondary" disabled={actionLoading} onClick={() => void processQueuedEmails()}>
+                  Process Pending Queue
                 </Button>
               </div>
             </div>

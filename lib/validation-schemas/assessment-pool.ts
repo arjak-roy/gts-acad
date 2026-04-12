@@ -1,13 +1,8 @@
 import { z } from "zod";
 
-export const questionTypeEnum = z.enum([
-  "MCQ",
-  "NUMERIC",
-  "ESSAY",
-  "FILL_IN_THE_BLANK",
-  "MULTI_INPUT_REASONING",
-  "TWO_PART_ANALYSIS",
-]);
+import { QUESTION_TYPE_VALUES } from "@/lib/question-types";
+
+export const questionTypeEnum = z.enum(QUESTION_TYPE_VALUES);
 
 export const difficultyLevelEnum = z.enum(["EASY", "MEDIUM", "HARD"]);
 export const assessmentPoolStatusEnum = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);

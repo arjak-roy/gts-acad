@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_SHORT_LABELS } from "@/lib/question-types";
 
 type BatchContentItem = {
   id: string;
@@ -63,15 +64,6 @@ type BatchOption = {
   id: string;
   code: string;
   name: string;
-};
-
-const questionTypeLabels: Record<string, string> = {
-  MCQ: "MCQ",
-  NUMERIC: "Numeric",
-  ESSAY: "Essay",
-  FILL_IN_THE_BLANK: "Fill Blank",
-  MULTI_INPUT_REASONING: "Multi-Input",
-  TWO_PART_ANALYSIS: "Two-Part",
 };
 
 const assignmentSourceLabels: Record<BatchContentItem["assignmentSource"], string> = {
@@ -369,7 +361,7 @@ export function BatchContentMappingTab() {
                           </Badge>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant="info" className="text-[10px] px-1 py-0">{questionTypeLabels[item.questionType] ?? item.questionType}</Badge>
+                          <Badge variant="info" className="text-[10px] px-1 py-0">{QUESTION_TYPE_SHORT_LABELS[item.questionType as keyof typeof QUESTION_TYPE_SHORT_LABELS] ?? item.questionType}</Badge>
                           <span className="text-xs text-muted-foreground">
                             {item.questionCount} Q · {item.totalMarks} marks
                             {item.assignedByName && ` · by ${item.assignedByName}`}
@@ -435,7 +427,7 @@ export function BatchContentMappingTab() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm">{item.title}</p>
                           <p className="text-xs text-muted-foreground">
-                            {questionTypeLabels[item.questionType] ?? item.questionType} · {item.questionCount} Q · {item.totalMarks} marks
+                            {QUESTION_TYPE_SHORT_LABELS[item.questionType as keyof typeof QUESTION_TYPE_SHORT_LABELS] ?? item.questionType} · {item.questionCount} Q · {item.totalMarks} marks
                           </p>
                         </div>
                         <Button size="sm" variant="secondary" onClick={() => handleAssignAssessment([item.id])}>

@@ -113,13 +113,17 @@ export function EmailTemplateDetailSheet({ templateId, open, onOpenChange, onEdi
         body: JSON.stringify({ recipientEmail: testRecipient.trim() || undefined }),
       });
 
-      const payload = (await response.json().catch(() => null)) as { data?: { recipientEmail: string }; error?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { data?: { recipientEmail: string; status: "PENDING" | "SENT" }; error?: string } | null;
       if (!response.ok || !payload?.data) {
         throw new Error(payload?.error ?? "Failed to send test email.");
       }
 
-      setTestMessage(`Test email sent to ${payload.data.recipientEmail}.`);
-      toast.success(`Test email sent to ${payload.data.recipientEmail}.`);
+      const message =
+        payload.data.status === "SENT"
+          ? `Test email sent to ${payload.data.recipientEmail}.`
+          : `Test email queued for ${payload.data.recipientEmail}. Process it from Email Logs.`;
+      setTestMessage(message);
+      toast.success(message);
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Failed to send test email.";
       setTestError(message);

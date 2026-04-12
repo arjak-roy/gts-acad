@@ -245,6 +245,7 @@ export async function deliverTwoFactorEmail(user: Pick<AuthUser, "email" | "name
     html: template.html,
     category: "TWO_FACTOR",
     templateKey: TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+    deliveryMode: "immediate",
     audit: {
       entityType: "AUTH",
       entityId: user.email,
@@ -280,6 +281,7 @@ export async function deliverPasswordResetEmail(
     html: template.html,
     category: "SYSTEM",
     templateKey: PASSWORD_RESET_EMAIL_TEMPLATE_KEY,
+    deliveryMode: "immediate",
     metadata: {
       purpose: "password-reset",
     },

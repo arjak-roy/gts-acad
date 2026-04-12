@@ -5,6 +5,7 @@ export {
   bulkRetryEmailLogsService,
   deliverLoggedEmail,
   listEmailLogsService,
+  processEmailLogsService,
   retryEmailLogService,
 } from "@/services/logs-actions/email-log-service";
 
@@ -14,8 +15,11 @@ export type {
   DeliverLoggedEmailInput,
   EmailLogListItem,
   EmailLogListResponse,
+  LoggedEmailDeliveryResult,
   ListAuditLogsInput,
   ListEmailLogsInput,
+  ProcessEmailLogsInput,
+  ProcessEmailLogsResult,
   RetryBulkInput,
   RetryBulkResult,
 } from "@/services/logs-actions/types";

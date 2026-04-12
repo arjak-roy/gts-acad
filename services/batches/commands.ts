@@ -150,18 +150,13 @@ export async function createBatchService(input: CreateBatchInput): Promise<Batch
   const normalizedCampus = centre?.name ?? null;
 
   if (resolved.trainersToAddToCourse.length > 0) {
-    await Promise.all(
-      resolved.trainersToAddToCourse.map((trainerId) =>
-        prisma.trainerProfile.update({
-          where: { id: trainerId },
-          data: {
-            courses: {
-              push: resolved.courseName,
-            },
-          },
-        }),
-      ),
-    );
+    await prisma.trainerCourseAssignment.createMany({
+      data: resolved.trainersToAddToCourse.map((trainerId) => ({
+        trainerId,
+        courseId: resolved.courseId,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   const batch = await prisma.batch.create({
@@ -285,18 +280,13 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
   const normalizedCampus = centre?.name ?? null;
 
   if (resolved.trainersToAddToCourse.length > 0) {
-    await Promise.all(
-      resolved.trainersToAddToCourse.map((trainerId) =>
-        prisma.trainerProfile.update({
-          where: { id: trainerId },
-          data: {
-            courses: {
-              push: resolved.courseName,
-            },
-          },
-        }),
-      ),
-    );
+    await prisma.trainerCourseAssignment.createMany({
+      data: resolved.trainersToAddToCourse.map((trainerId) => ({
+        trainerId,
+        courseId: resolved.courseId,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   const batch = await prisma.batch.update({
@@ -345,6 +335,160 @@ export async function updateBatchService(input: UpdateBatchInput): Promise<Batch
     endDate: mapped.endDate ?? null,
     capacity: mapped.capacity ?? input.capacity,
     mode: mapped.mode ?? input.mode,
+    status: mapped.status,
+    trainerIds: mapped.trainerIds,
+    trainerNames: mapped.trainerNames,
+  };
+}
+
+export async function assignTrainerToBatchService(batchId: string, trainerId: string): Promise<BatchCreateResult> {
+  const normalizedBatchId = batchId.trim();
+  const normalizedTrainerId = normalizeTrainerIds([trainerId])[0];
+
+  if (!normalizedTrainerId) {
+    throw new Error("Trainer is required.");
+  }
+
+  if (!isDatabaseConfigured) {
+    const batch = MOCK_BATCHES.find((item) => item.id === normalizedBatchId);
+
+    if (!batch) {
+      throw new Error("Batch not found.");
+    }
+
+    const trainerIds = normalizeTrainerIds([...batch.trainerIds, normalizedTrainerId]);
+
+    return {
+      ...batch,
+      startDate: batch.startDate ?? new Date().toISOString(),
+      endDate: batch.endDate ?? null,
+      capacity: batch.capacity ?? 25,
+      mode: batch.mode ?? "OFFLINE",
+      trainerIds,
+      trainerNames: formatMockTrainerNames(trainerIds),
+    };
+  }
+
+  const batch = await prisma.batch.findUnique({
+    where: { id: normalizedBatchId },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      trainerId: true,
+      trainers: {
+        select: {
+          id: true,
+        },
+      },
+      program: {
+        select: {
+          name: true,
+          course: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!batch) {
+    throw new Error("Batch not found.");
+  }
+
+  if (batch.status === "ARCHIVED" || batch.status === "CANCELLED" || batch.status === "COMPLETED") {
+    throw new Error("Only draft, planned, or in-session batches can accept trainer assignments.");
+  }
+
+  const trainer = await prisma.trainerProfile.findFirst({
+    where: {
+      id: normalizedTrainerId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      courseAssignments: {
+        select: {
+          course: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!trainer) {
+    throw new Error("Trainer not found.");
+  }
+
+  const existingTrainerIds = new Set<string>([
+    ...(batch.trainerId ? [batch.trainerId] : []),
+    ...batch.trainers.map((item) => item.id),
+  ]);
+
+  if (!existingTrainerIds.has(normalizedTrainerId) && !trainer.courseAssignments.some((assignment) => assignment.course.id === batch.program.course.id)) {
+    await prisma.trainerCourseAssignment.createMany({
+      data: [{
+        trainerId: normalizedTrainerId,
+        courseId: batch.program.course.id,
+      }],
+      skipDuplicates: true,
+    });
+  }
+
+  const updatedBatch = existingTrainerIds.has(normalizedTrainerId)
+    ? await prisma.batch.findUnique({
+        where: { id: normalizedBatchId },
+        include: BATCH_MUTATION_INCLUDE,
+      })
+    : await prisma.batch.update({
+        where: { id: normalizedBatchId },
+        data: {
+          trainerId: batch.trainerId ?? normalizedTrainerId,
+          trainers: {
+            connect: {
+              id: normalizedTrainerId,
+            },
+          },
+        },
+        include: BATCH_MUTATION_INCLUDE,
+      });
+
+  if (!updatedBatch) {
+    throw new Error("Batch not found.");
+  }
+
+  const mapped = mapBatchRecord(updatedBatch);
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.BATCH,
+    entityId: mapped.id,
+    action: AuditActionType.UPDATED,
+    message: `Trainer assigned to batch ${mapped.code}.`,
+    metadata: {
+      trainerId: normalizedTrainerId,
+      trainerIds: mapped.trainerIds,
+      programName: mapped.programName,
+    },
+  });
+
+  return {
+    id: mapped.id,
+    code: mapped.code,
+    name: mapped.name,
+    programName: mapped.programName,
+    centreId: mapped.centreId,
+    campus: mapped.campus,
+    centreAddress: mapped.centreAddress,
+    startDate: mapped.startDate ?? new Date().toISOString(),
+    endDate: mapped.endDate ?? null,
+    capacity: mapped.capacity ?? 25,
+    mode: mapped.mode ?? "OFFLINE",
     status: mapped.status,
     trainerIds: mapped.trainerIds,
     trainerNames: mapped.trainerNames,

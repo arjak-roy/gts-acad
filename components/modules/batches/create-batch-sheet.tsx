@@ -59,11 +59,21 @@ const initialForm: CreateBatchForm = {
   mode: "OFFLINE",
 };
 
+type CreateBatchSheetProps = {
+  courseId?: string | null;
+  triggerLabel?: string;
+  onCreated?: () => void;
+};
+
 function normalizeProgramKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-export function CreateBatchSheet() {
+export function CreateBatchSheet({
+  courseId = null,
+  triggerLabel = "Create Batch",
+  onCreated,
+}: CreateBatchSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"form" | "confirm" | "created">("form");
@@ -145,9 +155,37 @@ export function CreateBatchSheet() {
           return;
         }
 
-        setPrograms((programsPayload.data ?? []).filter((program) => program.isActive));
+        const availablePrograms = (programsPayload.data ?? []).filter(
+          (program) => program.isActive && (!courseId || program.courseId === courseId),
+        );
+
+        setPrograms(availablePrograms);
         setTrainers((trainersPayload.data ?? []).filter((trainer) => trainer.isActive));
         setCenters((centersPayload.data ?? []).filter((center) => center.isActive));
+        setForm((current) => {
+          const hasCurrentProgram = availablePrograms.some((program) => program.name === current.programName);
+
+          if (hasCurrentProgram) {
+            return current;
+          }
+
+          if (courseId && availablePrograms.length === 1) {
+            return {
+              ...current,
+              programName: availablePrograms[0].name,
+            };
+          }
+
+          if (courseId) {
+            return {
+              ...current,
+              programName: "",
+              trainerIds: [],
+            };
+          }
+
+          return current;
+        });
       } catch (loadError) {
         if (!isActive) {
           return;
@@ -169,7 +207,7 @@ export function CreateBatchSheet() {
     return () => {
       isActive = false;
     };
-  }, [open]);
+  }, [courseId, open]);
 
   const selectedProgram = useMemo(
     () => programs.find((program) => normalizeProgramKey(program.name) === normalizeProgramKey(form.programName)) ?? null,
@@ -303,6 +341,7 @@ export function CreateBatchSheet() {
 
       setStep("created");
       router.refresh();
+      onCreated?.();
       toast.success("Batch created successfully.");
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : "Failed to create batch.";
@@ -316,7 +355,7 @@ export function CreateBatchSheet() {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
-        <Button>Create Batch</Button>
+        <Button>{triggerLabel}</Button>
       </SheetTrigger>
       <SheetContent className="overflow-y-auto">
         <SheetHeader>

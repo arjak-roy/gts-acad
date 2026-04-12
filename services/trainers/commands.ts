@@ -11,6 +11,7 @@ import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
 import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
+import { mapTrainerCourseNames } from "@/services/trainers/course-assignment-helpers";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerCreateResult, TrainerDetail, TrainerOption, TrainerStatus } from "@/services/trainers/types";
 import { CreateTrainerInput, UpdateTrainerCoursesInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
@@ -27,7 +28,7 @@ function isUuidLike(value: string) {
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value.trim());
 }
 
-async function resolveSelectedCourseNames(courseSelections: string[]) {
+async function resolveSelectedCourses(courseSelections: string[]) {
   const normalizedSelections = normalizeCourseList(courseSelections);
 
   if (normalizedSelections.length === 0) {
@@ -59,14 +60,14 @@ async function resolveSelectedCourseNames(courseSelections: string[]) {
     },
   });
 
-  const courseNamesById = new Map(matchingCourses.map((course) => [course.id, course.name]));
-  const courseNamesByNormalizedName = new Map(
-    matchingCourses.map((course) => [course.name.trim().toLowerCase(), course.name]),
+  const coursesById = new Map(matchingCourses.map((course) => [course.id, course]));
+  const coursesByNormalizedName = new Map(
+    matchingCourses.map((course) => [course.name.trim().toLowerCase(), course]),
   );
 
   const resolvedCourses = normalizedSelections.map((courseSelection) => {
-    const resolvedCourse = courseNamesById.get(courseSelection)
-      ?? courseNamesByNormalizedName.get(courseSelection.trim().toLowerCase());
+    const resolvedCourse = coursesById.get(courseSelection)
+      ?? coursesByNormalizedName.get(courseSelection.trim().toLowerCase());
 
     if (!resolvedCourse) {
       throw new Error("Invalid course selection.");
@@ -75,8 +76,27 @@ async function resolveSelectedCourseNames(courseSelections: string[]) {
     return resolvedCourse;
   });
 
-  return Array.from(new Set(resolvedCourses));
+  return Array.from(new Map(resolvedCourses.map((course) => [course.id, course])).values());
 }
+
+const trainerCourseAssignmentsInclude = {
+  courseAssignments: {
+    select: {
+      course: {
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+        },
+      },
+    },
+    orderBy: {
+      course: {
+        name: "asc" as const,
+      },
+    },
+  },
+};
 
 function buildInternalLoginUrl(fallbackApplicationUrl?: string | null) {
   const normalizeOrigin = (value: string | undefined) => {
@@ -120,7 +140,7 @@ async function sendTrainerWelcomeEmail(input: {
     roleSummary: "Trainer",
   });
 
-  await deliverLoggedEmail({
+  return deliverLoggedEmail({
     to: input.recipientEmail,
     subject: template.subject,
     text: template.text,
@@ -166,7 +186,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
   const [existingUser, existingTrainerCode, resolvedCourses] = await Promise.all([
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
     prisma.trainerProfile.findFirst({ where: { employeeCode: normalizedEmployeeCode }, select: { id: true } }),
-    resolveSelectedCourseNames(normalizedCourses),
+    resolveSelectedCourses(normalizedCourses),
   ]);
 
   if (existingUser) {
@@ -215,7 +235,11 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         capacity: input.capacity,
         isActive,
         availabilityStatus: input.availabilityStatus,
-        courses: resolvedCourses,
+        courseAssignments: {
+          create: resolvedCourses.map((course) => ({
+            courseId: course.id,
+          })),
+        },
       },
       select: {
         id: true,
@@ -239,7 +263,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
   }
 
   try {
-    await sendTrainerWelcomeEmail({
+    const delivery = await sendTrainerWelcomeEmail({
       userId: trainer.user.id,
       recipientEmail: trainer.user.email,
       recipientName: trainer.user.name,
@@ -250,8 +274,8 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
       where: { id: trainer.user.id },
       data: {
         metadata: mergeAccountMetadata(trainer.user.metadata, {
-          welcomeCredentialsEmailStatus: "sent",
-          welcomeCredentialsLastSentAt: new Date().toISOString(),
+          welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
+          ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
           welcomeCredentialsFailureReason: null,
         }) as Prisma.InputJsonValue,
       },
@@ -291,7 +315,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
     capacity: trainer.profile.capacity,
     status: trainer.profile.isActive ? "ACTIVE" : "INACTIVE",
     availabilityStatus: trainer.profile.availabilityStatus,
-    courses: resolvedCourses,
+    courses: resolvedCourses.map((course) => course.name),
     lastActiveAt: null,
   };
 }
@@ -348,7 +372,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       },
       select: { id: true },
     }),
-    resolveSelectedCourseNames(normalizedCourses),
+    resolveSelectedCourses(normalizedCourses),
   ]);
 
   if (existingUser) {
@@ -385,7 +409,12 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
         capacity: input.capacity,
         isActive,
         availabilityStatus: input.availabilityStatus,
-        courses: resolvedCourses,
+        courseAssignments: {
+          deleteMany: {},
+          create: resolvedCourses.map((course) => ({
+            courseId: course.id,
+          })),
+        },
       },
       select: {
         id: true,
@@ -412,7 +441,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     capacity: updated.profile.capacity,
     status: updated.profile.isActive ? "ACTIVE" : "INACTIVE",
     availabilityStatus: updated.profile.availabilityStatus,
-    courses: resolvedCourses,
+    courses: resolvedCourses.map((course) => course.name),
     lastActiveAt: null,
   };
 }
@@ -458,6 +487,7 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
             lastLoginAt: true,
           },
         },
+        ...trainerCourseAssignmentsInclude,
       },
     });
 
@@ -477,7 +507,7 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
     specialization: updated.specialization,
     isActive: updated.isActive,
     availabilityStatus: updated.availabilityStatus,
-    courses: updated.courses,
+    courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
   };
 }
@@ -517,11 +547,18 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
     throw new Error("Trainer not found.");
   }
 
-  const resolvedCourses = await resolveSelectedCourseNames(normalizedCourses);
+  const resolvedCourses = await resolveSelectedCourses(normalizedCourses);
 
   const updated = await prisma.trainerProfile.update({
     where: { id: trainerId },
-    data: { courses: resolvedCourses },
+    data: {
+      courseAssignments: {
+        deleteMany: {},
+        create: resolvedCourses.map((course) => ({
+          courseId: course.id,
+        })),
+      },
+    },
     include: {
       user: {
         select: {
@@ -532,6 +569,7 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
           lastLoginAt: true,
         },
       },
+      ...trainerCourseAssignmentsInclude,
     },
   });
 
@@ -547,7 +585,7 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
     capacity: updated.capacity,
     status: updated.isActive ? "ACTIVE" : "INACTIVE",
     availabilityStatus: updated.availabilityStatus,
-    courses: updated.courses,
+    courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
   };
 }
@@ -591,6 +629,7 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
             lastLoginAt: true,
           },
         },
+        ...trainerCourseAssignmentsInclude,
       },
     });
 
@@ -610,7 +649,7 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
     specialization: updated.specialization,
     isActive: updated.isActive,
     availabilityStatus: updated.availabilityStatus,
-    courses: updated.courses,
+    courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
   };
 }

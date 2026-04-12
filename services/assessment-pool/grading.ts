@@ -3,6 +3,35 @@ import "server-only";
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
 import type { QuestionDetail, GradeResult, GradingReport } from "@/services/assessment-pool/types";
 
+function normalizeTrueFalseValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+
+    if (normalized === "false") {
+      return false;
+    }
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) {
+      return true;
+    }
+
+    if (value === 0) {
+      return false;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Auto-grade objective question types where the correct answer can be resolved immediately.
  * Returns null for question types that require manual review.
@@ -18,6 +47,14 @@ function gradeQuestion(question: QuestionDetail, answer: unknown): GradeResult |
     case "MCQ": {
       const correct = question.correctAnswer as string | number;
       const isCorrect = String(answer).trim().toLowerCase() === String(correct).trim().toLowerCase();
+      return { ...base, isCorrect, marksAwarded: isCorrect ? question.marks : 0 };
+    }
+
+    case "TRUE_FALSE": {
+      const submitted = normalizeTrueFalseValue(answer);
+      const correct = normalizeTrueFalseValue(question.correctAnswer);
+      const isCorrect = submitted !== null && correct !== null && submitted === correct;
+
       return { ...base, isCorrect, marksAwarded: isCorrect ? question.marks : 0 };
     }
 

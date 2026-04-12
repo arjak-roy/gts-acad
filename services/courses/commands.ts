@@ -77,7 +77,7 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
       ? prisma.program.findMany({ where: { id: { in: selectedProgramIds } }, select: { id: true } })
       : Promise.resolve([]),
     selectedTrainerIds.length > 0
-      ? prisma.trainerProfile.findMany({ where: { id: { in: selectedTrainerIds } }, select: { id: true, courses: true } })
+      ? prisma.trainerProfile.findMany({ where: { id: { in: selectedTrainerIds } }, select: { id: true } })
       : Promise.resolve([]),
   ]);
 
@@ -123,23 +123,13 @@ export async function createCourseService(input: CreateCourseInput): Promise<Cou
     }
 
     if (selectedTrainerIds.length > 0) {
-      await Promise.all(
-        selectedTrainers.map((trainer) => {
-          const hasCourse = trainer.courses.some((courseName) => courseName.trim().toLowerCase() === normalizedName.toLowerCase());
-          if (hasCourse) {
-            return Promise.resolve();
-          }
-
-          return tx.trainerProfile.update({
-            where: { id: trainer.id },
-            data: {
-              courses: {
-                push: normalizedName,
-              },
-            },
-          });
-        }),
-      );
+      await tx.trainerCourseAssignment.createMany({
+        data: selectedTrainers.map((trainer) => ({
+          trainerId: trainer.id,
+          courseId: course.id,
+        })),
+        skipDuplicates: true,
+      });
     }
 
     return {
@@ -205,58 +195,34 @@ export async function updateCourseService(input: UpdateCourseInput): Promise<Cou
     throw new Error("Course name already exists.");
   }
 
-  const [selectedTrainers, currentlyAssigned] = await Promise.all([
+  const selectedTrainers = await (
     selectedTrainerIds.length > 0
       ? prisma.trainerProfile.findMany({
           where: { id: { in: selectedTrainerIds } },
-          select: { id: true, courses: true },
+          select: { id: true },
         })
-      : Promise.resolve([]),
-    prisma.trainerProfile.findMany({
-      where: {
-        OR: [
-          { courses: { has: existingCourse.name } },
-          ...(existingCourse.name.trim().toLowerCase() === normalizedName.toLowerCase() ? [] : [{ courses: { has: normalizedName } }]),
-        ],
-      },
-      select: { id: true, courses: true },
-    }),
-  ]);
+      : Promise.resolve([])
+  );
 
   if (selectedTrainers.length !== selectedTrainerIds.length) {
     throw new Error("One or more selected trainers were not found.");
   }
 
   const course = await prisma.$transaction(async (tx) => {
-    const selectedSet = new Set(selectedTrainerIds);
-    const touched = new Map<string, string[]>();
+    await tx.trainerCourseAssignment.deleteMany({
+      where: {
+        courseId: input.courseId,
+        ...(selectedTrainerIds.length > 0 ? { trainerId: { notIn: selectedTrainerIds } } : {}),
+      },
+    });
 
-    for (const trainer of currentlyAssigned) {
-      touched.set(trainer.id, trainer.courses);
-    }
-
-    for (const trainer of selectedTrainers) {
-      if (!touched.has(trainer.id)) {
-        touched.set(trainer.id, trainer.courses);
-      }
-    }
-
-    const oldCourseLower = existingCourse.name.trim().toLowerCase();
-    const newCourseLower = normalizedName.toLowerCase();
-
-    for (const [trainerId, trainerCourses] of touched.entries()) {
-      const filteredCourses = trainerCourses.filter((courseName) => {
-        const lowerCourse = courseName.trim().toLowerCase();
-        return lowerCourse !== oldCourseLower && lowerCourse !== newCourseLower;
-      });
-
-      if (selectedSet.has(trainerId)) {
-        filteredCourses.push(normalizedName);
-      }
-
-      await tx.trainerProfile.update({
-        where: { id: trainerId },
-        data: { courses: filteredCourses },
+    if (selectedTrainerIds.length > 0) {
+      await tx.trainerCourseAssignment.createMany({
+        data: selectedTrainerIds.map((trainerId) => ({
+          trainerId,
+          courseId: input.courseId,
+        })),
+        skipDuplicates: true,
       });
     }
 

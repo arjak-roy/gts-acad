@@ -351,6 +351,7 @@ enum CurriculumProgressStatus {
 
 enum QuestionType {
   MCQ                   @map("mcq")
+  TRUE_FALSE            @map("true_false")
   NUMERIC               @map("numeric")
   ESSAY                 @map("essay")
   FILL_IN_THE_BLANK     @map("fill_in_the_blank")
@@ -805,10 +806,10 @@ model TrainerProfile {
   isActive       Boolean        @default(true) @map("is_active")
   availabilityStatus TrainerAvailabilityStatus @default(AVAILABLE) @map("availability_status")
   joinedAt       DateTime       @default(now()) @map("joined_at") @db.Date
-  courses        String[]       @map("programs")
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   leadBatches    Batch[]        @relation("BatchLeadTrainer")
   batches        Batch[]        @relation("BatchTrainers")
+  courseAssignments TrainerCourseAssignment[]
   assessmentAssignments TrainerAssessmentAssignment[]
   roleplays      Roleplay[]
   trainerPmsLogs TrainerPmsLog[]
@@ -832,11 +833,24 @@ model Course {
   courseContents        CourseContent[]
   courseAssessmentLinks CourseAssessmentLink[]
   questionBankQuestions QuestionBankQuestion[]
+  trainerAssignments    TrainerCourseAssignment[]
   curricula             Curriculum[]
 
   @@index([isActive], map: "idx_courses_active")
   @@index([status], map: "idx_courses_status")
   @@map("courses")
+}
+
+model TrainerCourseAssignment {
+  trainerId   String         @db.Uuid @map("trainer_id")
+  courseId    String         @db.Uuid @map("course_id")
+  assignedAt  DateTime       @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  course      Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([trainerId, courseId])
+  @@index([courseId], map: "idx_trainer_course_assignments_course")
+  @@map("trainer_course_assignments")
 }
 
 model Program {

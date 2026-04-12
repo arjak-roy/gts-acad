@@ -17,6 +17,13 @@ export type DeliverLoggedEmailInput = {
   templateKey?: string | null;
   metadata?: Prisma.InputJsonValue;
   audit?: DeliveryAuditContext;
+  deliveryMode?: "queued" | "immediate";
+};
+
+export type LoggedEmailDeliveryResult = {
+  emailLogId: string | null;
+  providerMessageId: string | null;
+  status: EmailLogStatus;
 };
 
 export type EmailLogListItem = {
@@ -99,6 +106,24 @@ export type RetryBulkResult = {
   results: Array<{
     id: string;
     status: "retried" | "failed";
+    message: string;
+  }>;
+};
+
+export type ProcessEmailLogsInput = {
+  mode: "selected" | "all-queued";
+  ids: string[];
+  limit: number;
+};
+
+export type ProcessEmailLogsResult = {
+  requested: number;
+  processed: number;
+  sent: number;
+  failed: number;
+  results: Array<{
+    id: string;
+    status: "sent" | "failed";
     message: string;
   }>;
 };

@@ -2,6 +2,10 @@ import { AuditActionType, AuditEntityType, EvaluationStatus, Prisma } from "@pri
 
 import { prisma } from "@/lib/prisma-client";
 import { CancelScheduleEventInput, CreateScheduleEventInput, UpdateScheduleEventInput } from "@/lib/validation-schemas/schedule";
+import {
+  sendCandidateAssessmentScheduledNotifications,
+  sendCandidateBatchEventNotifications,
+} from "@/services/candidate-notifications";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import {
   batchScheduleEventDelegate,
@@ -173,6 +177,37 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
       eventIds: createdEvents.map((event) => event.id),
     },
   });
+
+  try {
+    const notificationEvents = createdEvents.map((event) => ({
+      id: event.id,
+      title: event.title,
+      type: event.type,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      location: event.location,
+      meetingUrl: event.meetingUrl,
+      linkedAssessmentPoolId: event.linkedAssessmentPoolId,
+    }));
+
+    const notificationSummary = shouldLinkAssessment(input.type)
+      ? await sendCandidateAssessmentScheduledNotifications({
+          batchId: batch.id,
+          actorUserId: actorUserId ?? null,
+          events: notificationEvents,
+        })
+      : await sendCandidateBatchEventNotifications({
+          batchId: batch.id,
+          actorUserId: actorUserId ?? null,
+          events: notificationEvents,
+        });
+
+    if (notificationSummary.failedCount > 0) {
+      console.warn("Candidate schedule notifications partially failed.", notificationSummary);
+    }
+  } catch (error) {
+    console.warn("Candidate schedule notification dispatch failed.", error);
+  }
 
   return {
     batch: {

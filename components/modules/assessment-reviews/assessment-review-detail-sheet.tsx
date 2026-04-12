@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import { ASSESSMENT_ATTEMPT_STATUS_LABELS, type AssessmentReviewDetail } from "@/services/assessment-reviews/types";
 
 type ManualScoreState = {
@@ -47,7 +48,11 @@ function formatAnswer(answer: unknown) {
     return "No answer submitted.";
   }
 
-  if (typeof answer === "string" || typeof answer === "number" || typeof answer === "boolean") {
+  if (typeof answer === "boolean") {
+    return answer ? "True" : "False";
+  }
+
+  if (typeof answer === "string" || typeof answer === "number") {
     return String(answer);
   }
 
@@ -267,7 +272,7 @@ export function AssessmentReviewDetailSheet({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant={getStatusBadgeVariant(detail.status)}>{ASSESSMENT_ATTEMPT_STATUS_LABELS[detail.status]}</Badge>
-                      <Badge variant="default">{detail.questionType.replaceAll("_", " ")}</Badge>
+                      <Badge variant="default">{QUESTION_TYPE_LABELS[detail.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? detail.questionType}</Badge>
                       <Badge variant="info">{detail.difficultyLevel}</Badge>
                     </div>
                   </div>
@@ -303,7 +308,7 @@ export function AssessmentReviewDetailSheet({
                           <p className="mt-2 text-sm font-semibold text-slate-900">{question.questionText}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="default">{question.questionType.replaceAll("_", " ")}</Badge>
+                          <Badge variant="default">{QUESTION_TYPE_LABELS[question.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? question.questionType}</Badge>
                           <Badge variant={question.requiresManualReview ? "warning" : "info"}>{question.maxMarks} Marks</Badge>
                         </div>
                       </div>

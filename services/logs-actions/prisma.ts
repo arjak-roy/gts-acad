@@ -12,6 +12,7 @@ export const prismaWithLogs = prisma as unknown as {
     findMany: (args: unknown) => Promise<Array<Record<string, unknown>>>;
     findUnique: (args: unknown) => Promise<Record<string, unknown> | null>;
     update: (args: unknown) => Promise<Record<string, unknown>>;
+    updateMany: (args: unknown) => Promise<{ count: number }>;
   };
   $transaction: <T extends unknown[]>(operations: { [K in keyof T]: Promise<T[K]> }) => Promise<T>;
 };

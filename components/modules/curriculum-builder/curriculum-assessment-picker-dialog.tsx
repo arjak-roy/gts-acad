@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import { cn } from "@/lib/utils";
 
 type AssessmentOption = {
@@ -141,7 +142,7 @@ export function CurriculumAssessmentPickerDialog({
                 <div className="flex flex-wrap items-center gap-2">
                   <ClipboardList className="h-4 w-4 text-slate-400" />
                   <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                  <Badge variant="info">{item.questionType}</Badge>
+                  <Badge variant="info">{QUESTION_TYPE_LABELS[item.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? item.questionType}</Badge>
                   <Badge variant="info">{item.difficultyLevel}</Badge>
                   <Badge variant="info">{item.status}</Badge>
                 </div>

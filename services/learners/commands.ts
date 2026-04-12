@@ -9,7 +9,6 @@ import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { UpdateCandidateSelfProfileInput } from "@/lib/validation-schemas/candidate-profile";
 import { CreateLearnerEnrollmentInput, CreateLearnerInput, UpdateLearnerInput } from "@/lib/validation-schemas/learners";
 import {
-  batchDetailArgs,
   buildMockActiveEnrollment,
   buildMockLearnerCode,
   buildMockLearnerDetail,
@@ -22,6 +21,7 @@ import {
 } from "@/services/learners/internal-helpers";
 import { getCandidateProfileByUserIdService } from "@/services/learners/queries";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
+import { sendCandidateCourseEnrollmentNotification } from "@/services/candidate-notifications";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
 import { CandidateProfile } from "@/services/learners/types";
@@ -165,7 +165,7 @@ export async function createLearnerService(input: CreateLearnerInput) {
       });
 
       try {
-        await sendCandidateEnrollmentCredentialsEmail({
+        const delivery = await sendCandidateEnrollmentCredentialsEmail({
           recipientEmail: createdResult.createdUser.email,
           recipientName: createdResult.createdUser.name,
           temporaryPassword,
@@ -180,7 +180,7 @@ export async function createLearnerService(input: CreateLearnerInput) {
               createdFrom: "candidate-enrollment",
               requiresPasswordReset: true,
               learnerCode: createdResult.learnerCode,
-              welcomeCredentialsEmailStatus: "sent",
+              welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
             }) as Prisma.InputJsonValue,
           },
         });
@@ -236,6 +236,20 @@ export async function createLearnerService(input: CreateLearnerInput) {
             batchCode: normalizedBatchCode,
           },
         });
+
+        try {
+          const notificationSummary = await sendCandidateCourseEnrollmentNotification({
+            learnerId: mappedLearner.id,
+            batchId: mappedLearner.activeEnrollments[0]?.batchId ?? null,
+            batchCode: normalizedBatchCode,
+          });
+
+          if (notificationSummary.failedCount > 0) {
+            console.warn("Candidate course enrollment email partially failed.", notificationSummary);
+          }
+        } catch (error) {
+          console.warn("Candidate course enrollment email dispatch failed.", error);
+        }
       }
 
       return mappedLearner;
@@ -285,7 +299,7 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
   }
 
   try {
-    const learner = await prisma.$transaction(
+    const learnerRecord = await prisma.$transaction(
       async (tx) => {
         const learnerRecord = await tx.learner.findUnique({
           where: { learnerCode: normalizedLearnerCode },
@@ -300,7 +314,10 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
           where: {
             code: { equals: normalizedBatchCode, mode: "insensitive" },
           },
-          ...batchDetailArgs,
+          select: {
+            id: true,
+            status: true,
+          },
         });
 
         if (!batch) {
@@ -333,10 +350,15 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
           },
         });
 
-        return tx.learner.findUniqueOrThrow({ where: { id: learnerRecord.id }, ...learnerDetailArgs });
+        return learnerRecord;
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
+
+    const learner = await prisma.learner.findUniqueOrThrow({
+      where: { id: learnerRecord.id },
+      ...learnerDetailArgs,
+    });
 
     const mappedLearner = mapLearnerToDetail(learner);
 
@@ -351,6 +373,19 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
         batchCode: normalizedBatchCode,
       },
     });
+
+    try {
+      const notificationSummary = await sendCandidateCourseEnrollmentNotification({
+        learnerId: mappedLearner.id,
+        batchCode: normalizedBatchCode,
+      });
+
+      if (notificationSummary.failedCount > 0) {
+        console.warn("Candidate course enrollment email partially failed.", notificationSummary);
+      }
+    } catch (error) {
+      console.warn("Candidate course enrollment email dispatch failed.", error);
+    }
 
     return mappedLearner;
   } catch (error) {

@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 
 import {
   buildActivationEmailFailedMetadata,
+  buildActivationEmailQueuedMetadata,
   buildActivationEmailSentMetadata,
   buildCompletedAccountActivationMetadata,
   isAccountActivationRequired,
@@ -218,8 +219,10 @@ export async function sendAccountActivationEmail(userId: string, options: Activa
     supportEmail: generalSettings.supportEmail,
   });
 
+  let deliveryStatus: "SENT" | "PENDING" = "PENDING";
+
   try {
-    await deliverLoggedEmail({
+    const delivery = await deliverLoggedEmail({
       to: user.email,
       subject: template.subject,
       text: template.text,
@@ -236,10 +239,15 @@ export async function sendAccountActivationEmail(userId: string, options: Activa
       },
     });
 
+    deliveryStatus = delivery.status === "SENT" ? "SENT" : "PENDING";
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        metadata: buildActivationEmailSentMetadata(user.metadata, new Date().toISOString()) as Prisma.InputJsonValue,
+        metadata:
+          delivery.status === "SENT"
+            ? (buildActivationEmailSentMetadata(user.metadata, new Date().toISOString()) as Prisma.InputJsonValue)
+            : (buildActivationEmailQueuedMetadata(user.metadata) as Prisma.InputJsonValue),
       },
     });
   } catch (error) {
@@ -260,12 +268,12 @@ export async function sendAccountActivationEmail(userId: string, options: Activa
     entityType: "AUTH",
     entityId: user.id,
     action: "UPDATED",
-    status: "ACTIVATION_SENT",
-    message: `Account activation email sent to ${user.email}.`,
+    status: deliveryStatus === "SENT" ? "ACTIVATION_SENT" : "ACTIVATION_QUEUED",
+    message: `Account activation email ${deliveryStatus === "SENT" ? "sent" : "queued"} for ${user.email}.`,
     actorUserId: options.actorUserId ?? null,
   });
 
-  return { ok: true, status: "sent" as const };
+  return { ok: true, status: deliveryStatus === "SENT" ? ("sent" as const) : ("queued" as const) };
 }
 
 export async function activateAccountWithToken(activationToken: string) {

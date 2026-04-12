@@ -17,9 +17,17 @@ const expectedDelegateKeys = Prisma.dmmf.datamodel.models.map(
   ({ name }) => `${name.charAt(0).toLowerCase()}${name.slice(1)}`,
 );
 
-const currentSchemaSignature = Prisma.dmmf.datamodel.models
-  .map(({ name, fields }) => `${name}:${fields.map(({ name: fieldName }) => fieldName).join(",")}`)
-  .join("|");
+const currentSchemaSignature = [
+  Prisma.dmmf.datamodel.models
+    .map(({ name, fields }) => `${name}:${fields.map(({ name: fieldName }) => fieldName).join(",")}`)
+    .join("|"),
+  Prisma.dmmf.datamodel.enums
+    .map(
+      ({ name, values }) =>
+        `${name}:${values.map(({ name: valueName, dbName }) => `${valueName}=${dbName ?? valueName}`).join(",")}`,
+    )
+    .join("|"),
+].join("::");
 
 function hasCurrentModelDelegates(client: PrismaClient) {
   const delegateContainer = client as unknown as Record<string, unknown>;

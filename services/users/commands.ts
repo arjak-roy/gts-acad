@@ -87,7 +87,7 @@ export async function createInternalUserService(
   });
 
   try {
-    await sendInternalUserWelcomeEmail({
+    const delivery = await sendInternalUserWelcomeEmail({
       userId: createdUser.id,
       recipientEmail: createdUser.email,
       recipientName: createdUser.name,
@@ -97,8 +97,8 @@ export async function createInternalUserService(
     });
 
     await updateInternalUserMetadata(createdUser.id, createdUser.metadata, {
-      welcomeCredentialsEmailStatus: "sent",
-      welcomeCredentialsLastSentAt: new Date().toISOString(),
+      welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
+      ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
       welcomeCredentialsFailureReason: null,
     });
   } catch (error) {
@@ -259,7 +259,7 @@ export async function resendInternalUserWelcomeService(userId: string, actorUser
   });
 
   try {
-    await sendInternalUserWelcomeEmail({
+    const delivery = await sendInternalUserWelcomeEmail({
       userId,
       recipientEmail: user.email,
       recipientName: user.name,
@@ -273,8 +273,8 @@ export async function resendInternalUserWelcomeService(userId: string, actorUser
       data: {
         metadata: {
           ...nextMetadata,
-          welcomeCredentialsEmailStatus: "sent",
-          welcomeCredentialsLastSentAt: new Date().toISOString(),
+          welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
+          ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
           welcomeCredentialsFailureReason: null,
         } as Prisma.InputJsonValue,
       },

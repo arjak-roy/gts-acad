@@ -341,12 +341,12 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
         body: JSON.stringify(mailForm),
       });
 
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { data?: { deliveryStatus?: "PENDING" | "SENT" }; error?: string } | null;
       if (!response.ok) throw new Error(payload?.error || "Unable to send the email.");
 
       setShowMailForm(false);
       setMailForm({ subject: "", body: "" });
-      toast.success("Custom email sent successfully.");
+      toast.success(payload?.data?.deliveryStatus === "SENT" ? "Custom email sent successfully." : "Custom email queued successfully.");
     } catch (mailError) {
       const message = mailError instanceof Error ? mailError.message : "Unable to send the email.";
       setError(message);

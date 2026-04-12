@@ -24,6 +24,7 @@ export async function sendDemoTwoFactorMail(recipient: string) {
     html: template.html,
     category: "TWO_FACTOR",
     templateKey: TWO_FACTOR_EMAIL_TEMPLATE_KEY,
+    deliveryMode: "immediate",
     audit: {
       entityType: "SYSTEM",
       entityId: "demo-two-factor-mail",

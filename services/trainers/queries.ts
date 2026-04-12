@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { GetTrainerRegistryInput } from "@/lib/validation-schemas/trainers";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
+import { mapTrainerCourseNames } from "@/services/trainers/course-assignment-helpers";
 import { TrainerDetail, TrainerOption, TrainerRegistryResponse } from "@/services/trainers/types";
 
 const trainerSelect = {
@@ -13,6 +14,17 @@ const trainerSelect = {
       email: true,
       phone: true,
       lastLoginAt: true,
+    },
+  },
+  courseAssignments: {
+    select: {
+      course: {
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+        },
+      },
     },
   },
 } satisfies Prisma.TrainerProfileInclude;
@@ -30,35 +42,50 @@ function mapTrainerOption(record: TrainerRecord): TrainerOption {
     specialization: record.specialization,
     isActive: record.isActive,
     availabilityStatus: record.availabilityStatus,
-    courses: record.courses,
+    courses: mapTrainerCourseNames(record),
     lastActiveAt: record.user.lastLoginAt?.toISOString() ?? null,
   };
 }
 
-function sortMockTrainers(items: TrainerOption[], sortBy: GetTrainerRegistryInput["sortBy"], sortDirection: GetTrainerRegistryInput["sortDirection"]) {
+function sortMockTrainers(
+  items: TrainerOption[],
+  sortBy: GetTrainerRegistryInput["sortBy"],
+  sortDirection: GetTrainerRegistryInput["sortDirection"],
+) {
   const direction = sortDirection === "asc" ? 1 : -1;
 
   return [...items].sort((left, right) => {
     const statusLeft = left.isActive ? "ACTIVE" : "INACTIVE";
     const statusRight = right.isActive ? "ACTIVE" : "INACTIVE";
-
     const leftValue =
-      sortBy === "fullName" ? left.fullName :
-      sortBy === "employeeCode" ? left.employeeCode :
-      sortBy === "email" ? left.email :
-      sortBy === "specialization" ? left.specialization :
-      sortBy === "status" ? statusLeft :
-      sortBy === "availabilityStatus" ? left.availabilityStatus :
-      left.lastActiveAt ?? "";
+      sortBy === "fullName"
+        ? left.fullName
+        : sortBy === "employeeCode"
+          ? left.employeeCode
+          : sortBy === "email"
+            ? left.email
+            : sortBy === "specialization"
+              ? left.specialization
+              : sortBy === "status"
+                ? statusLeft
+                : sortBy === "availabilityStatus"
+                  ? left.availabilityStatus
+                  : left.lastActiveAt ?? "";
 
     const rightValue =
-      sortBy === "fullName" ? right.fullName :
-      sortBy === "employeeCode" ? right.employeeCode :
-      sortBy === "email" ? right.email :
-      sortBy === "specialization" ? right.specialization :
-      sortBy === "status" ? statusRight :
-      sortBy === "availabilityStatus" ? right.availabilityStatus :
-      right.lastActiveAt ?? "";
+      sortBy === "fullName"
+        ? right.fullName
+        : sortBy === "employeeCode"
+          ? right.employeeCode
+          : sortBy === "email"
+            ? right.email
+            : sortBy === "specialization"
+              ? right.specialization
+              : sortBy === "status"
+                ? statusRight
+                : sortBy === "availabilityStatus"
+                  ? right.availabilityStatus
+                  : right.lastActiveAt ?? "";
 
     return leftValue.localeCompare(rightValue) * direction;
   });
@@ -100,29 +127,12 @@ function filterMockTrainers(input: GetTrainerRegistryInput): TrainerOption[] {
   return sortMockTrainers(filtered, input.sortBy, input.sortDirection);
 }
 
-async function resolveCourseNameForFilter(courseId: string) {
-  if (!courseId) {
-    return null;
-  }
-
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    select: { name: true },
-  });
-
-  if (!course) {
-    throw new Error("Invalid course selection.");
-  }
-
-  return course.name;
-}
-
 function filterMockByCourse(courseName?: string) {
-  const normalizedCourseName = courseName?.trim();
+  const normalizedCourseName = courseName?.trim().toLowerCase();
 
   return MOCK_TRAINERS.filter((trainer) =>
     normalizedCourseName
-      ? trainer.courses.some((course) => course.toLowerCase() === normalizedCourseName.toLowerCase())
+      ? trainer.courses.some((course) => course.toLowerCase() === normalizedCourseName)
       : true,
   );
 }
@@ -138,23 +148,20 @@ export async function listTrainersService(courseName?: string): Promise<TrainerO
     const trainers = await prisma.trainerProfile.findMany({
       where: normalizedCourseName
         ? {
-            courses: {
-              has: normalizedCourseName,
+            courseAssignments: {
+              some: {
+                course: {
+                  name: {
+                    equals: normalizedCourseName,
+                    mode: "insensitive",
+                  },
+                },
+              },
             },
           }
         : undefined,
       orderBy: [{ isActive: "desc" }, { joinedAt: "desc" }],
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            lastLoginAt: true,
-          },
-        },
-      },
+      include: trainerSelect,
     });
 
     return trainers.map((trainer) => mapTrainerOption(trainer as TrainerRecord));
@@ -183,7 +190,6 @@ export async function getTrainerRegistryService(input: GetTrainerRegistryInput):
     };
   }
 
-  const courseName = input.courseId ? await resolveCourseNameForFilter(input.courseId) : null;
   const where: Prisma.TrainerProfileWhereInput = {
     ...(input.status === "ACTIVE" ? { isActive: true } : {}),
     ...(input.status === "INACTIVE" ? { isActive: false } : {}),
@@ -196,14 +202,34 @@ export async function getTrainerRegistryService(input: GetTrainerRegistryInput):
           },
         }
       : {}),
-    ...(courseName ? { courses: { has: courseName } } : {}),
+    ...(input.courseId
+      ? {
+          courseAssignments: {
+            some: {
+              courseId: input.courseId,
+            },
+          },
+        }
+      : {}),
     ...(input.search
       ? {
           OR: [
             { user: { name: { contains: input.search, mode: "insensitive" } } },
             { user: { email: { contains: input.search, mode: "insensitive" } } },
-            { employeeCode: { contains: input.search, mode: "insensitive" } },
+            { employeeCode: { contains: input.search, mode: "insensitive" } } ,
             { specialization: { contains: input.search, mode: "insensitive" } },
+            {
+              courseAssignments: {
+                some: {
+                  course: {
+                    name: {
+                      contains: input.search,
+                      mode: "insensitive",
+                    },
+                  },
+                },
+              },
+            },
           ],
         }
       : {}),
@@ -261,16 +287,13 @@ export async function searchTrainersService(query: string, limit: number): Promi
   }
 
   try {
-    // Run two branches in parallel:
-    // Branch A - match on name / email / specialization directly
-    // Branch B - resolve course names first, then match trainers via hasSome
-    const trainerSelect = {
-      include: { user: { select: { name: true, email: true } } },
+    const sharedQuery = {
+      include: trainerSelect,
       orderBy: [{ isActive: "desc" as const }, { joinedAt: "desc" as const }],
       take: limit,
     };
 
-    const [branchA, matchingCourses] = await Promise.all([
+    const [directMatches, matchingCourses] = await Promise.all([
       prisma.trainerProfile.findMany({
         where: {
           OR: [
@@ -280,26 +303,34 @@ export async function searchTrainersService(query: string, limit: number): Promi
             { specialization: { contains: query, mode: "insensitive" } },
           ],
         },
-        ...trainerSelect,
+        ...sharedQuery,
       }),
       prisma.course.findMany({
         where: { name: { contains: query, mode: "insensitive" } },
-        select: { name: true },
+        select: { id: true },
         take: 20,
       }),
     ]);
 
-    const branchB =
-      matchingCourses.length > 0
+    const courseMatchIds = matchingCourses.map((course) => course.id);
+    const courseMatches =
+      courseMatchIds.length > 0
         ? await prisma.trainerProfile.findMany({
-            where: { courses: { hasSome: matchingCourses.map((course) => course.name) } },
-            ...trainerSelect,
+            where: {
+              courseAssignments: {
+                some: {
+                  courseId: {
+                    in: courseMatchIds,
+                  },
+                },
+              },
+            },
+            ...sharedQuery,
           })
         : [];
 
-    // Deduplicate by id, preserving Branch A ordering first
     const seen = new Set<string>();
-    const trainers = [...branchA, ...branchB]
+    const trainers = [...directMatches, ...courseMatches]
       .filter((trainer) => {
         if (seen.has(trainer.id)) {
           return false;
@@ -350,17 +381,7 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          lastLoginAt: true,
-        },
-      },
-    },
+    include: trainerSelect,
   });
 
   if (!trainer) {
@@ -379,7 +400,7 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
     capacity: trainer.capacity,
     status: trainer.isActive ? "ACTIVE" : "INACTIVE",
     availabilityStatus: trainer.availabilityStatus,
-    courses: trainer.courses,
+    courses: mapTrainerCourseNames(trainer as TrainerRecord),
     lastActiveAt: trainer.user.lastLoginAt?.toISOString() ?? null,
   };
 }
@@ -396,11 +417,18 @@ export async function getTrainersForCourseService(courseName: string): Promise<T
   const trainers = await prisma.trainerProfile.findMany({
     where: {
       isActive: true,
-      courses: {
-        has: normalizedCourseName,
+      courseAssignments: {
+        some: {
+          course: {
+            name: {
+              equals: normalizedCourseName,
+              mode: "insensitive",
+            },
+          },
+        },
       },
     },
-    include: { user: { select: { name: true, email: true } } },
+    include: trainerSelect,
   });
 
   return trainers.map((trainer) => mapTrainerOption(trainer as TrainerRecord));

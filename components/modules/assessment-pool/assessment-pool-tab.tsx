@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 
 type PoolItem = {
   id: string;
@@ -20,15 +21,6 @@ type PoolItem = {
   questionCount: number;
   courseLinksCount: number;
   createdAt: string;
-};
-
-const questionTypeLabels: Record<string, string> = {
-  MCQ: "Multiple Choice",
-  NUMERIC: "Numeric",
-  ESSAY: "Essay",
-  FILL_IN_THE_BLANK: "Fill in the Blank",
-  MULTI_INPUT_REASONING: "Multi-Input Reasoning",
-  TWO_PART_ANALYSIS: "Two-Part Analysis",
 };
 
 const difficultyColors: Record<string, string> = {
@@ -132,7 +124,7 @@ export function AssessmentPoolTab({
           className="rounded-md border px-2 py-1 text-xs"
         >
           <option value="">All Types</option>
-          {Object.entries(questionTypeLabels).map(([value, label]) => (
+          {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
@@ -176,7 +168,7 @@ export function AssessmentPoolTab({
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Badge variant="info" className="text-[10px] px-1.5 py-0">
-                    {questionTypeLabels[pool.questionType] ?? pool.questionType}
+                    {QUESTION_TYPE_LABELS[pool.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? pool.questionType}
                   </Badge>
                   <span className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium ${difficultyColors[pool.difficultyLevel] ?? ""}`}>
                     {pool.difficultyLevel}

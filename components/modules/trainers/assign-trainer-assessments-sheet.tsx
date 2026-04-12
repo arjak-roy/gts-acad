@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import type { TrainerDetail } from "@/services/trainers/types";
 import type { TrainerAssessmentAssignmentItem } from "@/services/trainer-assessments/types";
 
@@ -255,7 +256,7 @@ export function AssignTrainerAssessmentsSheet({
                               <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{pool.code}</p>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Badge variant="info">{pool.questionType.replaceAll("_", " ")}</Badge>
+                              <Badge variant="info">{QUESTION_TYPE_LABELS[pool.questionType as keyof typeof QUESTION_TYPE_LABELS] ?? pool.questionType}</Badge>
                               <Badge variant="default">{pool.difficultyLevel}</Badge>
                               <Badge variant={pool.status === "PUBLISHED" ? "success" : "warning"}>{pool.status}</Badge>
                             </div>

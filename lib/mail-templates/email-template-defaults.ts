@@ -1,5 +1,9 @@
 import {
   ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY,
+  ASSESSMENT_COMPLETED_EMAIL_TEMPLATE_KEY,
+  ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
+  ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
+  BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
   CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
   COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
   COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
@@ -16,6 +20,10 @@ import {
 
 export {
   ACCOUNT_ACTIVATION_EMAIL_TEMPLATE_KEY,
+  ASSESSMENT_COMPLETED_EMAIL_TEMPLATE_KEY,
+  ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
+  ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
+  BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
   CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
   COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
   COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
@@ -356,6 +364,190 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
           </div>
           <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">View Achievements</a>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Keep up the great work!</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+    name: "Batch Event Notification",
+    description: "Email sent when a new batch event is scheduled for a learner.",
+    subject: "New batch event: {{eventTitle}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "A new batch event has been scheduled for you.",
+      "",
+      "Event: {{eventTitle}}",
+      "Type: {{eventType}}",
+      "Course: {{courseName}}",
+      "Program: {{programName}}",
+      "Batch: {{batchName}}",
+      "Starts: {{startsAt}}",
+      "Ends: {{endsAt}}",
+      "Location: {{location}}",
+      "Meeting link: {{meetingUrl}}",
+      "",
+      "Open your candidate portal: {{portalUrl}}",
+      "If you need help, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">New batch event</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, a new batch event has been scheduled for you.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Event:</strong> {{eventTitle}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Type:</strong> {{eventType}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Starts:</strong> {{startsAt}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Ends:</strong> {{endsAt}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Location:</strong> {{location}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Meeting link:</strong> {{meetingUrl}}</p>
+          </div>
+          <a href="{{portalUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Open Candidate Portal</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
+    name: "Assessment Scheduled",
+    description: "Email sent when a new assessment is scheduled for a learner.",
+    subject: "New assessment scheduled: {{assessmentTitle}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "A new assessment has been scheduled for your batch.",
+      "",
+      "Assessment: {{assessmentTitle}}",
+      "Type: {{assessmentType}}",
+      "Course: {{courseName}}",
+      "Program: {{programName}}",
+      "Batch: {{batchName}}",
+      "Scheduled for: {{scheduledAt}}",
+      "Duration: {{timeLimit}}",
+      "Meeting link: {{meetingUrl}}",
+      "",
+      "Open your candidate portal: {{portalUrl}}",
+      "If you need help, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Assessment scheduled</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, a new assessment is now on your schedule.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Assessment:</strong> {{assessmentTitle}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Type:</strong> {{assessmentType}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Scheduled for:</strong> {{scheduledAt}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Duration:</strong> {{timeLimit}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Meeting link:</strong> {{meetingUrl}}</p>
+          </div>
+          <a href="{{portalUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Open Candidate Portal</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: ASSESSMENT_COMPLETED_EMAIL_TEMPLATE_KEY,
+    name: "Assessment Completed",
+    description: "Email sent after a candidate completes an assessment submission.",
+    subject: "Assessment submitted: {{assessmentTitle}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "We have received your assessment submission.",
+      "",
+      "Assessment: {{assessmentTitle}}",
+      "Course: {{courseName}}",
+      "Program: {{programName}}",
+      "Batch: {{batchName}}",
+      "Submitted at: {{submittedAt}}",
+      "Next step: {{completionNote}}",
+      "",
+      "Open your candidate portal: {{portalUrl}}",
+      "If you need help, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Assessment submitted</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your assessment submission has been recorded.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Assessment:</strong> {{assessmentTitle}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Submitted at:</strong> {{submittedAt}}</p>
+          </div>
+          <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #334155;">{{completionNote}}</p>
+          <a href="{{portalUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Open Candidate Portal</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
+    name: "Assessment Result",
+    description: "Email sent when an assessment result is available for a candidate.",
+    subject: "Assessment result: {{assessmentTitle}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "Your assessment result is now available.",
+      "",
+      "Assessment: {{assessmentTitle}}",
+      "Course: {{courseName}}",
+      "Program: {{programName}}",
+      "Batch: {{batchName}}",
+      "Score: {{scoreSummary}}",
+      "Status: {{resultStatus}}",
+      "Reviewed by: {{reviewerName}}",
+      "Reviewed at: {{gradedAt}}",
+      "Reviewer feedback: {{reviewerFeedback}}",
+      "",
+      "Open your candidate portal: {{portalUrl}}",
+      "If you need help, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Assessment result</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your assessment result is ready.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Assessment:</strong> {{assessmentTitle}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Score:</strong> {{scoreSummary}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Status:</strong> {{resultStatus}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Reviewed by:</strong> {{reviewerName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Reviewed at:</strong> {{gradedAt}}</p>
+          </div>
+          <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #334155;">{{reviewerFeedback}}</p>
+          <a href="{{portalUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Open Candidate Portal</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
         </div>
       </div>
     `,

@@ -36,6 +36,22 @@ export const bulkRetryEmailLogsSchema = z
     }
   });
 
+export const processEmailLogsSchema = z
+  .object({
+    mode: z.enum(["selected", "all-queued"]).default("all-queued"),
+    ids: z.array(z.string().uuid()).default([]),
+    limit: positiveInt.max(50).default(25),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode === "selected" && value.ids.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ids"],
+        message: "At least one email log ID is required when mode is selected.",
+      });
+    }
+  });
+
 export const emailLogIdSchema = z.object({
   emailLogId: z.string().uuid(),
 });
@@ -43,3 +59,4 @@ export const emailLogIdSchema = z.object({
 export type ListEmailLogsInput = z.infer<typeof listEmailLogsSchema>;
 export type ListAuditLogsInput = z.infer<typeof listAuditLogsSchema>;
 export type BulkRetryEmailLogsInput = z.infer<typeof bulkRetryEmailLogsSchema>;
+export type ProcessEmailLogsInput = z.infer<typeof processEmailLogsSchema>;

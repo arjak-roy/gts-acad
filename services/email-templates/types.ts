@@ -25,6 +25,7 @@ export type SendTestEmailTemplateResult = {
   recipientEmail: string;
   emailLogId: string | null;
   providerMessageId: string | null;
+  status: "PENDING" | "SENT";
 };
 
 export type EmailTemplateRecord = {
