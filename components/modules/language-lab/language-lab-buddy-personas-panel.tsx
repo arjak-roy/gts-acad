@@ -44,6 +44,26 @@ type BuddyPersonaDraft = {
   courseIds: string[];
 };
 
+/**
+ * Languages supported by the Flutter german-buddy STT/TTS pipeline.
+ * languageCode must be a valid BCP-47 tag:
+ *   - TTS: flutter_tts uses it directly via _resolveTtsLocale
+ *   - STT: speech_to_text uses English recognition for en-* codes,
+ *          German recognition for all other codes (de-*, …)
+ */
+const CONVERSATION_LANGUAGE_OPTIONS: Array<{
+  label: string;
+  language: string;
+  languageCode: string;
+  sttNote: string;
+}> = [
+  { label: "German (Germany)",     language: "German",              languageCode: "de-DE", sttNote: "STT: German" },
+  { label: "German (Austria)",     language: "German (Austria)",    languageCode: "de-AT", sttNote: "STT: German" },
+  { label: "German (Switzerland)", language: "German (Switzerland)",languageCode: "de-CH", sttNote: "STT: German" },
+  { label: "English (US)",         language: "English",             languageCode: "en-US", sttNote: "STT: English" },
+  { label: "English (UK)",         language: "English (UK)",        languageCode: "en-GB", sttNote: "STT: English" },
+];
+
 const SELECT_CLASS_NAME =
   "flex h-11 w-full rounded-2xl border border-[#dde1e6] bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -198,6 +218,16 @@ export function LanguageLabBuddyPersonasPanel() {
   const handleFieldChange = useCallback((event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
     setDraft((current) => ({ ...current, [name]: value }));
+  }, []);
+
+  const handleLanguageSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const option = CONVERSATION_LANGUAGE_OPTIONS.find((opt) => opt.languageCode === event.target.value);
+    if (!option) return;
+    setDraft((current) => ({
+      ...current,
+      language: option.language,
+      languageCode: option.languageCode,
+    }));
   }, []);
 
   const handleActiveChange = useCallback((checked: boolean) => {
@@ -445,16 +475,31 @@ export function LanguageLabBuddyPersonasPanel() {
                   <Input name="name" value={draft.name} onChange={handleFieldChange} placeholder="Exam Coach Anna" required />
                 </label>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block space-y-2">
-                    <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Conversation language</span>
-                    <Input name="language" value={draft.language} onChange={handleFieldChange} placeholder="German" required />
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Language code</span>
-                    <Input name="languageCode" value={draft.languageCode} onChange={handleFieldChange} placeholder="de-DE" required />
-                  </label>
+                <div className="space-y-2">
+                  <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Conversation language</span>
+                  <select
+                    className={SELECT_CLASS_NAME}
+                    value={CONVERSATION_LANGUAGE_OPTIONS.some((opt) => opt.languageCode === draft.languageCode) ? draft.languageCode : ""}
+                    onChange={handleLanguageSelect}
+                    required
+                  >
+                    {!CONVERSATION_LANGUAGE_OPTIONS.some((opt) => opt.languageCode === draft.languageCode) && (
+                      <option value="" disabled>
+                        {draft.language ? `${draft.language} (${draft.languageCode})` : "Select a language"}
+                      </option>
+                    )}
+                    {CONVERSATION_LANGUAGE_OPTIONS.map((opt) => (
+                      <option key={opt.languageCode} value={opt.languageCode}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs font-semibold text-slate-400">
+                    BCP-47 code:{" "}
+                    <span className="font-black text-[#0d3b84]">{draft.languageCode || "—"}</span>
+                    {" · "}
+                    {CONVERSATION_LANGUAGE_OPTIONS.find((opt) => opt.languageCode === draft.languageCode)?.sttNote ?? "STT: German"}
+                  </p>
                 </div>
 
                 <label className="block space-y-2">
@@ -537,7 +582,21 @@ export function LanguageLabBuddyPersonasPanel() {
                             )}
                           >
                             <div className="flex items-start gap-3">
-                              <Checkbox checked={selected} className="mt-0.5" tabIndex={-1} aria-hidden="true" />
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                                  selected
+                                    ? "border-[#0d3b84] bg-[#0d3b84]"
+                                    : "border-[#c8d4e3] bg-white",
+                                )}
+                              >
+                                {selected && (
+                                  <svg viewBox="0 0 10 8" className="h-2.5 w-2.5 fill-none stroke-white stroke-2">
+                                    <polyline points="1,4 4,7 9,1" strokeLinecap="round" strokeLinejoin="round" />
+                                  </svg>
+                                )}
+                              </span>
                               <div className="min-w-0 flex-1 space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-bold text-slate-900">{course.name}</p>

@@ -439,47 +439,39 @@ export async function commitLanguageLabVocabImportService(
   let createdCount = 0;
   let updatedCount = 0;
 
-  try {
-    await prisma.$transaction(async (transaction) => {
-      for (const row of validatedRows) {
-        const existing = existingByNormalizedWord.get(row.normalizedWord);
-        const data = {
-          word: row.word.trim(),
-          normalizedWord: row.normalizedWord,
-          englishMeaning: trimToNull(row.englishMeaning),
-          phonetic: trimToNull(row.phonetic),
-          difficulty: row.difficulty,
-          source: trimOrDefault(row.source, "bulk_upload"),
-          isActive: row.isActive,
-        };
+  for (const row of validatedRows) {
+    const isExisting = existingByNormalizedWord.has(row.normalizedWord);
+    const data = {
+      word: row.word.trim(),
+      normalizedWord: row.normalizedWord,
+      englishMeaning: trimToNull(row.englishMeaning),
+      phonetic: trimToNull(row.phonetic),
+      difficulty: row.difficulty,
+      source: trimOrDefault(row.source, "bulk_upload"),
+      isActive: row.isActive,
+    };
 
-        if (existing) {
-          await transaction.languageLabWord.update({
-            where: { id: existing.id },
-            data,
-          });
-          updatedCount += 1;
-          continue;
-        }
-
-        const created = await transaction.languageLabWord.create({
-          data,
-          select: { id: true, normalizedWord: true },
-        });
-        existingByNormalizedWord.set(created.normalizedWord, {
-          id: created.id,
-          word: data.word,
-          normalizedWord: created.normalizedWord,
-        });
-        createdCount += 1;
+    try {
+      await prisma.languageLabWord.upsert({
+        where: { normalizedWord: row.normalizedWord },
+        update: data,
+        create: data,
+        select: { id: true },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        // Concurrent write for the same normalizedWord — skip, it's already in the bank
+        updatedCount += 1;
+        continue;
       }
-    });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new Error("The vocab bank changed while importing. Run preview again and retry the upload.");
+      throw error;
     }
 
-    throw error;
+    if (isExisting) {
+      updatedCount += 1;
+    } else {
+      createdCount += 1;
+    }
   }
 
   const result = {

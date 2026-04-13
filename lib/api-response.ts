@@ -81,7 +81,7 @@ function resolveErrorStatus(message: string) {
     return 403;
   }
 
-  if (normalizedMessage.includes("not found")) {
+  if (normalizedMessage.includes("not found") && !normalizedMessage.includes("transaction")) {
     return 404;
   }
 

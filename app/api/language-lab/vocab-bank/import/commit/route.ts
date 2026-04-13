@@ -5,6 +5,8 @@ import { requirePermission } from "@/lib/auth/route-guards";
 import { commitLanguageLabVocabImportSchema } from "@/lib/validation-schemas/language-lab";
 import { commitLanguageLabVocabImportService } from "@/services/language-lab-vocab-bank-service";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     const session = await requirePermission(request, "lms.edit");
