@@ -59,6 +59,12 @@ export const listLanguageLabWordsSchema = z.object({
   isActive: booleanishSchema.optional(),
 });
 
+export const languageLabAnalyticsFiltersSchema = z.object({
+  search: z.string().trim().max(120).optional().default(""),
+  batchId: z.string().trim().min(1).optional(),
+  learnerId: z.string().trim().min(1).optional(),
+});
+
 export const createLanguageLabWordSchema = z.object({
   word: z.string().trim().min(1, "Word is required.").max(255),
   englishMeaning: z.string().trim().max(255).optional().default(""),
@@ -111,6 +117,7 @@ export const createRoleplaySummarySchema = z.object({
 });
 
 export type ListLanguageLabWordsInput = z.infer<typeof listLanguageLabWordsSchema>;
+export type LanguageLabAnalyticsFiltersInput = z.infer<typeof languageLabAnalyticsFiltersSchema>;
 export type CreateLanguageLabWordInput = z.infer<typeof createLanguageLabWordSchema>;
 export type UpdateLanguageLabWordInput = z.infer<typeof updateLanguageLabWordSchema>;
 export type CreatePronunciationAttemptInput = z.infer<typeof createPronunciationAttemptSchema>;

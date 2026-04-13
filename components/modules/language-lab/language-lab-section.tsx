@@ -5,9 +5,14 @@ import type { LucideIcon } from "lucide-react";
 import { Bot, Mic, MessageSquareText, Workflow } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+import {
+  LanguageLabPronunciationAnalyticsPanel,
+  LanguageLabRoleplayAnalyticsPanel,
+  LanguageLabWordProgressPanel,
+} from "./language-lab-live-panels";
 import { LanguageLabSettingsPanel } from "./language-lab-settings-panel";
 
 type LanguageLabSectionProps = {
@@ -103,42 +108,9 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
       </Card>
 
       {selectedView === "settings" ? <LanguageLabSettingsPanel /> : null}
-      {selectedView === "word-progress" ? (
-        <AnalyticsPlaceholderPanel
-          eyebrow="Word Progress"
-          title="Production word tracking is ready for real data wiring"
-          description="This view will move to batch-wise and learner-wise progress once managed words and attempt persistence are connected. The mock vocabulary scorecards are intentionally removed."
-          bullets={[
-            "Managed word catalog owned by admin, including newly added words.",
-            "Batch filters and learner drill-down built on academy enrollments.",
-            "Word-level trends sourced from synced learner attempts, not static fixtures.",
-          ]}
-        />
-      ) : null}
-      {selectedView === "pronunciation" ? (
-        <AnalyticsPlaceholderPanel
-          eyebrow="Pronunciation Analysis"
-          title="This view now waits for synced pronunciation attempts"
-          description="The old phoneme charts and hotspot cards were mock-only. This replacement keeps the production shell in place and will fill with real learner pronunciation attempts once the backend ingestion endpoints land."
-          bullets={[
-            "Weakest words and phoneme priorities by batch.",
-            "Learner-specific attempt history and coaching feedback.",
-            "Trendlines based on stored reports instead of presentation data.",
-          ]}
-        />
-      ) : null}
-      {selectedView === "roleplay" ? (
-        <AnalyticsPlaceholderPanel
-          eyebrow="Roleplay Analytics"
-          title="Roleplay analytics stays in the section, but only as real data"
-          description="This panel is reserved for live session counts, summary scores, and learner drill-down from the actual roleplay flow. The previous mock roleplay scorecards and export affordances are removed."
-          bullets={[
-            "Session counts and latest completion timestamps by batch.",
-            "Learner-level performance summaries for real attempts.",
-            "Scenario quality metrics once the roleplay payload is stored server-side.",
-          ]}
-        />
-      ) : null}
+      {selectedView === "word-progress" ? <LanguageLabWordProgressPanel /> : null}
+      {selectedView === "pronunciation" ? <LanguageLabPronunciationAnalyticsPanel /> : null}
+      {selectedView === "roleplay" ? <LanguageLabRoleplayAnalyticsPanel /> : null}
     </div>
   );
 }
@@ -173,47 +145,5 @@ function SectionToggleButton({
       </div>
       <p className="mt-1 text-xs font-medium text-slate-500">{detail}</p>
     </button>
-  );
-}
-
-function AnalyticsPlaceholderPanel({
-  eyebrow,
-  title,
-  description,
-  bullets,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  bullets: string[];
-}) {
-  return (
-    <Card className="border-[#d8e1ef] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="default">No mock data</Badge>
-          <Badge variant="info">Production placeholder</Badge>
-        </div>
-        <CardTitle className="mt-3 text-2xl font-black tracking-tight text-slate-950">{title}</CardTitle>
-        <CardDescription className="max-w-3xl text-sm font-medium leading-6 text-slate-600">{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="rounded-[28px] border border-[#dce6f5] bg-white p-5 shadow-sm">
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">{eyebrow}</p>
-          <p className="mt-2 text-lg font-bold text-slate-950">Next live data milestone</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {bullets.map((item) => (
-              <div key={item} className="rounded-2xl border border-[#e8edf3] bg-slate-50 px-4 py-4">
-                <p className="text-sm font-semibold leading-6 text-slate-700">{item}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-medium leading-6 text-amber-900">
-          Live filters and analytics cards will appear only after the corresponding backend tables and candidate sync endpoints are connected. Until then, this surface intentionally stays empty rather than shipping misleading presentation data.
-        </div>
-      </CardContent>
-    </Card>
   );
 }
