@@ -3,10 +3,11 @@ import type { NextRequest } from "next/server";
 import { withCors, handleCorsPreflight } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireCandidateSession } from "@/lib/auth/route-guards";
-import { assessmentPoolIdSchema, gradeSubmissionSchema } from "@/lib/validation-schemas/assessment-pool";
+import { assessmentPoolIdSchema, gradeSubmissionSchema, saveAssessmentDraftSchema } from "@/lib/validation-schemas/assessment-pool";
 import { batchIdSchema } from "@/lib/validation-schemas/batches";
 import {
   getCandidateAssessmentDetailService,
+  saveCandidateAssessmentDraftService,
   submitCandidateAssessmentService,
 } from "@/services/assessment-pool-service";
 
@@ -23,7 +24,7 @@ function parseBatchId(request: NextRequest) {
 }
 
 export function OPTIONS(request: NextRequest) {
-  return handleCorsPreflight(request, ["GET", "POST", "OPTIONS"]);
+  return handleCorsPreflight(request, ["GET", "PATCH", "POST", "OPTIONS"]);
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
@@ -37,9 +38,29 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       assessmentPoolId: poolId,
     });
 
-    return withCors(request, apiSuccess(detail), ["GET", "POST", "OPTIONS"]);
+    return withCors(request, apiSuccess(detail), ["GET", "PATCH", "POST", "OPTIONS"]);
   } catch (error) {
-    return withCors(request, apiError(error), ["GET", "POST", "OPTIONS"]);
+    return withCors(request, apiError(error), ["GET", "PATCH", "POST", "OPTIONS"]);
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  try {
+    const session = await requireCandidateSession(request);
+    const { poolId } = assessmentPoolIdSchema.parse(params);
+    const batchId = parseBatchId(request);
+    const body = await request.json();
+    const { answers } = saveAssessmentDraftSchema.parse(body);
+    const result = await saveCandidateAssessmentDraftService({
+      userId: session.userId,
+      batchId,
+      assessmentPoolId: poolId,
+      answers,
+    });
+
+    return withCors(request, apiSuccess(result), ["GET", "PATCH", "POST", "OPTIONS"]);
+  } catch (error) {
+    return withCors(request, apiError(error), ["GET", "PATCH", "POST", "OPTIONS"]);
   }
 }
 
@@ -57,8 +78,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       answers,
     });
 
-    return withCors(request, apiSuccess(result), ["GET", "POST", "OPTIONS"]);
+    return withCors(request, apiSuccess(result), ["GET", "PATCH", "POST", "OPTIONS"]);
   } catch (error) {
-    return withCors(request, apiError(error), ["GET", "POST", "OPTIONS"]);
+    return withCors(request, apiError(error), ["GET", "PATCH", "POST", "OPTIONS"]);
   }
 }

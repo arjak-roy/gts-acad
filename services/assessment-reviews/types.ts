@@ -1,6 +1,7 @@
 import type { AssessmentAttemptStatus, DifficultyLevel, QuestionType } from "@prisma/client";
 
 export const ASSESSMENT_ATTEMPT_STATUS_LABELS: Record<AssessmentAttemptStatus, string> = {
+  DRAFT: "Draft",
   PENDING_REVIEW: "Pending Review",
   IN_REVIEW: "In Review",
   GRADED: "Graded",

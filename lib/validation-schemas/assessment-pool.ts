@@ -76,9 +76,12 @@ export const gradeSubmissionSchema = z.object({
   ),
 });
 
+export const saveAssessmentDraftSchema = gradeSubmissionSchema;
+
 export type CreateAssessmentPoolInput = z.infer<typeof createAssessmentPoolSchema>;
 export type UpdateAssessmentPoolInput = z.infer<typeof updateAssessmentPoolSchema>;
 export type CreateQuestionInput = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionInput = z.infer<typeof updateQuestionSchema>;
 export type LinkAssessmentToCourseInput = z.infer<typeof linkAssessmentToCourseSchema>;
 export type GradeSubmissionInput = z.infer<typeof gradeSubmissionSchema>;
+export type SaveAssessmentDraftInput = z.infer<typeof saveAssessmentDraftSchema>;

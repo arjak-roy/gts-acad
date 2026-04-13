@@ -20,6 +20,7 @@ export {
 export { gradeSubmissionService } from "@/services/assessment-pool/grading";
 export {
   getCandidateAssessmentDetailService,
+  saveCandidateAssessmentDraftService,
   submitCandidateAssessmentService,
 } from "@/services/assessment-pool/candidate";
 export { generateAssessmentWithAi } from "@/services/assessment-pool/ai-stubs";
@@ -27,8 +28,11 @@ export { generateAssessmentWithAi } from "@/services/assessment-pool/ai-stubs";
 export type {
   AssessmentPoolCreateResult,
   CandidateAssessmentAttemptSummary,
+  CandidateAssessmentAvailabilityStatus,
+  CandidateAssessmentDraftSaveResult,
   CandidateAssessmentDetail,
   CandidateAssessmentQuestion,
+  CandidateAssessmentSavedAnswer,
   CandidateAssessmentSubmissionResult,
   AssessmentPoolDetail,
   AssessmentPoolListItem,

@@ -70,11 +70,22 @@ export type CandidateAssessmentQuestion = {
   sortOrder: number;
 };
 
+export type CandidateAssessmentSavedAnswer = {
+  questionId: string;
+  answer: unknown;
+};
+
+export type CandidateAssessmentAvailabilityStatus = "SCHEDULED" | "OPEN" | "CLOSED" | "EXPIRED";
+
 export type CandidateAssessmentAttemptSummary = {
   assessmentId: string;
-  status: "PENDING_REVIEW" | "IN_REVIEW" | "GRADED";
+  status: "DRAFT" | "PENDING_REVIEW" | "IN_REVIEW" | "GRADED";
   percentage: number | null;
   passed: boolean | null;
+  startedAt: Date;
+  lastSavedAt: Date;
+  deadlineAt: Date | null;
+  autoSubmittedAt: Date | null;
   submittedAt: Date;
   gradedAt: Date | null;
   marksObtained: number | null;
@@ -94,16 +105,30 @@ export type CandidateAssessmentDetail = {
   totalMarks: number;
   passingMarks: number;
   timeLimitMinutes: number | null;
+  serverNow: Date;
   scheduledAt: Date | null;
   opensAt: Date | null;
+  hardClosesAt: Date | null;
   closesAt: Date | null;
+  attemptDeadlineAt: Date | null;
+  availabilityStatus: CandidateAssessmentAvailabilityStatus;
   isOpen: boolean;
   isClosed: boolean;
   supportsInAppAttempt: boolean;
   availabilityMessage: string | null;
   questionCount: number;
   questions: CandidateAssessmentQuestion[];
+  savedAnswers: CandidateAssessmentSavedAnswer[];
   attempt: CandidateAssessmentAttemptSummary | null;
+};
+
+export type CandidateAssessmentDraftSaveResult = {
+  batchId: string;
+  assessmentPoolId: string;
+  serverNow: Date;
+  attemptDeadlineAt: Date | null;
+  savedAnswers: CandidateAssessmentSavedAnswer[];
+  attempt: CandidateAssessmentAttemptSummary;
 };
 
 export type CandidateAssessmentSubmissionResult = {

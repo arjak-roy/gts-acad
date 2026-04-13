@@ -131,7 +131,7 @@ export async function listAssessmentReviewQueueService(options: {
 
   const normalizedSearch = options.filters.search.trim();
   const where = {
-    ...(options.filters.status !== "ALL" ? { status: options.filters.status } : {}),
+    ...(options.filters.status !== "ALL" ? { status: options.filters.status } : { status: { not: "DRAFT" as const } }),
     ...(normalizedSearch
       ? {
           OR: [

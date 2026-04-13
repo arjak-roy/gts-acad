@@ -15,10 +15,6 @@ type RouteContext = {
   };
 };
 
-function addMinutes(date: Date, minutes: number) {
-  return new Date(date.getTime() + minutes * 60_000);
-}
-
 function selectLinkedAssessmentEvent(
   schedule: Awaited<ReturnType<typeof listScheduleEventsService>>["items"],
   assessmentPoolId: string,
@@ -77,11 +73,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const candidateAssessments = assessments.map((assessment) => {
       const linkedEvent = selectLinkedAssessmentEvent(scheduleResponse.items, assessment.assessmentPoolId);
       const opensAt = linkedEvent ? new Date(linkedEvent.startsAt) : assessment.scheduledAt;
-      const closesAt = linkedEvent?.endsAt
-        ? new Date(linkedEvent.endsAt)
-        : opensAt && assessment.timeLimitMinutes
-        ? addMinutes(opensAt, assessment.timeLimitMinutes)
-        : null;
+      const closesAt = linkedEvent?.endsAt ? new Date(linkedEvent.endsAt) : null;
 
       return {
         ...assessment,

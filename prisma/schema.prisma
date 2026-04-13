@@ -378,6 +378,7 @@ enum AssessmentPoolStatus {
 }
 
 enum AssessmentAttemptStatus {
+  DRAFT          @map("draft")
   PENDING_REVIEW @map("pending_review")
   IN_REVIEW      @map("in_review")
   GRADED         @map("graded")
@@ -1127,6 +1128,10 @@ model AssessmentAttempt {
   reviewerFeedback   String?                 @map("reviewer_feedback")
   reviewStartedAt    DateTime?               @map("review_started_at") @db.Timestamptz(6)
   reviewedByUserId   String?                 @db.Uuid @map("reviewed_by_user_id")
+  startedAt          DateTime                @default(now()) @map("started_at") @db.Timestamptz(6)
+  lastSavedAt        DateTime                @default(now()) @map("last_saved_at") @db.Timestamptz(6)
+  deadlineAt         DateTime?               @map("deadline_at") @db.Timestamptz(6)
+  autoSubmittedAt    DateTime?               @map("auto_submitted_at") @db.Timestamptz(6)
   submittedAt        DateTime                @default(now()) @map("submitted_at") @db.Timestamptz(6)
   gradedAt           DateTime?               @map("graded_at") @db.Timestamptz(6)
   assessment         Assessment              @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
