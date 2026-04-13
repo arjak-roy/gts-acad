@@ -1,5 +1,7 @@
 import "server-only";
 
+import { LearningResourceTargetType } from "@prisma/client";
+
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import type { BatchAssessmentItem, BatchContentItem, BatchAssignmentSource } from "@/services/batch-content/types";
@@ -8,6 +10,28 @@ import type { AssessmentPoolListItem } from "@/services/assessment-pool/types";
 
 type ListBatchItemsOptions = {
   publishedOnly?: boolean;
+  includeAssignedResources?: boolean;
+};
+
+type SharedAssignmentBatchContentRecord = {
+  id: string;
+  targetType: LearningResourceTargetType;
+  assignedAt: Date;
+  assignedBy: { name: string } | null;
+  resource: {
+    sourceContent: {
+      id: string;
+      title: string;
+      description: string | null;
+      excerpt: string | null;
+      contentType: ContentListItem["contentType"];
+      status: ContentListItem["status"];
+      estimatedReadingMinutes: number | null;
+      fileUrl: string | null;
+      fileName: string | null;
+      mimeType: string | null;
+    } | null;
+  };
 };
 
 function resolveAssignmentSource(options: {
@@ -23,6 +47,137 @@ function resolveAssignmentSource(options: {
   }
 
   return "COURSE";
+}
+
+function mapSharedAssignmentToBatchContentItem(
+  batchId: string,
+  assignment: SharedAssignmentBatchContentRecord,
+): BatchContentItem | null {
+  const sourceContent = assignment.resource.sourceContent;
+
+  if (!sourceContent) {
+    return null;
+  }
+
+  return {
+    id: `assignment:${assignment.id}`,
+    batchId,
+    contentId: sourceContent.id,
+    contentTitle: sourceContent.title,
+    contentDescription: sourceContent.description,
+    contentExcerpt: sourceContent.excerpt,
+    contentType: sourceContent.contentType,
+    contentStatus: sourceContent.status,
+    folderName: null,
+    estimatedReadingMinutes: sourceContent.estimatedReadingMinutes,
+    fileUrl: sourceContent.fileUrl,
+    fileName: sourceContent.fileName,
+    mimeType: sourceContent.mimeType,
+    assignedByName: assignment.assignedBy?.name ?? null,
+    assignedAt: assignment.assignedAt,
+    assignmentSource: assignment.targetType === "BATCH" ? "BATCH" : "COURSE",
+    isInheritedFromCourse: assignment.targetType === "COURSE",
+    isBatchMapped: false,
+    canRemoveBatchMapping: false,
+  };
+}
+
+async function listAssignedContentForBatchService(
+  batchId: string,
+  courseId: string,
+  options?: ListBatchItemsOptions,
+): Promise<BatchContentItem[]> {
+  const assignments = await prisma.learningResourceAssignment.findMany({
+    where: {
+      OR: [
+        {
+          targetType: "BATCH",
+          targetId: batchId,
+        },
+        {
+          targetType: "COURSE",
+          targetId: courseId,
+        },
+      ],
+      resource: {
+        sourceContentId: {
+          not: null,
+        },
+      },
+    },
+    orderBy: {
+      assignedAt: "desc",
+    },
+    select: {
+      id: true,
+      targetType: true,
+      assignedAt: true,
+      assignedBy: {
+        select: {
+          name: true,
+        },
+      },
+      resource: {
+        select: {
+          sourceContent: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              excerpt: true,
+              contentType: true,
+              status: true,
+              estimatedReadingMinutes: true,
+              fileUrl: true,
+              fileName: true,
+              mimeType: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const sortedAssignments = [...assignments].sort((left, right) => {
+    const leftPriority = left.targetType === "BATCH" ? 0 : 1;
+    const rightPriority = right.targetType === "BATCH" ? 0 : 1;
+
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+
+    return right.assignedAt.getTime() - left.assignedAt.getTime();
+  });
+
+  const itemsByContentId = new Map<string, BatchContentItem>();
+
+  for (const assignment of sortedAssignments) {
+    if (assignment.targetType !== "COURSE" && assignment.targetType !== "BATCH") {
+      continue;
+    }
+
+    const sourceContent = assignment.resource.sourceContent;
+
+    if (!sourceContent) {
+      continue;
+    }
+
+    if (options?.publishedOnly && sourceContent.status !== "PUBLISHED") {
+      continue;
+    }
+
+    if (itemsByContentId.has(sourceContent.id)) {
+      continue;
+    }
+
+    const item = mapSharedAssignmentToBatchContentItem(batchId, assignment);
+
+    if (item) {
+      itemsByContentId.set(sourceContent.id, item);
+    }
+  }
+
+  return Array.from(itemsByContentId.values());
 }
 
 export async function listBatchContentService(batchId: string, options?: ListBatchItemsOptions): Promise<BatchContentItem[]> {
@@ -159,7 +314,17 @@ export async function listBatchContentService(batchId: string, options?: ListBat
     canRemoveBatchMapping: true,
   }));
 
-  return [...inheritedItems, ...batchOnlyItems];
+  const nativeItems = [...inheritedItems, ...batchOnlyItems];
+
+  if (!options?.includeAssignedResources) {
+    return nativeItems;
+  }
+
+  const nativeContentIds = new Set(nativeItems.map((item) => item.contentId));
+  const assignedItems = await listAssignedContentForBatchService(batchId, batch.courseId, options);
+  const overlayItems = assignedItems.filter((item) => !nativeContentIds.has(item.contentId));
+
+  return [...nativeItems, ...overlayItems];
 }
 
 export async function listBatchAssessmentsService(batchId: string, options?: ListBatchItemsOptions): Promise<BatchAssessmentItem[]> {

@@ -339,7 +339,7 @@ export async function getCandidateAccessibleContentByIdService(
     return null;
   }
 
-  const content = await prisma.courseContent.findFirst({
+  let content = await prisma.courseContent.findFirst({
     where: {
       id: contentId,
       status: "PUBLISHED",
@@ -392,6 +392,57 @@ export async function getCandidateAccessibleContentByIdService(
       updatedAt: true,
     },
   });
+
+  if (!content) {
+    const assignmentAccess = await prisma.learningResourceAssignment.findFirst({
+      where: {
+        OR: [
+          {
+            targetType: "COURSE",
+            targetId: {
+              in: courseIds,
+            },
+          },
+          {
+            targetType: "BATCH",
+            targetId: {
+              in: batchIds,
+            },
+          },
+        ],
+        resource: {
+          sourceContentId: contentId,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (assignmentAccess) {
+      content = await prisma.courseContent.findFirst({
+        where: {
+          id: contentId,
+          status: "PUBLISHED",
+        },
+        select: {
+          id: true,
+          courseId: true,
+          title: true,
+          description: true,
+          excerpt: true,
+          contentType: true,
+          estimatedReadingMinutes: true,
+          fileUrl: true,
+          fileName: true,
+          mimeType: true,
+          renderedHtml: true,
+          bodyJson: true,
+          updatedAt: true,
+        },
+      });
+    }
+  }
 
   if (!content) {
     return null;
