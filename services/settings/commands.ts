@@ -8,7 +8,7 @@ import type {
   UpdateSettingDefinitionInput,
   UpdateSettingsCategoryInput,
 } from "@/lib/validation-schemas/settings";
-import { getSettingsCatalogField } from "@/lib/settings/catalog";
+import { getSettingsCatalogCategory, getSettingsCatalogField } from "@/lib/settings/catalog";
 import { encryptSettingsValue } from "@/lib/settings/crypto";
 import { hasMeaningfulSettingValue, isStoredSettingsAsset, validateDynamicSettingValue } from "@/lib/settings/validation";
 import { invalidateMailTransportCache } from "@/lib/mail-service";
@@ -80,6 +80,79 @@ async function writeSettingsAuditLog(
 function invalidateCaches() {
   invalidateSettingsRuntimeCache();
   invalidateMailTransportCache();
+}
+
+async function ensureCatalogCategoryMaterialized(categoryCode: string) {
+  const catalogCategory = getSettingsCatalogCategory(categoryCode);
+  if (!catalogCategory) {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const category = await tx.settingsCategory.upsert({
+      where: { code: catalogCategory.code },
+      update: {
+        name: catalogCategory.name,
+        description: catalogCategory.description ?? null,
+        icon: catalogCategory.icon ?? null,
+        displayOrder: catalogCategory.displayOrder,
+        isSystem: catalogCategory.isSystem !== false,
+        isActive: catalogCategory.isActive !== false,
+      },
+      create: {
+        name: catalogCategory.name,
+        code: catalogCategory.code,
+        description: catalogCategory.description ?? null,
+        icon: catalogCategory.icon ?? null,
+        displayOrder: catalogCategory.displayOrder,
+        isSystem: catalogCategory.isSystem !== false,
+        isActive: catalogCategory.isActive !== false,
+      },
+    });
+
+    for (const field of catalogCategory.settings) {
+      await tx.setting.upsert({
+        where: { key: field.key },
+        update: {
+          categoryId: category.id,
+          label: field.label,
+          description: field.description ?? null,
+          type: field.type,
+          defaultValue: toJsonInputValue(field.defaultValue ?? null),
+          placeholder: field.placeholder ?? null,
+          helpText: field.helpText ?? null,
+          options: toJsonInputValue(field.options ?? []),
+          validationRules: toJsonInputValue(field.validationRules ?? {}),
+          groupName: field.groupName ?? null,
+          displayOrder: field.displayOrder,
+          isRequired: field.isRequired,
+          isEncrypted: field.isEncrypted === true,
+          isReadonly: field.isReadonly === true,
+          isSystem: field.isSystem !== false,
+          isActive: field.isActive !== false,
+        },
+        create: {
+          categoryId: category.id,
+          key: field.key,
+          label: field.label,
+          description: field.description ?? null,
+          type: field.type,
+          defaultValue: toJsonInputValue(field.defaultValue ?? null),
+          placeholder: field.placeholder ?? null,
+          helpText: field.helpText ?? null,
+          options: toJsonInputValue(field.options ?? []),
+          validationRules: toJsonInputValue(field.validationRules ?? {}),
+          groupName: field.groupName ?? null,
+          displayOrder: field.displayOrder,
+          isRequired: field.isRequired,
+          isEncrypted: field.isEncrypted === true,
+          isReadonly: field.isReadonly === true,
+          isSystem: field.isSystem !== false,
+          isActive: field.isActive !== false,
+        },
+      });
+    }
+  });
 }
 
 export async function createSettingsCategoryService(input: CreateSettingsCategoryInput, actor: SettingsActor = {}) {
@@ -417,6 +490,8 @@ export async function updateSettingsCategoryValuesService(
 ) {
   requireSettingsDatabase();
 
+  await ensureCatalogCategoryMaterialized(categoryCode);
+
   const category = await prisma.settingsCategory.findUnique({
     where: { code: categoryCode },
     include: {
@@ -557,6 +632,8 @@ export async function updateSettingsCategoryValuesService(
 
 export async function resetSettingsCategoryService(categoryCode: string, actor: SettingsActor = {}) {
   requireSettingsDatabase();
+
+  await ensureCatalogCategoryMaterialized(categoryCode);
 
   const category = await prisma.settingsCategory.findUnique({
     where: { code: categoryCode },
