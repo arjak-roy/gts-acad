@@ -1,6 +1,10 @@
 import "server-only";
 
-import { LANGUAGE_LAB_DEFAULT_CONFIG, LANGUAGE_LAB_SETTING_KEYS } from "@/lib/language-lab/default-config";
+import {
+  LANGUAGE_LAB_DEFAULT_CONFIG,
+  LANGUAGE_LAB_SETTING_KEYS,
+  normalizeLanguageLabRegisteredModels,
+} from "@/lib/language-lab/default-config";
 import { buildSettingsCatalogDefaultValueMap, SETTINGS_CATALOG } from "@/lib/settings/catalog";
 import { SETTINGS_CACHE_TTL_MS } from "@/lib/settings/constants";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
@@ -92,6 +96,15 @@ function resolveRuntimeString(value: unknown, fallbackValue = "") {
   return normalized.trim().length > 0 ? normalized : fallbackValue;
 }
 
+function resolveAssignedModelId(candidateValue: unknown, fallbackValue: string, registeredModelIds: Set<string>) {
+  const normalizedValue = resolveRuntimeString(candidateValue, fallbackValue);
+  if (registeredModelIds.has(normalizedValue)) {
+    return normalizedValue;
+  }
+
+  return fallbackValue;
+}
+
 export async function getGeneralRuntimeSettings() {
   const applicationName = await getRuntimeSettingValue("general.application_name", process.env.APP_NAME ?? "GTS Academy App");
   const applicationUrl = await getRuntimeSettingValue("general.application_url", process.env.NEXT_PUBLIC_APP_URL ?? "https://gts-acad.vercel.app");
@@ -173,6 +186,25 @@ export async function getFileUploadRuntimeSettings() {
 
 export async function getLanguageLabRuntimeSettings() {
   const geminiApiKey = resolveRuntimeString(await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.geminiApiKey, "")).trim();
+  const registeredModels = normalizeLanguageLabRegisteredModels(
+    await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.registeredModelsJson, ""),
+  );
+  const registeredModelIds = new Set(registeredModels.map((entry) => entry.modelId));
+  const buddyConversationModelId = resolveAssignedModelId(
+    await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.buddyConversationModelId, LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.buddyConversation),
+    LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.buddyConversation,
+    registeredModelIds,
+  );
+  const roleplayModelId = resolveAssignedModelId(
+    await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.roleplayModelId, LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.roleplay),
+    LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.roleplay,
+    registeredModelIds,
+  );
+  const pronunciationModelId = resolveAssignedModelId(
+    await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.pronunciationModelId, LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.pronunciation),
+    LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.pronunciation,
+    registeredModelIds,
+  );
   const buddySystemPrompt = resolveRuntimeString(
     await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt, ""),
     LANGUAGE_LAB_DEFAULT_CONFIG.prompts.buddy,
@@ -192,6 +224,10 @@ export async function getLanguageLabRuntimeSettings() {
 
   return {
     geminiApiKey,
+    registeredModels,
+    buddyConversationModelId,
+    roleplayModelId,
+    pronunciationModelId,
     buddySystemPrompt,
     roleplaySystemPrompt,
     pronunciationSystemPrompt,

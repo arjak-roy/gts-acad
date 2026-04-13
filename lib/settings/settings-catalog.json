@@ -936,6 +936,55 @@
         "helpText": "Leave blank while editing to keep the currently stored key."
       },
       {
+        "key": "language_lab.registered_models_json",
+        "label": "Registered Models JSON",
+        "description": "JSON array of { name, modelId } entries available for Language Lab model assignment.",
+        "type": "TEXTAREA",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "Model Registry",
+        "helpText": "Provide a JSON array of model objects such as [{ \"name\": \"Buddy Flash Lite\", \"modelId\": \"gemini-3.1-flash-lite-preview\" }].",
+        "validationRules": { "minLength": 2, "maxLength": 20000 }
+      },
+      {
+        "key": "language_lab.buddy_conversation_model_id",
+        "label": "Buddy Conversation Model ID",
+        "description": "Registered Gemini model assigned to Buddy chat and Buddy text conversation.",
+        "type": "TEXT",
+        "defaultValue": "gemini-3.1-flash-lite-preview",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "Model Assignments",
+        "validationRules": { "minLength": 3, "maxLength": 120 }
+      },
+      {
+        "key": "language_lab.roleplay_model_id",
+        "label": "Roleplay Model ID",
+        "description": "Registered Gemini model assigned to the roleplay flow.",
+        "type": "TEXT",
+        "defaultValue": "gemini-2.5-flash-lite",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "Model Assignments",
+        "validationRules": { "minLength": 3, "maxLength": 120 }
+      },
+      {
+        "key": "language_lab.pronunciation_model_id",
+        "label": "Pronunciation Model ID",
+        "description": "Registered Gemini model assigned to pronunciation analysis.",
+        "type": "TEXT",
+        "defaultValue": "gemini-2.5-flash",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "Model Assignments",
+        "validationRules": { "minLength": 3, "maxLength": 120 }
+      },
+      {
         "key": "language_lab.buddy_system_prompt",
         "label": "Buddy System Prompt",
         "description": "Primary system prompt for Buddy chat and Buddy live text responses.",
@@ -943,7 +992,7 @@
         "defaultValue": "",
         "isRequired": true,
         "isSystem": true,
-        "displayOrder": 20,
+        "displayOrder": 60,
         "groupName": "System Prompts",
         "helpText": "When empty in storage, the academy backend serves the built-in Buddy default prompt.",
         "validationRules": { "minLength": 40, "maxLength": 20000 }
@@ -956,7 +1005,7 @@
         "defaultValue": "",
         "isRequired": true,
         "isSystem": true,
-        "displayOrder": 30,
+        "displayOrder": 70,
         "groupName": "System Prompts",
         "helpText": "When empty in storage, the academy backend serves the built-in roleplay default prompt.",
         "validationRules": { "minLength": 40, "maxLength": 20000 }
@@ -969,7 +1018,7 @@
         "defaultValue": "",
         "isRequired": true,
         "isSystem": true,
-        "displayOrder": 40,
+        "displayOrder": 80,
         "groupName": "System Prompts",
         "helpText": "When empty in storage, the academy backend serves the built-in pronunciation default prompt.",
         "validationRules": { "minLength": 40, "maxLength": 20000 }
@@ -982,7 +1031,7 @@
         "defaultValue": "",
         "isRequired": true,
         "isSystem": true,
-        "displayOrder": 50,
+        "displayOrder": 90,
         "groupName": "System Prompts",
         "helpText": "Supports the {{exerciseTitle}} placeholder for the current exercise title.",
         "validationRules": { "minLength": 40, "maxLength": 20000 }

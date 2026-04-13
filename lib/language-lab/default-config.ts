@@ -2,13 +2,101 @@ export const LANGUAGE_LAB_CATEGORY_CODE = "language-lab";
 
 export const LANGUAGE_LAB_SETTING_KEYS = {
   geminiApiKey: "language_lab.gemini_api_key",
+  registeredModelsJson: "language_lab.registered_models_json",
+  buddyConversationModelId: "language_lab.buddy_conversation_model_id",
+  roleplayModelId: "language_lab.roleplay_model_id",
+  pronunciationModelId: "language_lab.pronunciation_model_id",
   buddySystemPrompt: "language_lab.buddy_system_prompt",
   roleplaySystemPrompt: "language_lab.roleplay_system_prompt",
   pronunciationSystemPrompt: "language_lab.pronunciation_system_prompt",
   speakingTestSystemPrompt: "language_lab.speaking_test_system_prompt",
 } as const;
 
+export type LanguageLabRegisteredModel = {
+  name: string;
+  modelId: string;
+};
+
+function isRegisteredModelEntry(value: unknown): value is LanguageLabRegisteredModel {
+  return Boolean(value)
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && typeof (value as { name?: unknown }).name === "string"
+    && typeof (value as { modelId?: unknown }).modelId === "string";
+}
+
+export function normalizeLanguageLabRegisteredModels(rawValue: unknown): LanguageLabRegisteredModel[] {
+  let candidate = rawValue;
+
+  if (typeof rawValue === "string") {
+    const normalized = rawValue.trim();
+    if (!normalized) {
+      return [...LANGUAGE_LAB_DEFAULT_CONFIG.registeredModels];
+    }
+
+    try {
+      candidate = JSON.parse(normalized);
+    } catch {
+      return [...LANGUAGE_LAB_DEFAULT_CONFIG.registeredModels];
+    }
+  }
+
+  if (!Array.isArray(candidate)) {
+    return [...LANGUAGE_LAB_DEFAULT_CONFIG.registeredModels];
+  }
+
+  const seenModelIds = new Set<string>();
+  const normalizedModels = candidate
+    .filter(isRegisteredModelEntry)
+    .map((entry) => ({
+      name: entry.name.trim(),
+      modelId: entry.modelId.trim(),
+    }))
+    .filter((entry) => entry.name.length > 0 && entry.modelId.length > 0)
+    .filter((entry) => {
+      if (seenModelIds.has(entry.modelId)) {
+        return false;
+      }
+
+      seenModelIds.add(entry.modelId);
+      return true;
+    });
+
+  return normalizedModels.length > 0
+    ? normalizedModels
+    : [...LANGUAGE_LAB_DEFAULT_CONFIG.registeredModels];
+}
+
+export function buildLanguageLabRegisteredModelsJson(
+  models: readonly LanguageLabRegisteredModel[] = LANGUAGE_LAB_DEFAULT_CONFIG.registeredModels,
+) {
+  return JSON.stringify(models, null, 2);
+}
+
 export const LANGUAGE_LAB_DEFAULT_CONFIG = {
+  registeredModels: [
+    {
+      name: "General Flash Lite",
+      modelId: "gemini-2.5-flash-lite",
+    },
+    {
+      name: "Buddy Flash Lite Preview",
+      modelId: "gemini-3.1-flash-lite-preview",
+    },
+    {
+      name: "Audio Flash",
+      modelId: "gemini-2.5-flash",
+    },
+    {
+      name: "Buddy Live Audio Preview",
+      modelId: "gemini-2.5-flash-native-audio-preview-09-2025",
+    },
+  ] satisfies LanguageLabRegisteredModel[],
+  selectedModels: {
+    buddyConversation: "gemini-3.1-flash-lite-preview",
+    roleplay: "gemini-2.5-flash-lite",
+    pronunciation: "gemini-2.5-flash",
+  },
   prompts: {
     buddy: `You are Buddy, a friendly German language tutor.
 

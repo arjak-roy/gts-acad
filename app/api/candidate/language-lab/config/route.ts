@@ -24,6 +24,11 @@ export async function GET(request: NextRequest) {
         pronunciationAnalysis: settings.pronunciationSystemPrompt,
         speakingTest: settings.speakingTestSystemPrompt,
       },
+      models: {
+        buddyConversation: settings.buddyConversationModelId,
+        roleplay: settings.roleplayModelId,
+        pronunciation: settings.pronunciationModelId,
+      },
     });
 
     return withCors(request, response, ["GET", "OPTIONS"]);

@@ -925,6 +925,7 @@ model Batch {
   assessments        Assessment[]
   assessmentAttempts AssessmentAttempt[]
   performanceMetrics PerformanceMetric[]
+  pronunciationAttempts PronunciationAttempt[]
   roleplays          Roleplay[]
   trainerPmsLogs     TrainerPmsLog[]
   batchContentMappings    BatchContentMapping[]
@@ -973,6 +974,7 @@ model Learner {
   basicDetails               CandidateBasicDetails?
   documents                  CandidateDocument[]
   performanceMetrics         PerformanceMetric[]
+  pronunciationAttempts      PronunciationAttempt[]
   roleplays                  Roleplay[]
   interviews                 Interview[]
   assessmentAttempts         AssessmentAttempt[]
@@ -1230,6 +1232,68 @@ model PerformanceMetric {
   @@map("performance_metrics")
 }
 
+model LanguageLabWord {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("word_id")
+  word                 String                @map("word_text") @db.VarChar(255)
+  normalizedWord       String                @unique(map: "language_lab_words_normalized_word_key") @map("normalized_word") @db.VarChar(255)
+  englishMeaning       String?               @map("english_meaning") @db.VarChar(255)
+  phonetic             String?               @db.VarChar(255)
+  difficulty           Int                   @default(1)
+  source               String                @default("manual") @db.VarChar(50)
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  pronunciationAttempts PronunciationAttempt[]
+
+  @@index([isActive, word], map: "idx_language_lab_words_active_word")
+  @@map("language_lab_words")
+}
+
+model PronunciationAttempt {
+  id                 String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("pronunciation_attempt_id")
+  managedWordId      String?                       @db.Uuid @map("word_id")
+  learnerId          String                        @db.Uuid @map("candidate_id")
+  batchId            String                        @db.Uuid @map("batch_id")
+  source             String                        @default("pronunciation_lesson") @db.VarChar(80)
+  modelId            String?                       @map("model_id") @db.VarChar(120)
+  targetWord         String                        @map("target_word") @db.VarChar(255)
+  targetEnglish      String?                       @map("target_english") @db.VarChar(255)
+  targetPhonetic     String?                       @map("target_phonetic") @db.VarChar(255)
+  overallScore       Int                           @default(0) @map("overall_score")
+  heardText          String?                       @map("heard_text")
+  strengths          Json                          @default("[]")
+  priorities         Json                          @default("[]")
+  nextTryInstruction String?                       @map("next_try_instruction")
+  metadata           Json                          @default("{}")
+  createdAt          DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  managedWord        LanguageLabWord?              @relation(fields: [managedWordId], references: [id], onDelete: SetNull)
+  learner            Learner                       @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  batch              Batch                         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  phonemeBreakdown   PronunciationAttemptPhoneme[]
+
+  @@index([batchId, createdAt], map: "idx_pronunciation_attempts_batch_created")
+  @@index([learnerId, createdAt], map: "idx_pronunciation_attempts_candidate_created")
+  @@index([managedWordId, createdAt], map: "idx_pronunciation_attempts_word_created")
+  @@map("pronunciation_attempts")
+}
+
+model PronunciationAttemptPhoneme {
+  id        String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("pronunciation_attempt_phoneme_id")
+  attemptId String               @db.Uuid @map("attempt_id")
+  sortOrder Int                  @default(0) @map("sort_order")
+  phoneme   String               @db.VarChar(64)
+  status    String               @db.VarChar(20)
+  observed  String?              @db.VarChar(255)
+  lipShape  String?              @map("lip_shape")
+  tip       String?
+  startMs   Int                  @default(0) @map("start_ms")
+  endMs     Int                  @default(0) @map("end_ms")
+  attempt   PronunciationAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId, sortOrder], map: "idx_pronunciation_attempt_phonemes_attempt")
+  @@map("pronunciation_attempt_phonemes")
+}
+
 model Roleplay {
   id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("roleplay_id")
   batchId      String          @db.Uuid @map("batch_id")
@@ -1243,6 +1307,8 @@ model Roleplay {
   learner      Learner         @relation(fields: [learnerId], references: [id], onDelete: Cascade)
   trainer      TrainerProfile? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
 
+  @@index([batchId, occurredAt], map: "idx_roleplays_batch_occurred")
+  @@index([learnerId, occurredAt], map: "idx_roleplays_candidate_occurred")
   @@map("roleplays")
 }
 
