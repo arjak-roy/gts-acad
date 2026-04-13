@@ -17,13 +17,14 @@ import {
   LanguageLabWordProgressPanel,
 } from "./language-lab-live-panels";
 import { LanguageLabSettingsPanel } from "./language-lab-settings-panel";
+import { LanguageLabVocabBankPanel } from "./language-lab-vocab-bank-panel";
 
 type LanguageLabSectionProps = {
   title: string;
   description: string;
 };
 
-type LanguageLabView = "settings" | "personas" | "word-progress" | "pronunciation" | "roleplay";
+type LanguageLabView = "settings" | "personas" | "vocab-bank" | "word-progress" | "pronunciation" | "roleplay";
 
 const VIEW_OPTIONS: Array<{
   id: LanguageLabView;
@@ -42,6 +43,12 @@ const VIEW_OPTIONS: Array<{
     label: "Buddy Personas",
     detail: "Reusable course personas, language rules, and prompts",
     icon: MessageSquareText,
+  },
+  {
+    id: "vocab-bank",
+    label: "Vocab Bank",
+    detail: "Bulk upload, manual edits, and rollout control",
+    icon: Workflow,
   },
   {
     id: "word-progress",
@@ -101,7 +108,7 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             {VIEW_OPTIONS.map((option) => (
               <SectionToggleButton
                 key={option.id}
@@ -118,6 +125,7 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
 
       {selectedView === "settings" ? <LanguageLabSettingsPanel /> : null}
       {selectedView === "personas" ? <LanguageLabBuddyPersonasPanel /> : null}
+  {selectedView === "vocab-bank" ? <LanguageLabVocabBankPanel /> : null}
       {selectedView === "word-progress" ? <LanguageLabWordProgressPanel /> : null}
       {selectedView === "pronunciation" ? <LanguageLabPronunciationAnalyticsPanel /> : null}
       {selectedView === "roleplay" ? <LanguageLabRoleplayAnalyticsPanel /> : null}

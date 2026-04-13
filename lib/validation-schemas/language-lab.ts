@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { LANGUAGE_LAB_VOCAB_IMPORT_MAX_ROWS } from "@/lib/language-lab/vocab-bank";
+
 const booleanishSchema = z.union([z.boolean(), z.string(), z.number()]).transform((value, context) => {
   if (typeof value === "boolean") {
     return value;
@@ -28,6 +30,116 @@ const booleanishSchema = z.union([z.boolean(), z.string(), z.number()]).transfor
 });
 
 const metadataSchema = z.record(z.string(), z.unknown()).optional().default({});
+
+function parseRequiredCsvString(
+  value: unknown,
+  context: z.RefinementCtx,
+  options: { label: string; maxLength: number },
+) {
+  const normalized = typeof value === "string" ? value.trim() : String(value ?? "").trim();
+
+  if (!normalized) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${options.label} is required.`,
+    });
+
+    return z.NEVER;
+  }
+
+  if (normalized.length > options.maxLength) {
+    context.addIssue({
+      code: z.ZodIssueCode.too_big,
+      maximum: options.maxLength,
+      type: "string",
+      inclusive: true,
+      message: `${options.label} must be ${options.maxLength} characters or fewer.`,
+    });
+
+    return z.NEVER;
+  }
+
+  return normalized;
+}
+
+function parseOptionalCsvString(value: unknown, context: z.RefinementCtx, maxLength: number, fallback = "") {
+  const normalized = typeof value === "string" ? value.trim() : String(value ?? "").trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (normalized.length > maxLength) {
+    context.addIssue({
+      code: z.ZodIssueCode.too_big,
+      maximum: maxLength,
+      type: "string",
+      inclusive: true,
+      message: `Value must be ${maxLength} characters or fewer.`,
+    });
+
+    return z.NEVER;
+  }
+
+  return normalized;
+}
+
+function parseOptionalCsvDifficulty(value: unknown, context: z.RefinementCtx) {
+  const normalized = typeof value === "string" ? value.trim() : String(value ?? "").trim();
+
+  if (!normalized) {
+    return 1;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 5) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Difficulty must be an integer between 1 and 5.",
+    });
+
+    return z.NEVER;
+  }
+
+  return parsed;
+}
+
+function parseOptionalCsvIsActive(value: unknown, context: z.RefinementCtx) {
+  if (value === undefined || value === null) {
+    return true;
+  }
+
+  if (typeof value === "string" && value.trim().length === 0) {
+    return true;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  context.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: "isActive must be a boolean value.",
+  });
+
+  return z.NEVER;
+}
 
 const phonemeFeedbackSchema = z.object({
   phoneme: z.string().trim().min(1).max(64),
@@ -114,6 +226,24 @@ export const updateLanguageLabWordSchema = z.object({
   isActive: booleanishSchema.optional(),
 });
 
+export const languageLabVocabImportRowSchema = z.object({
+  rowNumber: z.coerce.number().int().min(2),
+  word: z.unknown().transform((value, context) => parseRequiredCsvString(value, context, { label: "Word", maxLength: 255 })),
+  englishMeaning: z.unknown().transform((value, context) => parseOptionalCsvString(value, context, 255)),
+  phonetic: z.unknown().transform((value, context) => parseOptionalCsvString(value, context, 255)),
+  difficulty: z.unknown().transform((value, context) => parseOptionalCsvDifficulty(value, context)),
+  source: z.unknown().transform((value, context) => parseOptionalCsvString(value, context, 50, "bulk_upload")),
+  isActive: z.unknown().transform((value, context) => parseOptionalCsvIsActive(value, context)),
+});
+
+export const commitLanguageLabVocabImportSchema = z.object({
+  fileName: z.string().trim().max(255).optional().default(""),
+  rows: z
+    .array(languageLabVocabImportRowSchema)
+    .min(1, "Preview at least one valid row before importing.")
+    .max(LANGUAGE_LAB_VOCAB_IMPORT_MAX_ROWS, `Upload at most ${LANGUAGE_LAB_VOCAB_IMPORT_MAX_ROWS} rows at a time.`),
+});
+
 export const createPronunciationAttemptSchema = z.object({
   batchId: z.string().trim().min(1).optional(),
   source: z.string().trim().min(1).max(80).optional().default("pronunciation_lesson"),
@@ -154,5 +284,7 @@ export type UpdateBuddyPersonaInput = z.infer<typeof updateBuddyPersonaSchema>;
 export type LanguageLabAnalyticsFiltersInput = z.infer<typeof languageLabAnalyticsFiltersSchema>;
 export type CreateLanguageLabWordInput = z.infer<typeof createLanguageLabWordSchema>;
 export type UpdateLanguageLabWordInput = z.infer<typeof updateLanguageLabWordSchema>;
+export type LanguageLabVocabImportRowInput = z.infer<typeof languageLabVocabImportRowSchema>;
+export type CommitLanguageLabVocabImportInput = z.infer<typeof commitLanguageLabVocabImportSchema>;
 export type CreatePronunciationAttemptInput = z.infer<typeof createPronunciationAttemptSchema>;
 export type CreateRoleplaySummaryInput = z.infer<typeof createRoleplaySummarySchema>;

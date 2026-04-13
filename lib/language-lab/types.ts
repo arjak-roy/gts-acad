@@ -13,6 +13,60 @@ export type LanguageLabWordItem = {
   lastPracticedAt: string | null;
 };
 
+export type LanguageLabVocabBankImportIssue = {
+  field: string | null;
+  message: string;
+};
+
+export type LanguageLabVocabBankImportRowInput = {
+  word: string;
+  englishMeaning: string;
+  phonetic: string;
+  difficulty: string;
+  source: string;
+  isActive: string;
+};
+
+export type LanguageLabVocabBankImportNormalizedRow = {
+  rowNumber: number;
+  word: string;
+  englishMeaning: string;
+  phonetic: string;
+  difficulty: number;
+  source: string;
+  isActive: boolean;
+};
+
+export type LanguageLabVocabBankImportRow = {
+  rowNumber: number;
+  status: "create" | "update" | "error";
+  input: LanguageLabVocabBankImportRowInput;
+  normalizedWord: string | null;
+  existingWordId: string | null;
+  existingWord: string | null;
+  normalizedData: LanguageLabVocabBankImportNormalizedRow | null;
+  issues: LanguageLabVocabBankImportIssue[];
+};
+
+export type LanguageLabVocabBankImportPreview = {
+  fileName: string;
+  headers: string[];
+  totalRows: number;
+  createCount: number;
+  updateCount: number;
+  errorCount: number;
+  actionableCount: number;
+  hasBlockingErrors: boolean;
+  rows: LanguageLabVocabBankImportRow[];
+};
+
+export type LanguageLabVocabBankImportCommitResult = {
+  fileName: string;
+  createdCount: number;
+  updatedCount: number;
+  totalCount: number;
+};
+
 export type LanguageLabBuddyPersonaCourseAssignment = {
   courseId: string;
   courseName: string;

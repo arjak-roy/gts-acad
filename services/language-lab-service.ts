@@ -11,6 +11,7 @@ import type {
   LanguageLabWordItem,
   LanguageLabWordProgressAnalytics,
 } from "@/lib/language-lab/types";
+import { normalizeLanguageLabWord } from "@/lib/language-lab/vocab-bank";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
   CreateLanguageLabWordInput,
@@ -72,10 +73,6 @@ type CandidateLanguageLabContext = {
   batchCode: string;
   batchName: string;
 };
-
-function normalizeLanguageLabWord(value: string) {
-  return value.trim().toLowerCase().replace(/[^\p{Letter}\p{Number}]+/gu, "").trim();
-}
 
 function trimToNull(value: string | null | undefined) {
   const normalized = value?.trim() ?? "";

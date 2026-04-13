@@ -1,20 +1,16 @@
 "use client";
 
-import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useDeferredValue, useEffect, useState } from "react";
-import { Loader2, PencilLine, Plus, RefreshCcw, Save, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { Loader2, RefreshCcw, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type {
   LanguageLabAnalyticsFilterOption,
   LanguageLabPronunciationAnalytics,
   LanguageLabRoleplayAnalytics,
-  LanguageLabWordItem,
   LanguageLabWordProgressAnalytics,
 } from "@/lib/language-lab/types";
 import { cn } from "@/lib/utils";
@@ -24,24 +20,10 @@ type ApiResponse<T> = {
   error?: string;
 };
 
-type ManagedWordFilters = {
-  search: string;
-  isActive: "all" | "active" | "inactive";
-};
-
 type AnalyticsFilters = {
   search: string;
   batchId: string;
   learnerId: string;
-};
-
-type ManagedWordDraft = {
-  word: string;
-  englishMeaning: string;
-  phonetic: string;
-  difficulty: string;
-  source: string;
-  isActive: boolean;
 };
 
 type AnalyticsFilterOptions = {
@@ -52,22 +34,10 @@ type AnalyticsFilterOptions = {
 const SELECT_CLASS_NAME =
   "flex h-11 w-full rounded-2xl border border-[#dde1e6] bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
 
-const TEXTAREA_CLASS_NAME =
-  "flex min-h-[116px] w-full rounded-2xl border border-[#dde1e6] bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
-
 const EMPTY_ANALYTICS_FILTERS: AnalyticsFilters = {
   search: "",
   batchId: "",
   learnerId: "",
-};
-
-const EMPTY_WORD_DRAFT: ManagedWordDraft = {
-  word: "",
-  englishMeaning: "",
-  phonetic: "",
-  difficulty: "1",
-  source: "manual",
-  isActive: true,
 };
 
 const EMPTY_FILTER_OPTIONS: AnalyticsFilterOptions = {
@@ -118,11 +88,6 @@ function formatMetric(value: number | null, suffix = "") {
   }).format(value)}${suffix}`;
 }
 
-function formatDifficultyStars(value: number) {
-  const clamped = Math.min(5, Math.max(1, value));
-  return Array.from({ length: clamped }, () => "* ").join("").trim();
-}
-
 function buildQueryString(params: Record<string, string | number | boolean | null | undefined>) {
   const searchParams = new URLSearchParams();
 
@@ -153,17 +118,6 @@ async function readApi<T>(input: RequestInfo | URL, init?: RequestInit): Promise
   return body.data;
 }
 
-function toWordDraft(word: LanguageLabWordItem): ManagedWordDraft {
-  return {
-    word: word.word,
-    englishMeaning: word.englishMeaning ?? "",
-    phonetic: word.phonetic ?? "",
-    difficulty: String(word.difficulty),
-    source: word.source,
-    isActive: word.isActive,
-  };
-}
-
 function scoreTone(value: number | null) {
   if (value === null) {
     return "text-slate-500";
@@ -181,43 +135,12 @@ function scoreTone(value: number | null) {
 }
 
 export function LanguageLabWordProgressPanel() {
-  const [wordFilters, setWordFilters] = useState<ManagedWordFilters>({ search: "", isActive: "all" });
-  const [catalog, setCatalog] = useState<LanguageLabWordItem[]>([]);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
-
   const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsFilters>(EMPTY_ANALYTICS_FILTERS);
   const [analytics, setAnalytics] = useState<LanguageLabWordProgressAnalytics | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
-  const [draft, setDraft] = useState<ManagedWordDraft>(EMPTY_WORD_DRAFT);
-  const [editingWord, setEditingWord] = useState<LanguageLabWordItem | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const deferredCatalogSearch = useDeferredValue(wordFilters.search);
   const deferredAnalyticsSearch = useDeferredValue(analyticsFilters.search);
-
-  const loadCatalog = useCallback(async () => {
-    setIsCatalogLoading(true);
-    setCatalogError(null);
-
-    try {
-      const query = buildQueryString({
-        search: deferredCatalogSearch,
-        isActive:
-          wordFilters.isActive === "all"
-            ? undefined
-            : wordFilters.isActive === "active",
-      });
-      const nextCatalog = await readApi<LanguageLabWordItem[]>(`/api/language-lab/words${query ? `?${query}` : ""}`);
-      setCatalog(nextCatalog);
-    } catch (error) {
-      setCatalogError(error instanceof Error ? error.message : "Failed to load managed words.");
-    } finally {
-      setIsCatalogLoading(false);
-    }
-  }, [deferredCatalogSearch, wordFilters.isActive]);
 
   const loadAnalytics = useCallback(async () => {
     setIsAnalyticsLoading(true);
@@ -242,73 +165,8 @@ export function LanguageLabWordProgressPanel() {
   }, [analyticsFilters.batchId, analyticsFilters.learnerId, deferredAnalyticsSearch]);
 
   useEffect(() => {
-    void loadCatalog();
-  }, [loadCatalog]);
-
-  useEffect(() => {
     void loadAnalytics();
   }, [loadAnalytics]);
-
-  const handleDraftFieldChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      const { name, value } = event.target;
-
-      setDraft((current) => ({
-        ...current,
-        [name]: value,
-      }));
-    },
-    [],
-  );
-
-  const resetDraft = useCallback(() => {
-    setEditingWord(null);
-    setDraft(EMPTY_WORD_DRAFT);
-  }, []);
-
-  const startEditing = useCallback((word: LanguageLabWordItem) => {
-    setEditingWord(word);
-    setDraft(toWordDraft(word));
-  }, []);
-
-  const handleSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setIsSaving(true);
-
-      try {
-        const difficulty = Number.parseInt(draft.difficulty, 10);
-        const payload = {
-          word: draft.word,
-          englishMeaning: draft.englishMeaning,
-          phonetic: draft.phonetic,
-          difficulty: Number.isFinite(difficulty) ? difficulty : 1,
-          source: draft.source,
-          isActive: draft.isActive,
-        };
-
-        await readApi<LanguageLabWordItem>(
-          editingWord ? `/api/language-lab/words/${editingWord.id}` : "/api/language-lab/words",
-          {
-            method: editingWord ? "PATCH" : "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          },
-        );
-
-        toast.success(editingWord ? "Managed word updated." : "Managed word created.");
-        resetDraft();
-        await Promise.all([loadCatalog(), loadAnalytics()]);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to save managed word.");
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [draft, editingWord, loadAnalytics, loadCatalog, resetDraft],
-  );
 
   const filterOptions = analytics?.filterOptions ?? EMPTY_FILTER_OPTIONS;
 
@@ -316,7 +174,7 @@ export function LanguageLabWordProgressPanel() {
     <div className="space-y-6">
       <AnalyticsFiltersCard
         title="Word progress filters"
-        description="Tune the analytics by learner or batch without affecting the managed-word catalog." 
+        description="Tune the analytics by learner or batch. Catalog edits and CSV uploads now live in the Vocab Bank view."
         filters={analyticsFilters}
         filterOptions={filterOptions}
         isLoading={isAnalyticsLoading}
@@ -368,188 +226,29 @@ export function LanguageLabWordProgressPanel() {
 
       {analyticsError ? <InlineErrorCard title="Word progress analytics unavailable" message={analyticsError} onRetry={() => void loadAnalytics()} /> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.95fr)]">
-        <Card className="border-[#d8e1ef] bg-white">
-          <CardHeader className="space-y-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="info">Managed word catalog</Badge>
-                  <Badge variant="default">Admin source of truth</Badge>
-                </div>
-                <CardTitle className="mt-3 text-2xl font-black tracking-tight text-slate-950">Academy-controlled vocabulary</CardTitle>
-                <CardDescription className="max-w-2xl text-sm font-medium leading-6 text-slate-600">
-                  This catalog drives candidate pronunciation fetches. Edit the canonical word, phonetic spelling, and rollout status here.
-                </CardDescription>
-              </div>
-
-              <Button type="button" variant="secondary" onClick={() => void loadCatalog()} disabled={isCatalogLoading}>
-                {isCatalogLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                Refresh catalog
-              </Button>
+      <Card className="overflow-hidden border-[#d8e1ef] bg-[radial-gradient(circle_at_top_right,rgba(248,154,28,0.08),transparent_30%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+        <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between lg:p-7">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="info">Analytics only</Badge>
+              <Badge variant="accent">Vocab Bank owns edits</Badge>
             </div>
+            <p className="mt-4 text-2xl font-black tracking-tight text-slate-950">Word Progress now focuses on coverage and learner performance</p>
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+              Use this view to inspect which words are being practiced, who is struggling, and where the catalog needs intervention.
+              Create, edit, archive, and bulk upload vocabulary in the dedicated Vocab Bank tab.
+            </p>
+          </div>
 
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-              <Input
-                value={wordFilters.search}
-                onChange={(event) => setWordFilters((current) => ({ ...current, search: event.target.value }))}
-                placeholder="Search word, meaning, or phonetic"
-              />
-              <select
-                className={SELECT_CLASS_NAME}
-                value={wordFilters.isActive}
-                onChange={(event) =>
-                  setWordFilters((current) => ({
-                    ...current,
-                    isActive: event.target.value as ManagedWordFilters["isActive"],
-                  }))
-                }
-              >
-                <option value="all">All rollout states</option>
-                <option value="active">Active only</option>
-                <option value="inactive">Inactive only</option>
-              </select>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            {catalogError ? <InlineErrorCard title="Managed words unavailable" message={catalogError} onRetry={() => void loadCatalog()} /> : null}
-
-            {isCatalogLoading ? (
-              <LoadingRows label="Loading managed words" />
-            ) : catalog.length === 0 ? (
-              <EmptyStateCard
-                title="No managed words found"
-                description="Adjust the catalog filters or create the first academy-managed pronunciation word."
-              />
-            ) : (
-              <div className="space-y-3">
-                {catalog.map((word) => (
-                  <div
-                    key={word.id}
-                    className="rounded-[24px] border border-[#e5ebf4] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4 shadow-sm"
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-black tracking-tight text-slate-950">{word.word}</p>
-                          <Badge variant={word.isActive ? "success" : "warning"}>{word.isActive ? "Active" : "Inactive"}</Badge>
-                          <Badge variant="default">{formatDifficultyStars(word.difficulty)}</Badge>
-                          <Badge variant="accent">{word.source.replaceAll("_", " ")}</Badge>
-                        </div>
-                        <p className="text-sm font-medium text-slate-600">
-                          {word.englishMeaning || "No English meaning yet"}
-                          {word.phonetic ? ` • ${word.phonetic}` : ""}
-                        </p>
-                      </div>
-
-                      <CanAccess permission="lms.edit">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => startEditing(word)}>
-                          <PencilLine className="h-4 w-4" />
-                          Edit word
-                        </Button>
-                      </CanAccess>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
-                      <MiniStat label="Attempts" value={String(word.pronunciationAttemptsCount)} />
-                      <MiniStat label="Last practiced" value={formatCompactDate(word.lastPracticedAt)} />
-                      <MiniStat label="Updated" value={formatCompactDate(word.updatedAt)} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <CanAccess permission="lms.edit" fallback={<ReadOnlyWordCard />}>
-          <Card className="border-[#d8e1ef] bg-white">
-            <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="accent">{editingWord ? "Edit managed word" : "New managed word"}</Badge>
-                <Badge variant="info">Academy CRUD</Badge>
-              </div>
-              <CardTitle className="mt-3 text-2xl font-black tracking-tight text-slate-950">
-                {editingWord ? `Update ${editingWord.word}` : "Create pronunciation word"}
-              </CardTitle>
-              <CardDescription className="text-sm font-medium leading-6 text-slate-600">
-                Keep the academy catalog clean and explicit so Flutter can hydrate from a consistent word source.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)}>
-                <label className="block space-y-2">
-                  <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">German word</span>
-                  <Input name="word" value={draft.word} onChange={handleDraftFieldChange} placeholder="Guten Morgen" required />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">English meaning</span>
-                  <Input
-                    name="englishMeaning"
-                    value={draft.englishMeaning}
-                    onChange={handleDraftFieldChange}
-                    placeholder="Good morning"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Phonetic guidance</span>
-                  <textarea
-                    name="phonetic"
-                    value={draft.phonetic}
-                    onChange={handleDraftFieldChange}
-                    className={TEXTAREA_CLASS_NAME}
-                    placeholder="GOO-ten MOR-gen"
-                  />
-                </label>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block space-y-2">
-                    <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Difficulty</span>
-                    <select className={SELECT_CLASS_NAME} name="difficulty" value={draft.difficulty} onChange={handleDraftFieldChange}>
-                      <option value="1">1 • Starter</option>
-                      <option value="2">2 • Core vocabulary</option>
-                      <option value="3">3 • Mid challenge</option>
-                      <option value="4">4 • Advanced</option>
-                      <option value="5">5 • Expert</option>
-                    </select>
-                  </label>
-
-                  <label className="block space-y-2">
-                    <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Rollout</span>
-                    <select
-                      className={SELECT_CLASS_NAME}
-                      name="isActive"
-                      value={draft.isActive ? "true" : "false"}
-                      onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.value === "true" }))}
-                    >
-                      <option value="true">Active for candidates</option>
-                      <option value="false">Inactive draft</option>
-                    </select>
-                  </label>
-                </div>
-
-                <label className="block space-y-2">
-                  <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Source tag</span>
-                  <Input name="source" value={draft.source} onChange={handleDraftFieldChange} placeholder="manual" />
-                </label>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" disabled={isSaving}>
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingWord ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {editingWord ? "Save changes" : "Create word"}
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={resetDraft} disabled={isSaving}>
-                    Reset form
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </CanAccess>
-      </div>
+          <div className="rounded-[22px] border border-[#dce6f5] bg-white/90 px-5 py-4 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Management surface</p>
+            <p className="mt-2 text-lg font-bold text-slate-950">Vocab Bank</p>
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+              Switch to the Vocab Bank view above for CSV imports, manual CRUD, and rollout control.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-[#d8e1ef] bg-white">
         <CardHeader>
@@ -1161,22 +860,5 @@ function InlineErrorCard({ title, message, onRetry }: { title: string; message: 
         </Button>
       </div>
     </div>
-  );
-}
-
-function ReadOnlyWordCard() {
-  return (
-    <Card className="border-[#d8e1ef] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="default">View only</Badge>
-          <Badge variant="info">Managed words protected</Badge>
-        </div>
-        <CardTitle className="mt-3 text-2xl font-black tracking-tight text-slate-950">Edit access required</CardTitle>
-        <CardDescription className="text-sm font-medium leading-6 text-slate-600">
-          You can review the academy-managed catalog and analytics here, but creating or editing words requires the Language Lab edit permission.
-        </CardDescription>
-      </CardHeader>
-    </Card>
   );
 }
