@@ -625,7 +625,7 @@ function VocabBankImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] w-[min(96vw,72rem)] max-w-6xl flex-col overflow-hidden p-0">
+      <DialogContent className="flex max-h-[92vh] w-[min(96vw,72rem)] max-w-6xl flex-col overflow-hidden p-0">
         <DialogHeader>
           <DialogTitle>Bulk Upload Vocab Bank</DialogTitle>
           <DialogDescription>
@@ -633,7 +633,7 @@ function VocabBankImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-hidden px-6 py-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-6 py-5">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
             <Card className="border-[#d8e1ef] bg-slate-50">
               <CardHeader>
@@ -706,7 +706,7 @@ function VocabBankImportDialog({
             </div>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-[#d8e1ef] bg-white">
+          <div className="min-h-[320px] flex-1 overflow-auto rounded-[24px] border border-[#d8e1ef] bg-white">
             {!preview ? (
               <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-6 text-center">
                 <p className="text-sm font-semibold text-slate-900">Preview a CSV file to inspect row actions.</p>

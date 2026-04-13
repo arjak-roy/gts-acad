@@ -100,7 +100,7 @@ function toDraft(persona: LanguageLabBuddyPersonaItem): BuddyPersonaDraft {
     systemPrompt: persona.systemPrompt ?? "",
     welcomeMessage: persona.welcomeMessage ?? "",
     isActive: persona.isActive,
-    courseIds: persona.assignedCourses.map((course) => course.courseId),
+    courseIds: (persona.assignedCourses ?? []).map((course) => course.courseId),
   };
 }
 
@@ -127,6 +127,19 @@ function trimPreview(value: string | null | undefined, maxLength = 180) {
 
 function metricValue(value: number) {
   return new Intl.NumberFormat().format(value);
+}
+
+function formatShortDate(value: string | null | undefined) {
+  if (!value) {
+    return "Unknown update";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown update";
+  }
+
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(parsed);
 }
 
 export function LanguageLabBuddyPersonasPanel() {
@@ -252,11 +265,11 @@ export function LanguageLabBuddyPersonasPanel() {
 
   const activeCount = useMemo(() => personas.filter((persona) => persona.isActive).length, [personas]);
   const assignedCoursesCount = useMemo(
-    () => personas.reduce((total, persona) => total + persona.assignedCourses.length, 0),
+    () => personas.reduce((total, persona) => total + (persona.assignedCourses?.length ?? 0), 0),
     [personas],
   );
   const languageCount = useMemo(
-    () => new Set(personas.map((persona) => persona.languageCode.trim().toLowerCase()).filter(Boolean)).size,
+    () => new Set(personas.map((persona) => persona.languageCode?.trim().toLowerCase() ?? "").filter(Boolean)).size,
     [personas],
   );
 
@@ -348,60 +361,64 @@ export function LanguageLabBuddyPersonasPanel() {
               />
             ) : (
               <div className="space-y-3">
-                {personas.map((persona) => (
-                  <div
-                    key={persona.id}
-                    className="rounded-[24px] border border-[#e5ebf4] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4 shadow-sm"
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-black tracking-tight text-slate-950">{persona.name}</p>
-                          <Badge variant={persona.isActive ? "success" : "warning"}>{persona.isActive ? "Active" : "Inactive"}</Badge>
-                          <Badge variant="accent">{persona.languageCode}</Badge>
-                          <Badge variant="default">{persona.assignedCourses.length} course{persona.assignedCourses.length === 1 ? "" : "s"}</Badge>
+                {personas.map((persona) => {
+                  const assignedCourses = persona.assignedCourses ?? [];
+
+                  return (
+                    <div
+                      key={persona.id}
+                      className="rounded-[24px] border border-[#e5ebf4] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-black tracking-tight text-slate-950">{persona.name}</p>
+                            <Badge variant={persona.isActive ? "success" : "warning"}>{persona.isActive ? "Active" : "Inactive"}</Badge>
+                            <Badge variant="accent">{persona.languageCode || "Unknown locale"}</Badge>
+                            <Badge variant="default">{assignedCourses.length} course{assignedCourses.length === 1 ? "" : "s"}</Badge>
+                          </div>
+                          <p className="text-sm font-medium text-slate-600">
+                            {persona.language || "Unknown language"}
+                            {persona.description ? ` • ${trimPreview(persona.description, 120)}` : " • No description yet"}
+                          </p>
                         </div>
-                        <p className="text-sm font-medium text-slate-600">
-                          {persona.language}
-                          {persona.description ? ` • ${trimPreview(persona.description, 120)}` : " • No description yet"}
-                        </p>
+
+                        <CanAccess permission="lms.edit">
+                          <Button type="button" variant="ghost" size="sm" onClick={() => startEditing(persona)}>
+                            <PencilLine className="h-4 w-4" />
+                            Edit persona
+                          </Button>
+                        </CanAccess>
                       </div>
 
-                      <CanAccess permission="lms.edit">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => startEditing(persona)}>
-                          <PencilLine className="h-4 w-4" />
-                          Edit persona
-                        </Button>
-                      </CanAccess>
-                    </div>
+                      {persona.welcomeMessage ? (
+                        <div className="mt-4 rounded-[20px] border border-[#ecf1f8] bg-white px-4 py-3">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Welcome message</p>
+                          <p className="mt-2 text-sm font-medium leading-6 text-slate-700">{trimPreview(persona.welcomeMessage, 220)}</p>
+                        </div>
+                      ) : null}
 
-                    {persona.welcomeMessage ? (
-                      <div className="mt-4 rounded-[20px] border border-[#ecf1f8] bg-white px-4 py-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Welcome message</p>
-                        <p className="mt-2 text-sm font-medium leading-6 text-slate-700">{trimPreview(persona.welcomeMessage, 220)}</p>
-                      </div>
-                    ) : null}
+                      <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_auto]">
+                        <div className="flex flex-wrap gap-2">
+                          {assignedCourses.length > 0 ? (
+                            assignedCourses.map((course) => (
+                              <Badge key={course.courseId} variant={course.isCourseActive ? "info" : "warning"}>
+                                {course.courseName}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Badge variant="default">No courses assigned</Badge>
+                          )}
+                        </div>
 
-                    <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_auto]">
-                      <div className="flex flex-wrap gap-2">
-                        {persona.assignedCourses.length > 0 ? (
-                          persona.assignedCourses.map((course) => (
-                            <Badge key={course.courseId} variant={course.isCourseActive ? "info" : "warning"}>
-                              {course.courseName}
-                            </Badge>
-                          ))
-                        ) : (
-                          <Badge variant="default">No courses assigned</Badge>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                        <Languages className="h-4 w-4 text-[#0d3b84]" />
-                        Updated {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(persona.updatedAt))}
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <Languages className="h-4 w-4 text-[#0d3b84]" />
+                          Updated {formatShortDate(persona.updatedAt)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -500,20 +517,27 @@ export function LanguageLabBuddyPersonasPanel() {
                         const selected = draft.courseIds.includes(course.id);
 
                         return (
-                          <button
+                          <div
                             key={course.id}
-                            type="button"
+                            role="checkbox"
+                            aria-checked={selected}
+                            tabIndex={0}
                             onClick={() => toggleCourse(course.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleCourse(course.id);
+                              }
+                            }}
                             className={cn(
-                              "rounded-[20px] border px-4 py-4 text-left transition-colors",
+                              "rounded-[20px] border px-4 py-4 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]",
                               selected
                                 ? "border-[#0d3b84] bg-[#edf4ff]"
                                 : "border-[#dde1e6] bg-white hover:border-[#c8d4e3] hover:bg-slate-50",
                             )}
-                            aria-pressed={selected}
                           >
                             <div className="flex items-start gap-3">
-                              <Checkbox checked={selected} className="mt-0.5" />
+                              <Checkbox checked={selected} className="mt-0.5" tabIndex={-1} aria-hidden="true" />
                               <div className="min-w-0 flex-1 space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-bold text-slate-900">{course.name}</p>
@@ -527,7 +551,7 @@ export function LanguageLabBuddyPersonasPanel() {
                                 </p>
                               </div>
                             </div>
-                          </button>
+                          </div>
                         );
                       })
                     )}
