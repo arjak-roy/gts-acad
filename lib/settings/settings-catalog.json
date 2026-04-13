@@ -913,5 +913,80 @@
         ]
       }
     ]
+  },
+  {
+    "name": "Language Lab Settings",
+    "code": "language-lab",
+    "description": "Gemini runtime and shared system prompts returned to authenticated Flutter language-lab sessions.",
+    "icon": "Globe2",
+    "displayOrder": 110,
+    "isSystem": true,
+    "settings": [
+      {
+        "key": "language_lab.gemini_api_key",
+        "label": "Gemini API Key",
+        "description": "Stored academy-side and returned to authenticated candidate sessions for on-device Gemini execution.",
+        "type": "PASSWORD",
+        "defaultValue": null,
+        "isRequired": false,
+        "isEncrypted": true,
+        "isSystem": true,
+        "displayOrder": 10,
+        "groupName": "Gemini Runtime",
+        "helpText": "Leave blank while editing to keep the currently stored key."
+      },
+      {
+        "key": "language_lab.buddy_system_prompt",
+        "label": "Buddy System Prompt",
+        "description": "Primary system prompt for Buddy chat and Buddy live text responses.",
+        "type": "TEXTAREA",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 20,
+        "groupName": "System Prompts",
+        "helpText": "When empty in storage, the academy backend serves the built-in Buddy default prompt.",
+        "validationRules": { "minLength": 40, "maxLength": 20000 }
+      },
+      {
+        "key": "language_lab.roleplay_system_prompt",
+        "label": "Roleplay System Prompt",
+        "description": "Shared system prompt for the bakery roleplay flow in the Flutter app.",
+        "type": "TEXTAREA",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 30,
+        "groupName": "System Prompts",
+        "helpText": "When empty in storage, the academy backend serves the built-in roleplay default prompt.",
+        "validationRules": { "minLength": 40, "maxLength": 20000 }
+      },
+      {
+        "key": "language_lab.pronunciation_system_prompt",
+        "label": "Pronunciation Analysis Prompt",
+        "description": "System prompt used for phoneme-level pronunciation analysis.",
+        "type": "TEXTAREA",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 40,
+        "groupName": "System Prompts",
+        "helpText": "When empty in storage, the academy backend serves the built-in pronunciation default prompt.",
+        "validationRules": { "minLength": 40, "maxLength": 20000 }
+      },
+      {
+        "key": "language_lab.speaking_test_system_prompt",
+        "label": "Speaking Test Analysis Prompt",
+        "description": "System prompt template used for speaking-session analysis.",
+        "type": "TEXTAREA",
+        "defaultValue": "",
+        "isRequired": true,
+        "isSystem": true,
+        "displayOrder": 50,
+        "groupName": "System Prompts",
+        "helpText": "Supports the {{exerciseTitle}} placeholder for the current exercise title.",
+        "validationRules": { "minLength": 40, "maxLength": 20000 }
+      }
+    ]
   }
 ]

@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FlexibleCardGrid, FlexibleCardItem } from "@/components/ui/flexible-card-layout";
 import { cn } from "@/lib/utils";
 
+import { LanguageLabSettingsPanel } from "./language-lab-settings-panel";
 import { LANGUAGE_LAB_BATCHES, type LanguageLabBatch, type LanguageLabTone } from "./mock-data";
 
 type LanguageLabSectionProps = {
@@ -31,7 +32,7 @@ type LanguageLabSectionProps = {
   description: string;
 };
 
-type LanguageLabView = "overview" | "pronunciation" | "roleplay" | "vocabulary";
+type LanguageLabView = "overview" | "pronunciation" | "roleplay" | "vocabulary" | "settings";
 type LanguageLabPeriod = "4w" | "8w" | "cohort";
 
 const VIEW_OPTIONS: Array<{ id: LanguageLabView; label: string; detail: string }> = [
@@ -39,6 +40,7 @@ const VIEW_OPTIONS: Array<{ id: LanguageLabView; label: string; detail: string }
   { id: "pronunciation", label: "Pronunciation Analytics", detail: "Word-wise precision and phoneme cues" },
   { id: "roleplay", label: "Roleplay Lab", detail: "Scenario attempts, AI scoring, and tries" },
   { id: "vocabulary", label: "Vocabulary and Listening", detail: "Phrase mastery, dictation, and confidence" },
+  { id: "settings", label: "Buddy Settings", detail: "Gemini key and shared system prompts" },
 ];
 
 const PERIOD_OPTIONS: Array<{ id: LanguageLabPeriod; label: string }> = [
@@ -894,6 +896,7 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
   const [selectedBatchId, setSelectedBatchId] = useState(LANGUAGE_LAB_BATCHES[0]?.id ?? "");
   const [selectedView, setSelectedView] = useState<LanguageLabView>("overview");
   const [selectedPeriod, setSelectedPeriod] = useState<LanguageLabPeriod>("8w");
+  const isSettingsView = selectedView === "settings";
 
   const selectedBatch = useMemo(
     () => LANGUAGE_LAB_BATCHES.find((batch) => batch.id === selectedBatchId) ?? LANGUAGE_LAB_BATCHES[0],
@@ -911,25 +914,35 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-3xl">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="info">UI-only mock environment</Badge>
+                <Badge variant="info">{isSettingsView ? "Live admin configuration" : "UI-only mock environment"}</Badge>
                 <Badge variant="accent">Language Lab</Badge>
-                <Badge variant="success">Modern stakeholder preset</Badge>
+                <Badge variant="success">{isSettingsView ? "Academy-managed Gemini runtime" : "Modern stakeholder preset"}</Badge>
               </div>
               <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 lg:text-4xl">{title}</h1>
-              <p className="mt-3 text-sm font-medium leading-6 text-slate-600">{description}</p>
-              <p className="mt-3 text-sm font-semibold text-slate-500">Static, presentation-ready language analytics for pronunciation, roleplay, vocabulary, and listening.</p>
+              <p className="mt-3 text-sm font-medium leading-6 text-slate-600">
+                {isSettingsView
+                  ? "Manage the Gemini API key and shared system prompts that the Flutter candidate app pulls from the academy backend at runtime."
+                  : description}
+              </p>
+              <p className="mt-3 text-sm font-semibold text-slate-500">
+                {isSettingsView
+                  ? "Changes here affect Buddy, roleplay, pronunciation analysis, and speaking-test analysis without shipping prompt text inside the app."
+                  : "Static, presentation-ready language analytics for pronunciation, roleplay, vocabulary, and listening."}
+              </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <Button type="button" variant="secondary">
-                <BarChart3 className="h-4 w-4" />
-                Export Mock Scorecard
-              </Button>
-              <Button type="button">
-                <Sparkles className="h-4 w-4" />
-                Present AI Review
-              </Button>
-            </div>
+            {isSettingsView ? null : (
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="secondary">
+                  <BarChart3 className="h-4 w-4" />
+                  Export Mock Scorecard
+                </Button>
+                <Button type="button">
+                  <Sparkles className="h-4 w-4" />
+                  Present AI Review
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -946,38 +959,60 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
             </div>
 
             <div className="rounded-[28px] border border-[#e3e9f2] bg-white/90 p-5 shadow-sm backdrop-blur-sm">
-              <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mock batch</label>
-                  <select
-                    value={selectedBatch.id}
-                    onChange={(event) => setSelectedBatchId(event.target.value)}
-                    className="mt-2 h-11 w-full rounded-2xl border border-[#dde1e6] bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-[#0d3b84]"
-                  >
-                    {LANGUAGE_LAB_BATCHES.map((batch) => (
-                      <option key={batch.id} value={batch.id}>
-                        {batch.code} - {batch.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {PERIOD_OPTIONS.map((option) => (
-                    <PeriodPill key={option.id} isActive={selectedPeriod === option.id} label={option.label} onClick={() => setSelectedPeriod(option.id)} />
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Active track</p>
-                    <p className="mt-1 text-lg font-bold text-slate-950">{selectedBatch.track}</p>
+              {isSettingsView ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Candidate delivery</p>
+                        <p className="mt-1 text-lg font-bold text-slate-950">Authenticated runtime config</p>
+                      </div>
+                      <Badge variant="default">Global scope</Badge>
+                    </div>
+                    <p className="mt-3 text-sm font-medium leading-6 text-slate-600">
+                      The Flutter app keeps Gemini execution locally, but it now pulls the API key and system prompts from the academy backend instead of shipping them in the client bundle.
+                    </p>
                   </div>
-                  <Badge variant="default">{selectedBatch.snapshotLabel}</Badge>
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm font-semibold text-[#0d3b84]">
+                    This view is live configuration, not mock analytics.
+                  </div>
                 </div>
-                <p className="mt-3 text-sm font-medium leading-6 text-slate-600">{selectedBatch.summary}</p>
-              </div>
+              ) : (
+                <>
+                  <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mock batch</label>
+                      <select
+                        value={selectedBatch.id}
+                        onChange={(event) => setSelectedBatchId(event.target.value)}
+                        className="mt-2 h-11 w-full rounded-2xl border border-[#dde1e6] bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-[#0d3b84]"
+                      >
+                        {LANGUAGE_LAB_BATCHES.map((batch) => (
+                          <option key={batch.id} value={batch.id}>
+                            {batch.code} - {batch.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {PERIOD_OPTIONS.map((option) => (
+                        <PeriodPill key={option.id} isActive={selectedPeriod === option.id} label={option.label} onClick={() => setSelectedPeriod(option.id)} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Active track</p>
+                        <p className="mt-1 text-lg font-bold text-slate-950">{selectedBatch.track}</p>
+                      </div>
+                      <Badge variant="default">{selectedBatch.snapshotLabel}</Badge>
+                    </div>
+                    <p className="mt-3 text-sm font-medium leading-6 text-slate-600">{selectedBatch.summary}</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </CardContent>
@@ -987,6 +1022,7 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
       {selectedView === "pronunciation" ? <PronunciationPanel batch={selectedBatch} /> : null}
       {selectedView === "roleplay" ? <RoleplayPanel batch={selectedBatch} /> : null}
       {selectedView === "vocabulary" ? <VocabularyPanel batch={selectedBatch} /> : null}
+      {selectedView === "settings" ? <LanguageLabSettingsPanel /> : null}
     </div>
   );
 }
