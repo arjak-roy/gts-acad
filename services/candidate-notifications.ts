@@ -6,6 +6,7 @@ import {
   ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
   ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
   BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+  BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
   COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-defaults";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates";
@@ -460,6 +461,55 @@ export async function sendCandidateCourseEnrollmentNotification(input: {
             batchId: enrollment.batchId,
             batchCode: enrollment.batch.code,
             courseName: enrollment.batch.program.course.name,
+          },
+        }),
+    },
+  ]);
+}
+
+export async function sendCandidateBuddyPersonaAvailableNotification(input: {
+  learnerId: string;
+  batchId: string;
+  buddyPersonaName: string;
+  buddyLanguage: string;
+  actorUserId?: string | null;
+}) {
+  if (!isDatabaseConfigured) {
+    return createNotificationDispatchSummary({ skippedCount: 1 });
+  }
+
+  const portalContext = await getCandidatePortalContext();
+  const [recipient, batchContext] = await Promise.all([
+    resolveCandidateRecipient(input.learnerId),
+    getBatchCourseContext(input.batchId),
+  ]);
+
+  if (!recipient || !batchContext) {
+    return createNotificationDispatchSummary({ skippedCount: 1 });
+  }
+
+  return dispatchCandidateNotificationTasks([
+    {
+      label: `buddy-persona:${recipient.learnerCode}:${input.batchId}`,
+      run: () =>
+        sendCandidateTemplateEmail({
+          templateKey: BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
+          recipient,
+          actorUserId: input.actorUserId,
+          portalContext,
+          variables: {
+            buddyPersonaName: input.buddyPersonaName,
+            buddyLanguage: input.buddyLanguage,
+            courseName: batchContext.courseName,
+            programName: batchContext.programName,
+            batchName: batchContext.batchName,
+            loginUrl: portalContext.loginUrl,
+          },
+          metadata: {
+            batchId: batchContext.batchId,
+            batchCode: batchContext.batchCode,
+            courseName: batchContext.courseName,
+            buddyPersonaName: input.buddyPersonaName,
           },
         }),
     },

@@ -8,6 +8,7 @@ export const CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "candidate-welco
 export const INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY = "internal-user-welcome-credentials";
 export const USER_INVITATION_EMAIL_TEMPLATE_KEY = "user-invitation";
 export const COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY = "course-enrollment-confirmation";
+export const BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY = "buddy-persona-available";
 export const COURSE_COMPLETION_EMAIL_TEMPLATE_KEY = "course-completion";
 export const BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY = "batch-event-notification";
 export const ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY = "assessment-scheduled";
@@ -64,6 +65,11 @@ export const EMAIL_TEMPLATE_KEY_OPTIONS: EmailTemplateKeyOption[] = [
     key: COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
     label: "Course Enrollment Confirmation",
     description: "Email confirming successful enrollment in a course.",
+  },
+  {
+    key: BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
+    label: "Buddy Persona Available",
+    description: "Email sent when a course-specific Buddy persona is available to the learner.",
   },
   {
     key: COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,

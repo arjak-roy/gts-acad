@@ -13,6 +13,39 @@ export type LanguageLabWordItem = {
   lastPracticedAt: string | null;
 };
 
+export type LanguageLabBuddyPersonaCourseAssignment = {
+  courseId: string;
+  courseName: string;
+  courseStatus: string;
+  isCourseActive: boolean;
+  assignedAt: string;
+};
+
+export type LanguageLabBuddyPersonaItem = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  description: string | null;
+  language: string;
+  languageCode: string;
+  systemPrompt: string | null;
+  welcomeMessage: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  assignedCourses: LanguageLabBuddyPersonaCourseAssignment[];
+};
+
+export type CandidateBuddyPersona = {
+  id: string;
+  name: string;
+  description: string | null;
+  language: string;
+  languageCode: string;
+  systemPrompt: string | null;
+  welcomeMessage: string | null;
+};
+
 export type LanguageLabAnalyticsAppliedFilters = {
   search: string;
   batchId: string | null;

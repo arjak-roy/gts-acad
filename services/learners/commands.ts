@@ -21,7 +21,11 @@ import {
 } from "@/services/learners/internal-helpers";
 import { getCandidateProfileByUserIdService } from "@/services/learners/queries";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
-import { sendCandidateCourseEnrollmentNotification } from "@/services/candidate-notifications";
+import {
+  sendCandidateBuddyPersonaAvailableNotification,
+  sendCandidateCourseEnrollmentNotification,
+} from "@/services/candidate-notifications";
+import { resolveBuddyPersonaForBatchService } from "@/services/buddy-personas-service";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addRoleToUser } from "@/services/rbac-service";
 import { CandidateProfile } from "@/services/learners/types";
@@ -250,6 +254,28 @@ export async function createLearnerService(input: CreateLearnerInput) {
         } catch (error) {
           console.warn("Candidate course enrollment email dispatch failed.", error);
         }
+
+        const enrollmentBatchId = mappedLearner.activeEnrollments[0]?.batchId ?? null;
+        if (enrollmentBatchId) {
+          try {
+            const buddyPersona = await resolveBuddyPersonaForBatchService(enrollmentBatchId);
+
+            if (buddyPersona) {
+              const notificationSummary = await sendCandidateBuddyPersonaAvailableNotification({
+                learnerId: mappedLearner.id,
+                batchId: enrollmentBatchId,
+                buddyPersonaName: buddyPersona.name,
+                buddyLanguage: buddyPersona.language,
+              });
+
+              if (notificationSummary.failedCount > 0) {
+                console.warn("Candidate Buddy persona email partially failed.", notificationSummary);
+              }
+            }
+          } catch (error) {
+            console.warn("Candidate Buddy persona email dispatch failed.", error);
+          }
+        }
       }
 
       return mappedLearner;
@@ -385,6 +411,32 @@ export async function addLearnerEnrollmentService(learnerCode: string, input: Cr
       }
     } catch (error) {
       console.warn("Candidate course enrollment email dispatch failed.", error);
+    }
+
+    const enrollmentBatchId =
+      mappedLearner.activeEnrollments.find(
+        (enrollment) => enrollment.batchCode.toLowerCase() === normalizedBatchCode.toLowerCase(),
+      )?.batchId ?? null;
+
+    if (enrollmentBatchId) {
+      try {
+        const buddyPersona = await resolveBuddyPersonaForBatchService(enrollmentBatchId);
+
+        if (buddyPersona) {
+          const notificationSummary = await sendCandidateBuddyPersonaAvailableNotification({
+            learnerId: mappedLearner.id,
+            batchId: enrollmentBatchId,
+            buddyPersonaName: buddyPersona.name,
+            buddyLanguage: buddyPersona.language,
+          });
+
+          if (notificationSummary.failedCount > 0) {
+            console.warn("Candidate Buddy persona email partially failed.", notificationSummary);
+          }
+        }
+      } catch (error) {
+        console.warn("Candidate Buddy persona email dispatch failed.", error);
+      }
     }
 
     return mappedLearner;

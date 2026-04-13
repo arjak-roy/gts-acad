@@ -59,6 +59,37 @@ export const listLanguageLabWordsSchema = z.object({
   isActive: booleanishSchema.optional(),
 });
 
+export const buddyPersonaIdSchema = z.object({
+  personaId: z.string().trim().min(1, "Buddy persona ID is required."),
+});
+
+export const listBuddyPersonasSchema = z.object({
+  search: z.string().trim().max(120).optional().default(""),
+  isActive: booleanishSchema.optional(),
+});
+
+export const createBuddyPersonaSchema = z.object({
+  name: z.string().trim().min(1, "Persona name is required.").max(160),
+  description: z.string().trim().max(4000).optional().default(""),
+  language: z.string().trim().min(1, "Conversation language is required.").max(80),
+  languageCode: z.string().trim().min(1, "Language code is required.").max(20),
+  systemPrompt: z.string().trim().max(12_000).optional().default(""),
+  welcomeMessage: z.string().trim().max(2000).optional().default(""),
+  isActive: booleanishSchema.optional().default(true),
+  courseIds: z.array(z.string().trim().min(1)).max(200).optional().default([]),
+});
+
+export const updateBuddyPersonaSchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  description: z.string().trim().max(4000).optional(),
+  language: z.string().trim().min(1).max(80).optional(),
+  languageCode: z.string().trim().min(1).max(20).optional(),
+  systemPrompt: z.string().trim().max(12_000).optional(),
+  welcomeMessage: z.string().trim().max(2000).optional(),
+  isActive: booleanishSchema.optional(),
+  courseIds: z.array(z.string().trim().min(1)).max(200).optional(),
+});
+
 export const languageLabAnalyticsFiltersSchema = z.object({
   search: z.string().trim().max(120).optional().default(""),
   batchId: z.string().trim().min(1).optional(),
@@ -117,6 +148,9 @@ export const createRoleplaySummarySchema = z.object({
 });
 
 export type ListLanguageLabWordsInput = z.infer<typeof listLanguageLabWordsSchema>;
+export type ListBuddyPersonasInput = z.infer<typeof listBuddyPersonasSchema>;
+export type CreateBuddyPersonaInput = z.infer<typeof createBuddyPersonaSchema>;
+export type UpdateBuddyPersonaInput = z.infer<typeof updateBuddyPersonaSchema>;
 export type LanguageLabAnalyticsFiltersInput = z.infer<typeof languageLabAnalyticsFiltersSchema>;
 export type CreateLanguageLabWordInput = z.infer<typeof createLanguageLabWordSchema>;
 export type UpdateLanguageLabWordInput = z.infer<typeof updateLanguageLabWordSchema>;

@@ -9,6 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 import {
+  LanguageLabBuddyPersonasPanel,
+} from "./language-lab-buddy-personas-panel";
+import {
   LanguageLabPronunciationAnalyticsPanel,
   LanguageLabRoleplayAnalyticsPanel,
   LanguageLabWordProgressPanel,
@@ -20,7 +23,7 @@ type LanguageLabSectionProps = {
   description: string;
 };
 
-type LanguageLabView = "settings" | "word-progress" | "pronunciation" | "roleplay";
+type LanguageLabView = "settings" | "personas" | "word-progress" | "pronunciation" | "roleplay";
 
 const VIEW_OPTIONS: Array<{
   id: LanguageLabView;
@@ -33,6 +36,12 @@ const VIEW_OPTIONS: Array<{
     label: "Buddy Settings",
     detail: "Gemini runtime, prompts, and model control",
     icon: Bot,
+  },
+  {
+    id: "personas",
+    label: "Buddy Personas",
+    detail: "Reusable course personas, language rules, and prompts",
+    icon: MessageSquareText,
   },
   {
     id: "word-progress",
@@ -92,7 +101,7 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {VIEW_OPTIONS.map((option) => (
               <SectionToggleButton
                 key={option.id}
@@ -108,6 +117,7 @@ export function LanguageLabSection({ title, description }: LanguageLabSectionPro
       </Card>
 
       {selectedView === "settings" ? <LanguageLabSettingsPanel /> : null}
+      {selectedView === "personas" ? <LanguageLabBuddyPersonasPanel /> : null}
       {selectedView === "word-progress" ? <LanguageLabWordProgressPanel /> : null}
       {selectedView === "pronunciation" ? <LanguageLabPronunciationAnalyticsPanel /> : null}
       {selectedView === "roleplay" ? <LanguageLabRoleplayAnalyticsPanel /> : null}

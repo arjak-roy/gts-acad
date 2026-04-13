@@ -4,6 +4,7 @@ import {
   ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
   ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
   BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+  BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
   CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
   COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
   COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
@@ -24,6 +25,7 @@ export {
   ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
   ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
   BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+  BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
   CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
   COURSE_COMPLETION_EMAIL_TEMPLATE_KEY,
   COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
@@ -330,6 +332,44 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
             <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Start Date:</strong> {{startDate}}</p>
           </div>
           <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Go to Course</a>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
+    name: "Buddy Persona Available",
+    description: "Email sent when a course-specific Buddy persona is ready for a learner.",
+    subject: "Meet your Buddy for {{courseName}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "Your Buddy persona is now ready for {{courseName}}.",
+      "",
+      "Buddy: {{buddyPersonaName}}",
+      "Conversation language: {{buddyLanguage}}",
+      "Program: {{programName}}",
+      "Batch: {{batchName}}",
+      "",
+      "Sign in to start the conversation: {{loginUrl}}",
+      "If you need help, contact {{supportEmail}}.",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Your Buddy is ready</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, your course Buddy for <strong>{{courseName}}</strong> is now available.</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Buddy:</strong> {{buddyPersonaName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Conversation language:</strong> {{buddyLanguage}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+          </div>
+          <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">Open Buddy</a>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Need help? Contact {{supportEmail}}</p>
         </div>
       </div>

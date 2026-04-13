@@ -835,6 +835,7 @@ model Course {
   courseAssessmentLinks CourseAssessmentLink[]
   questionBankQuestions QuestionBankQuestion[]
   trainerAssignments    TrainerCourseAssignment[]
+  buddyPersonaAssignments BuddyPersonaCourseAssignment[]
   curricula             Curriculum[]
 
   @@index([isActive], map: "idx_courses_active")
@@ -852,6 +853,37 @@ model TrainerCourseAssignment {
   @@id([trainerId, courseId])
   @@index([courseId], map: "idx_trainer_course_assignments_course")
   @@map("trainer_course_assignments")
+}
+
+model BuddyPersona {
+  id              String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("buddy_persona_id")
+  name            String                        @map("persona_name") @db.VarChar(160)
+  normalizedName  String                        @unique(map: "buddy_personas_normalized_name_key") @map("normalized_name") @db.VarChar(160)
+  description     String?                       @map("persona_description")
+  language        String                        @map("conversation_language") @db.VarChar(80)
+  languageCode    String                        @map("language_code") @db.VarChar(20)
+  systemPrompt    String?                       @map("system_prompt")
+  welcomeMessage  String?                       @map("welcome_message")
+  isActive        Boolean                       @default(true) @map("is_active")
+  createdAt       DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  courseAssignments BuddyPersonaCourseAssignment[]
+
+  @@index([isActive], map: "idx_buddy_personas_active")
+  @@index([languageCode, isActive], map: "idx_buddy_personas_language_active")
+  @@map("buddy_personas")
+}
+
+model BuddyPersonaCourseAssignment {
+  buddyPersonaId String       @db.Uuid @map("buddy_persona_id")
+  courseId       String       @unique(map: "buddy_persona_course_assignments_course_id_key") @db.Uuid @map("course_id")
+  assignedAt     DateTime     @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  buddyPersona   BuddyPersona @relation(fields: [buddyPersonaId], references: [id], onDelete: Cascade)
+  course         Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([buddyPersonaId, courseId])
+  @@index([courseId], map: "idx_buddy_persona_course_assignments_course")
+  @@map("buddy_persona_course_assignments")
 }
 
 model Program {

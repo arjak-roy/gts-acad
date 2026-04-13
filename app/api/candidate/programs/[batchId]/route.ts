@@ -5,6 +5,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireCandidateSession } from "@/lib/auth/route-guards";
 import { batchIdSchema } from "@/lib/validation-schemas/batches";
 import { listBatchAssessmentsService, listBatchContentService } from "@/services/batch-content-service";
+import { resolveBuddyPersonaForBatchService } from "@/services/buddy-personas-service";
 import { getCandidateCurriculaForBatchService } from "@/services/curriculum-service";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
 import { listScheduleEventsService } from "@/services/schedule-service";
@@ -51,11 +52,12 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       throw new Error("Program not found.");
     }
 
-    const [curriculumWorkspace, assessments, resources, scheduleResponse] = await Promise.all([
+    const [curriculumWorkspace, assessments, resources, scheduleResponse, buddyPersona] = await Promise.all([
       getCandidateCurriculaForBatchService({ batchId, learnerId: profile.id }),
       listBatchAssessmentsService(batchId, { publishedOnly: true }),
       listBatchContentService(batchId, { publishedOnly: true, includeAssignedResources: true }),
       listScheduleEventsService({ batchId, page: 1, pageSize: 100 }),
+      resolveBuddyPersonaForBatchService(batchId),
     ]);
 
     const curriculum = {
@@ -86,6 +88,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const response = apiSuccess({
       enrollment,
       curriculum,
+      buddyPersona,
       assessments: candidateAssessments,
       resources,
       schedule: scheduleResponse.items,
