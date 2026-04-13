@@ -187,6 +187,9 @@ export const createBuddyPersonaSchema = z.object({
   languageCode: z.string().trim().min(1, "Language code is required.").max(20),
   systemPrompt: z.string().trim().max(12_000).optional().default(""),
   welcomeMessage: z.string().trim().max(2000).optional().default(""),
+  supportsTables: booleanishSchema.optional().default(true),
+  supportsEmailActions: booleanishSchema.optional().default(false),
+  supportsSpeech: booleanishSchema.optional().default(true),
   isActive: booleanishSchema.optional().default(true),
   courseIds: z.array(z.string().trim().min(1)).max(200).optional().default([]),
 });
@@ -198,8 +201,20 @@ export const updateBuddyPersonaSchema = z.object({
   languageCode: z.string().trim().min(1).max(20).optional(),
   systemPrompt: z.string().trim().max(12_000).optional(),
   welcomeMessage: z.string().trim().max(2000).optional(),
+  supportsTables: booleanishSchema.optional(),
+  supportsEmailActions: booleanishSchema.optional(),
+  supportsSpeech: booleanishSchema.optional(),
   isActive: booleanishSchema.optional(),
   courseIds: z.array(z.string().trim().min(1)).max(200).optional(),
+});
+
+const buddyEmailActionTargetSchema = z.enum(["ACADEMY_SUPPORT", "TRAINER"]);
+
+export const requestBuddyEmailActionSchema = z.object({
+  batchId: z.string().trim().min(1, "Batch ID is required."),
+  target: buddyEmailActionTargetSchema,
+  subject: z.string().trim().min(3, "Email subject is required.").max(160),
+  message: z.string().trim().min(10, "Email message is required.").max(4000),
 });
 
 export const languageLabAnalyticsFiltersSchema = z.object({
@@ -281,6 +296,7 @@ export type ListLanguageLabWordsInput = z.infer<typeof listLanguageLabWordsSchem
 export type ListBuddyPersonasInput = z.infer<typeof listBuddyPersonasSchema>;
 export type CreateBuddyPersonaInput = z.infer<typeof createBuddyPersonaSchema>;
 export type UpdateBuddyPersonaInput = z.infer<typeof updateBuddyPersonaSchema>;
+export type RequestBuddyEmailActionInput = z.infer<typeof requestBuddyEmailActionSchema>;
 export type LanguageLabAnalyticsFiltersInput = z.infer<typeof languageLabAnalyticsFiltersSchema>;
 export type CreateLanguageLabWordInput = z.infer<typeof createLanguageLabWordSchema>;
 export type UpdateLanguageLabWordInput = z.infer<typeof updateLanguageLabWordSchema>;

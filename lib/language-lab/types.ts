@@ -84,6 +84,9 @@ export type LanguageLabBuddyPersonaItem = {
   languageCode: string;
   systemPrompt: string | null;
   welcomeMessage: string | null;
+  supportsTables: boolean;
+  supportsEmailActions: boolean;
+  supportsSpeech: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +101,9 @@ export type CandidateBuddyPersona = {
   languageCode: string;
   systemPrompt: string | null;
   welcomeMessage: string | null;
+  supportsTables: boolean;
+  supportsEmailActions: boolean;
+  supportsSpeech: boolean;
 };
 
 export type LanguageLabAnalyticsAppliedFilters = {

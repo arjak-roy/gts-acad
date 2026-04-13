@@ -26,6 +26,9 @@ const buddyPersonaSelect = {
   languageCode: true,
   systemPrompt: true,
   welcomeMessage: true,
+  supportsTables: true,
+  supportsEmailActions: true,
+  supportsSpeech: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -57,6 +60,9 @@ const candidateBuddyPersonaSelect = {
   languageCode: true,
   systemPrompt: true,
   welcomeMessage: true,
+  supportsTables: true,
+  supportsEmailActions: true,
+  supportsSpeech: true,
   isActive: true,
 } satisfies Prisma.BuddyPersonaSelect;
 
@@ -88,6 +94,9 @@ function mapBuddyPersona(record: BuddyPersonaRecord): LanguageLabBuddyPersonaIte
     languageCode: record.languageCode,
     systemPrompt: record.systemPrompt,
     welcomeMessage: record.welcomeMessage,
+    supportsTables: record.supportsTables,
+    supportsEmailActions: record.supportsEmailActions,
+    supportsSpeech: record.supportsSpeech,
     isActive: record.isActive,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -110,10 +119,13 @@ function mapCandidateBuddyPersona(record: CandidateBuddyPersonaRecord): Candidat
     languageCode: record.languageCode,
     systemPrompt: record.systemPrompt,
     welcomeMessage: record.welcomeMessage,
+    supportsTables: record.supportsTables,
+    supportsEmailActions: record.supportsEmailActions,
+    supportsSpeech: record.supportsSpeech,
   };
 }
 
-async function ensureCoursesExist(tx: Prisma.TransactionClient, courseIds: string[]) {
+async function ensureCoursesExist(tx: Prisma.TransactionClient | typeof prisma, courseIds: string[]) {
   if (courseIds.length === 0) {
     return;
   }
@@ -218,6 +230,9 @@ function createPersonaAuditMetadata(persona: LanguageLabBuddyPersonaItem) {
     buddyPersonaName: persona.name,
     language: persona.language,
     languageCode: persona.languageCode,
+    supportsTables: persona.supportsTables,
+    supportsEmailActions: persona.supportsEmailActions,
+    supportsSpeech: persona.supportsSpeech,
     isActive: persona.isActive,
     courseIds: persona.assignedCourses.map((course) => course.courseId),
   };
@@ -296,6 +311,9 @@ export async function createBuddyPersonaService(
           languageCode: input.languageCode.trim(),
           systemPrompt: trimToNull(input.systemPrompt),
           welcomeMessage: trimToNull(input.welcomeMessage),
+          supportsTables: input.supportsTables,
+          supportsEmailActions: input.supportsEmailActions,
+          supportsSpeech: input.supportsSpeech,
           isActive: input.isActive,
         },
         select: {
@@ -357,6 +375,9 @@ export async function createBuddyPersonaService(
         languageCode: persona.languageCode,
         systemPrompt: persona.systemPrompt,
         welcomeMessage: persona.welcomeMessage,
+        supportsTables: persona.supportsTables,
+        supportsEmailActions: persona.supportsEmailActions,
+        supportsSpeech: persona.supportsSpeech,
       }, options?.actorUserId ?? null);
     }
 
@@ -380,34 +401,34 @@ export async function updateBuddyPersonaService(
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const existing = await tx.buddyPersona.findUnique({
-        where: { id: personaId },
-        select: {
-          id: true,
-          name: true,
-          normalizedName: true,
-          isActive: true,
-          courseAssignments: {
-            select: {
-              courseId: true,
-            },
+    const existing = await prisma.buddyPersona.findUnique({
+      where: { id: personaId },
+      select: {
+        id: true,
+        name: true,
+        normalizedName: true,
+        isActive: true,
+        courseAssignments: {
+          select: {
+            courseId: true,
           },
         },
-      });
+      },
+    });
 
-      if (!existing) {
-        throw new Error("Buddy persona not found.");
-      }
+    if (!existing) {
+      throw new Error("Buddy persona not found.");
+    }
 
-      const currentCourseIds = existing.courseAssignments.map((assignment) => assignment.courseId);
-      const nextCourseIds = input.courseIds === undefined ? currentCourseIds : uniqueCourseIds(input.courseIds);
+    const currentCourseIds = existing.courseAssignments.map((assignment) => assignment.courseId);
+    const nextCourseIds = input.courseIds === undefined ? currentCourseIds : uniqueCourseIds(input.courseIds);
+    const nextIsActive = input.isActive ?? existing.isActive;
+    const addedCourseIds = nextCourseIds.filter((courseId) => !currentCourseIds.includes(courseId));
+    const notifyCourseIds = !existing.isActive && nextIsActive ? nextCourseIds : nextIsActive ? addedCourseIds : [];
 
-      await ensureCoursesExist(tx, nextCourseIds);
+    await ensureCoursesExist(prisma, nextCourseIds);
 
-      const nextIsActive = input.isActive ?? existing.isActive;
-      const addedCourseIds = nextCourseIds.filter((courseId) => !currentCourseIds.includes(courseId));
-
+    await prisma.$transaction(async (tx) => {
       if (input.courseIds !== undefined) {
         await tx.buddyPersonaCourseAssignment.deleteMany({
           where: {
@@ -464,53 +485,54 @@ export async function updateBuddyPersonaService(
           ...(input.languageCode !== undefined ? { languageCode: input.languageCode.trim() } : {}),
           ...(input.systemPrompt !== undefined ? { systemPrompt: trimToNull(input.systemPrompt) } : {}),
           ...(input.welcomeMessage !== undefined ? { welcomeMessage: trimToNull(input.welcomeMessage) } : {}),
+          ...(input.supportsTables !== undefined ? { supportsTables: input.supportsTables } : {}),
+          ...(input.supportsEmailActions !== undefined
+            ? { supportsEmailActions: input.supportsEmailActions }
+            : {}),
+          ...(input.supportsSpeech !== undefined ? { supportsSpeech: input.supportsSpeech } : {}),
           ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         },
       });
-
-      const record = await tx.buddyPersona.findUnique({
-        where: { id: personaId },
-        select: buddyPersonaSelect,
-      });
-
-      if (!record) {
-        throw new Error("Buddy persona not found after update.");
-      }
-
-      const persona = mapBuddyPersona(record);
-      const notifyCourseIds = !existing.isActive && nextIsActive ? nextCourseIds : nextIsActive ? addedCourseIds : [];
-
-      return {
-        persona,
-        notifyCourseIds,
-      };
     });
+
+    const persona = await getBuddyPersonaByIdService(personaId);
+
+    if (!persona) {
+      throw new Error("Buddy persona not found after update.");
+    }
 
     await createAuditLogEntry({
       entityType: AUDIT_ENTITY_TYPE.SYSTEM,
-      entityId: result.persona.id,
+      entityId: persona.id,
       action: AUDIT_ACTION_TYPE.UPDATED,
       actorUserId: options?.actorUserId ?? null,
-      message: `Buddy persona ${result.persona.name} updated.`,
-      metadata: createPersonaAuditMetadata(result.persona),
+      message: `Buddy persona ${persona.name} updated.`,
+      metadata: createPersonaAuditMetadata(persona),
     });
 
-    if (result.notifyCourseIds.length > 0 && result.persona.isActive) {
-      await notifyLearnersAboutBuddyPersona(result.notifyCourseIds, {
-        id: result.persona.id,
-        name: result.persona.name,
-        description: result.persona.description,
-        language: result.persona.language,
-        languageCode: result.persona.languageCode,
-        systemPrompt: result.persona.systemPrompt,
-        welcomeMessage: result.persona.welcomeMessage,
+    if (notifyCourseIds.length > 0 && persona.isActive) {
+      await notifyLearnersAboutBuddyPersona(notifyCourseIds, {
+        id: persona.id,
+        name: persona.name,
+        description: persona.description,
+        language: persona.language,
+        languageCode: persona.languageCode,
+        systemPrompt: persona.systemPrompt,
+        welcomeMessage: persona.welcomeMessage,
+        supportsTables: persona.supportsTables,
+        supportsEmailActions: persona.supportsEmailActions,
+        supportsSpeech: persona.supportsSpeech,
       }, options?.actorUserId ?? null);
     }
 
-    return result.persona;
+    return persona;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new Error("A Buddy persona with this name already exists.");
+    }
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      throw new Error("Buddy persona not found.");
     }
 
     throw error;

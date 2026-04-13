@@ -6,6 +6,7 @@ import {
   ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY,
   ASSESSMENT_SCHEDULED_EMAIL_TEMPLATE_KEY,
   BATCH_EVENT_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+  BUDDY_EMAIL_ACTION_EMAIL_TEMPLATE_KEY,
   BUDDY_PERSONA_AVAILABLE_EMAIL_TEMPLATE_KEY,
   COURSE_ENROLLMENT_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-defaults";
@@ -46,6 +47,15 @@ type CandidateRecipient = {
   learnerCode: string;
   recipientName: string;
   recipientEmail: string;
+};
+
+type BuddyEmailActionTarget = "ACADEMY_SUPPORT" | "TRAINER";
+
+type BuddyEmailActionRecipient = {
+  recipientName: string;
+  recipientEmail: string;
+  recipientUserId: string | null;
+  targetLabel: string;
 };
 
 export type CandidateNotificationDispatchSummary = {
@@ -368,6 +378,76 @@ async function resolveActiveBatchRecipients(batchId: string): Promise<{
   };
 }
 
+async function resolveBuddyEmailActionRecipient(
+  batchId: string,
+  target: BuddyEmailActionTarget,
+  portalContext: CandidatePortalContext,
+): Promise<BuddyEmailActionRecipient> {
+  if (target === "ACADEMY_SUPPORT") {
+    const supportEmail = portalContext.supportEmail.trim();
+
+    if (!supportEmail) {
+      throw new Error("Support email is not configured.");
+    }
+
+    return {
+      recipientName: "Academy Support",
+      recipientEmail: supportEmail,
+      recipientUserId: null,
+      targetLabel: "academy support",
+    };
+  }
+
+  const batch = await prisma.batch.findUnique({
+    where: { id: batchId },
+    select: {
+      trainer: {
+        select: {
+          userId: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+      trainers: {
+        where: {
+          isActive: true,
+        },
+        take: 1,
+        orderBy: {
+          joinedAt: "asc",
+        },
+        select: {
+          userId: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const trainer = batch?.trainer ?? batch?.trainers[0] ?? null;
+  const trainerEmail = trainer?.user.email?.trim() ?? "";
+
+  if (!trainer || !trainerEmail) {
+    throw new Error("Assigned trainer contact is not available for this batch.");
+  }
+
+  return {
+    recipientName: trainer.user.name?.trim() || "Assigned Trainer",
+    recipientEmail: trainerEmail,
+    recipientUserId: trainer.userId,
+    targetLabel: "assigned trainer",
+  };
+}
+
 export async function sendCandidateCourseEnrollmentNotification(input: {
   learnerId: string;
   actorUserId?: string | null;
@@ -514,6 +594,87 @@ export async function sendCandidateBuddyPersonaAvailableNotification(input: {
         }),
     },
   ]);
+}
+
+export async function sendCandidateBuddyEmailActionNotification(input: {
+  learnerId: string;
+  batchId: string;
+  buddyPersonaName: string;
+  senderName: string;
+  senderLearnerCode: string;
+  senderEmail: string;
+  target: BuddyEmailActionTarget;
+  emailSubject: string;
+  candidateMessage: string;
+  actorUserId?: string | null;
+}) {
+  if (!isDatabaseConfigured) {
+    throw new Error("Buddy email actions require a configured database.");
+  }
+
+  const portalContext = await getCandidatePortalContext();
+  const [batchContext, recipient] = await Promise.all([
+    getBatchCourseContext(input.batchId),
+    resolveBuddyEmailActionRecipient(input.batchId, input.target, portalContext),
+  ]);
+
+  if (!batchContext) {
+    throw new Error("Batch not found.");
+  }
+
+  const template = await renderEmailTemplateByKeyService(BUDDY_EMAIL_ACTION_EMAIL_TEMPLATE_KEY, {
+    appName: portalContext.appName,
+    recipientName: recipient.recipientName,
+    portalUrl: portalContext.portalUrl,
+    loginUrl: portalContext.loginUrl,
+    supportEmail: portalContext.supportEmail,
+    targetLabel: recipient.targetLabel,
+    buddyPersonaName: input.buddyPersonaName,
+    senderName: input.senderName,
+    senderLearnerCode: input.senderLearnerCode,
+    senderEmail: input.senderEmail,
+    courseName: batchContext.courseName,
+    programName: batchContext.programName,
+    batchName: batchContext.batchName,
+    emailSubject: input.emailSubject,
+    candidateMessage: input.candidateMessage,
+  });
+
+  await deliverLoggedEmail({
+    to: recipient.recipientEmail,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+    category: "SYSTEM",
+    templateKey: BUDDY_EMAIL_ACTION_EMAIL_TEMPLATE_KEY,
+    metadata: {
+      learnerId: input.learnerId,
+      senderLearnerCode: input.senderLearnerCode,
+      senderEmail: input.senderEmail,
+      batchId: batchContext.batchId,
+      batchCode: batchContext.batchCode,
+      courseName: batchContext.courseName,
+      programName: batchContext.programName,
+      buddyPersonaName: input.buddyPersonaName,
+      buddyEmailActionTarget: input.target,
+      buddyEmailActionTargetLabel: recipient.targetLabel,
+      buddyEmailActionRecipientName: recipient.recipientName,
+      buddyEmailActionRecipientEmail: recipient.recipientEmail,
+      buddyEmailActionRecipientUserId: recipient.recipientUserId,
+      emailSubject: input.emailSubject,
+    },
+    audit: {
+      entityType: "CANDIDATE",
+      entityId: input.learnerId,
+      actorUserId: input.actorUserId ?? null,
+    },
+  });
+
+  return {
+    target: input.target,
+    targetLabel: recipient.targetLabel,
+    recipientName: recipient.recipientName,
+  };
 }
 
 export async function sendCandidateBatchEventNotifications(input: BatchEventNotificationInput) {

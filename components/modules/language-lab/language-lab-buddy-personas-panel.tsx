@@ -40,17 +40,15 @@ type BuddyPersonaDraft = {
   languageCode: string;
   systemPrompt: string;
   welcomeMessage: string;
+  supportsTables: boolean;
+  supportsEmailActions: boolean;
+  supportsSpeech: boolean;
   isActive: boolean;
   courseIds: string[];
 };
 
-/**
- * Languages supported by the Flutter german-buddy STT/TTS pipeline.
- * languageCode must be a valid BCP-47 tag:
- *   - TTS: flutter_tts uses it directly via _resolveTtsLocale
- *   - STT: speech_to_text uses English recognition for en-* codes,
- *          German recognition for all other codes (de-*, …)
- */
+type BuddyCapabilityKey = "supportsTables" | "supportsEmailActions" | "supportsSpeech";
+
 const CONVERSATION_LANGUAGE_OPTIONS: Array<{
   label: string;
   language: string;
@@ -62,6 +60,29 @@ const CONVERSATION_LANGUAGE_OPTIONS: Array<{
   { label: "German (Switzerland)", language: "German (Switzerland)",languageCode: "de-CH", sttNote: "STT: German" },
   { label: "English (US)",         language: "English",             languageCode: "en-US", sttNote: "STT: English" },
   { label: "English (UK)",         language: "English (UK)",        languageCode: "en-GB", sttNote: "STT: English" },
+  { label: "Japanese (Japan)",     language: "Japanese",            languageCode: "ja-JP", sttNote: "STT: Japanese" },
+];
+
+const BUDDY_CAPABILITY_OPTIONS: Array<{
+  key: BuddyCapabilityKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "supportsTables",
+    label: "Structured tables",
+    description: "Allow Buddy to return table payloads for grouped comparisons, vocabulary sets, and schedules.",
+  },
+  {
+    key: "supportsEmailActions",
+    label: "Email actions",
+    description: "Allow Buddy to draft confirmed email actions that route through the academy mail pipeline.",
+  },
+  {
+    key: "supportsSpeech",
+    label: "Voice and speech",
+    description: "Show Buddy as speech-capable in the candidate app so locale-aware TTS and STT stay enabled.",
+  },
 ];
 
 const SELECT_CLASS_NAME =
@@ -77,6 +98,9 @@ const EMPTY_DRAFT: BuddyPersonaDraft = {
   languageCode: "de-DE",
   systemPrompt: "",
   welcomeMessage: "",
+  supportsTables: true,
+  supportsEmailActions: false,
+  supportsSpeech: true,
   isActive: true,
   courseIds: [],
 };
@@ -119,6 +143,9 @@ function toDraft(persona: LanguageLabBuddyPersonaItem): BuddyPersonaDraft {
     languageCode: persona.languageCode,
     systemPrompt: persona.systemPrompt ?? "",
     welcomeMessage: persona.welcomeMessage ?? "",
+    supportsTables: persona.supportsTables,
+    supportsEmailActions: persona.supportsEmailActions,
+    supportsSpeech: persona.supportsSpeech,
     isActive: persona.isActive,
     courseIds: (persona.assignedCourses ?? []).map((course) => course.courseId),
   };
@@ -234,6 +261,10 @@ export function LanguageLabBuddyPersonasPanel() {
     setDraft((current) => ({ ...current, isActive: checked }));
   }, []);
 
+  const handleCapabilityChange = useCallback((key: BuddyCapabilityKey, checked: boolean) => {
+    setDraft((current) => ({ ...current, [key]: checked }));
+  }, []);
+
   const toggleCourse = useCallback((courseId: string) => {
     setDraft((current) => ({
       ...current,
@@ -266,6 +297,9 @@ export function LanguageLabBuddyPersonasPanel() {
           languageCode: draft.languageCode.replaceAll("_", "-"),
           systemPrompt: draft.systemPrompt,
           welcomeMessage: draft.welcomeMessage,
+          supportsTables: draft.supportsTables,
+          supportsEmailActions: draft.supportsEmailActions,
+          supportsSpeech: draft.supportsSpeech,
           isActive: draft.isActive,
           courseIds: draft.courseIds,
         };
@@ -406,6 +440,9 @@ export function LanguageLabBuddyPersonasPanel() {
                             <Badge variant={persona.isActive ? "success" : "warning"}>{persona.isActive ? "Active" : "Inactive"}</Badge>
                             <Badge variant="accent">{persona.languageCode || "Unknown locale"}</Badge>
                             <Badge variant="default">{assignedCourses.length} course{assignedCourses.length === 1 ? "" : "s"}</Badge>
+                            {persona.supportsTables ? <Badge variant="info">Tables</Badge> : null}
+                            {persona.supportsEmailActions ? <Badge variant="warning">Email actions</Badge> : null}
+                            {persona.supportsSpeech ? <Badge variant="success">Voice</Badge> : null}
                           </div>
                           <p className="text-sm font-medium text-slate-600">
                             {persona.language || "Unknown language"}
@@ -465,7 +502,7 @@ export function LanguageLabBuddyPersonasPanel() {
                 {editingPersona ? `Update ${editingPersona.name}` : "Create Buddy persona"}
               </CardTitle>
               <CardDescription className="text-sm font-medium leading-6 text-slate-600">
-                Define the conversation language, the behavior prompt, and the course assignments that should resolve for candidate Buddy sessions.
+                Define the conversation language, enabled capabilities, the behavior prompt, and the course assignments that should resolve for candidate Buddy sessions.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -523,6 +560,37 @@ export function LanguageLabBuddyPersonasPanel() {
                     placeholder="The first thing Buddy should sound like when a learner opens the chat."
                   />
                 </label>
+
+                <div className="space-y-3 rounded-[24px] border border-[#dde1e6] bg-white px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Capabilities</p>
+                      <p className="mt-1 text-sm font-medium text-slate-600">Control which response modes this persona can use in the candidate Buddy experience.</p>
+                    </div>
+                    <Badge variant="default">
+                      {[
+                        draft.supportsTables,
+                        draft.supportsEmailActions,
+                        draft.supportsSpeech,
+                      ].filter(Boolean).length} enabled
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3">
+                    {BUDDY_CAPABILITY_OPTIONS.map((capability) => (
+                      <div key={capability.key} className="flex items-start gap-3 rounded-[18px] border border-[#e5ebf4] bg-slate-50 px-4 py-3">
+                        <Checkbox
+                          checked={draft[capability.key]}
+                          onCheckedChange={(checked) => handleCapabilityChange(capability.key, checked === true)}
+                        />
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{capability.label}</p>
+                          <p className="text-xs font-medium leading-5 text-slate-500">{capability.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 <label className="block space-y-2">
                   <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">System prompt override</span>
@@ -706,7 +774,7 @@ function ReadOnlyBuddyPersonaCard() {
         </div>
         <CardTitle className="mt-3 text-2xl font-black tracking-tight text-slate-950">Edit access required</CardTitle>
         <CardDescription className="text-sm font-medium leading-6 text-slate-600">
-          You can review the Buddy persona catalog and its course assignments here, but creating or editing personas requires the Language Lab edit permission.
+          You can review the Buddy persona catalog, capability flags, and course assignments here, but creating or editing personas requires the Language Lab edit permission.
         </CardDescription>
       </CardHeader>
       <CardContent>

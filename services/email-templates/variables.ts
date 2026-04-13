@@ -47,6 +47,13 @@ const SYSTEM_VARIABLES: EmailTemplateVariableItem[] = [
   { id: "sys-batchName", name: "batchName", label: "Batch Name", description: "Name or code of the batch.", category: "Course & Program", sampleValue: "Batch A - 2026", isSystem: true },
   { id: "sys-startDate", name: "startDate", label: "Start Date", description: "Start date of a course, batch, or event.", category: "Course & Program", sampleValue: "09/04/2026", isSystem: true },
   { id: "sys-completionDate", name: "completionDate", label: "Completion Date", description: "Completion date of a course or program.", category: "Course & Program", sampleValue: "09/04/2026", isSystem: true },
+  { id: "sys-buddyPersonaName", name: "buddyPersonaName", label: "Buddy Persona Name", description: "Display name of the Buddy persona used for the email action.", category: "Buddy", sampleValue: "German Buddy", isSystem: true },
+  { id: "sys-targetLabel", name: "targetLabel", label: "Buddy Email Target", description: "Human-readable label for the confirmed Buddy email target.", category: "Buddy", sampleValue: "assigned trainer", isSystem: true },
+  { id: "sys-senderName", name: "senderName", label: "Sender Name", description: "Full name of the learner who confirmed the Buddy email action.", category: "Buddy", sampleValue: "Asha Kumar", isSystem: true },
+  { id: "sys-senderLearnerCode", name: "senderLearnerCode", label: "Sender Learner Code", description: "Learner code of the candidate who confirmed the Buddy email action.", category: "Buddy", sampleValue: "GTS-240901", isSystem: true },
+  { id: "sys-senderEmail", name: "senderEmail", label: "Sender Email", description: "Email address of the learner who confirmed the Buddy email action.", category: "Buddy", sampleValue: "asha@example.com", isSystem: true },
+  { id: "sys-emailSubject", name: "emailSubject", label: "Requested Email Subject", description: "Learner-approved subject line prepared by Buddy.", category: "Buddy", sampleValue: "Question about my program schedule", isSystem: true },
+  { id: "sys-candidateMessage", name: "candidateMessage", label: "Requested Email Message", description: "Learner-approved message body prepared by Buddy.", category: "Buddy", sampleValue: "Hello, I need help understanding the next class timing.", isSystem: true },
   { id: "sys-quizName", name: "quizName", label: "Quiz Name", description: "Name of the assigned quiz or assessment.", category: "Assessment", sampleValue: "Module 1 Assessment", isSystem: true },
   { id: "sys-dueDate", name: "dueDate", label: "Due Date", description: "Due date for an assessment or assignment.", category: "Assessment", sampleValue: "16/04/2026", isSystem: true },
   { id: "sys-score", name: "score", label: "Score", description: "Assessment score or grade.", category: "Assessment", sampleValue: "85%", isSystem: true },
@@ -56,7 +63,7 @@ const SYSTEM_VARIABLES: EmailTemplateVariableItem[] = [
   { id: "sys-notificationBody", name: "notificationBody", label: "Notification Body", description: "Main body content for general notification emails.", category: "Notification", sampleValue: "This is a sample notification message.", isSystem: true },
 ];
 
-const CATEGORY_ORDER = ["Branding", "Recipient", "General", "Authentication", "User Management", "Course & Program", "Assessment", "Notification"];
+const CATEGORY_ORDER = ["Branding", "Recipient", "General", "Authentication", "User Management", "Course & Program", "Buddy", "Assessment", "Notification"];
 
 function groupByCategory(variables: EmailTemplateVariableItem[]): EmailTemplateVariableGroup[] {
   const map = new Map<string, EmailTemplateVariableItem[]>();
