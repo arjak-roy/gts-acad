@@ -12,7 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Skeleton } from "@/components/ui/skeleton";
 import { CanAccess } from "@/components/ui/can-access";
 import { useRbac } from "@/lib/rbac-context";
-import { SUPER_ADMIN_ROLE_CODE, isInternalUserRoleCode } from "@/lib/users/constants";
+import { SUPER_ADMIN_ROLE_CODE, TRAINER_ROLE_CODE, isInternalUserRoleCode } from "@/lib/users/constants";
 import type { InternalUserDetail } from "@/types";
 
 type RoleOption = {
@@ -71,7 +71,12 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
   const [error, setError] = useState<string | null>(null);
 
   const canAssignSuperAdmin = hasRole(SUPER_ADMIN_ROLE_CODE);
-  const availableRoles = roles.filter((role) => isInternalUserRoleCode(role.code) && (canAssignSuperAdmin || role.code !== SUPER_ADMIN_ROLE_CODE));
+  const isTrainerAccount = Boolean(user?.roles.some((role) => role.code === TRAINER_ROLE_CODE));
+  const availableRoles = roles.filter(
+    (role) => isInternalUserRoleCode(role.code)
+      && (canAssignSuperAdmin || role.code !== SUPER_ADMIN_ROLE_CODE)
+      && (role.code !== TRAINER_ROLE_CODE || isTrainerAccount),
+  );
 
   useEffect(() => {
     if (!open || !userId) {
@@ -135,6 +140,11 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
   }, [open]);
 
   function toggleRole(roleId: string) {
+    const selectedRole = availableRoles.find((role) => role.id === roleId);
+    if (selectedRole?.code === TRAINER_ROLE_CODE) {
+      return;
+    }
+
     setSelectedRoleIds((current) => (current.includes(roleId) ? current.filter((value) => value !== roleId) : [...current, roleId]));
   }
 
@@ -327,15 +337,24 @@ export function UserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props
                 </div>
                 {isEditing ? (
                   <div className="space-y-2">
-                    {availableRoles.map((role) => (
-                      <label key={role.id} className="flex cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-slate-50">
-                        <Checkbox checked={selectedRoleIds.includes(role.id)} onCheckedChange={() => toggleRole(role.id)} />
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{role.name}</p>
-                          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">{role.code}</p>
-                        </div>
-                      </label>
-                    ))}
+                    {availableRoles.map((role) => {
+                      const trainerRoleManagedFromRegistry = role.code === TRAINER_ROLE_CODE;
+
+                      return (
+                        <label key={role.id} className="flex cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-slate-50">
+                          <Checkbox
+                            checked={selectedRoleIds.includes(role.id)}
+                            disabled={trainerRoleManagedFromRegistry}
+                            onCheckedChange={() => toggleRole(role.id)}
+                          />
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{role.name}</p>
+                            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">{role.code}</p>
+                            {trainerRoleManagedFromRegistry ? <p className="text-xs text-slate-500">Trainer role is managed from the Trainer Registry.</p> : null}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">

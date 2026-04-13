@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useRbac } from "@/lib/rbac-context";
-import { SUPER_ADMIN_ROLE_CODE, isInternalUserRoleCode } from "@/lib/users/constants";
+import { SUPER_ADMIN_ROLE_CODE, isUserManagementAssignableRoleCode } from "@/lib/users/constants";
 
 type RoleOption = {
   id: string;
@@ -34,7 +34,9 @@ export function AddUserSheet({ onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const canAssignSuperAdmin = hasRole(SUPER_ADMIN_ROLE_CODE);
-  const availableRoles = roles.filter((role) => isInternalUserRoleCode(role.code) && (canAssignSuperAdmin || role.code !== SUPER_ADMIN_ROLE_CODE));
+  const availableRoles = roles.filter(
+    (role) => isUserManagementAssignableRoleCode(role.code) && (canAssignSuperAdmin || role.code !== SUPER_ADMIN_ROLE_CODE),
+  );
 
   useEffect(() => {
     if (!open) {
@@ -134,7 +136,7 @@ export function AddUserSheet({ onCreated }: Props) {
       <SheetContent className="flex w-full max-w-xl flex-col gap-0 p-0 sm:max-w-xl">
         <SheetHeader className="border-b px-6 py-4">
           <SheetTitle>Create Internal User</SheetTitle>
-          <SheetDescription>Provision an internal account, assign roles, and send a welcome email with temporary credentials.</SheetDescription>
+          <SheetDescription>Provision a staff account, assign roles, and send a welcome email with temporary credentials.</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
@@ -186,7 +188,7 @@ export function AddUserSheet({ onCreated }: Props) {
 
         <SheetFooter className="border-t px-6 py-4">
           <div className="flex w-full items-center justify-between gap-3">
-            <p className="text-xs font-medium text-slate-500">A temporary password will be generated automatically and emailed to the user.</p>
+            <p className="text-xs font-medium text-slate-500">A temporary password will be generated automatically and emailed to the user. Trainer accounts are created from the Trainer Registry.</p>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => setOpen(false)}>
                 Cancel

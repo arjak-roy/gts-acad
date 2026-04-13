@@ -19,10 +19,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requirePermission(request, "trainers.create");
+    const session = await requirePermission(request, "trainers.create");
     const body = await request.json();
     const input = createTrainerSchema.parse(body);
-    const trainer = await createTrainerService(input);
+    const trainer = await createTrainerService(input, {
+      actorUserId: session.userId,
+    });
     return apiSuccess(trainer, { status: 201 });
   } catch (error) {
     return apiError(error);

@@ -126,7 +126,7 @@ export default function UsersPage() {
           <p className="mt-2 text-sm font-medium text-slate-500">
             {tab === "candidates"
               ? "Manage candidate accounts, onboarding, and communications."
-              : "Create staff accounts, assign roles, and control onboarding from one place."}
+              : "Manage internal accounts, including trainer access, role assignment, and onboarding from one place."}
           </p>
         </div>
         {tab === "internal" ? (

@@ -215,7 +215,7 @@ export function AddTrainerSheet({
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Add Trainer</SheetTitle>
-          <SheetDescription>Add trainer details, review them, then create the trainer profile.</SheetDescription>
+          <SheetDescription>Add trainer details, review them, then create the trainer profile and internal user account.</SheetDescription>
         </SheetHeader>
 
         {step === "form" ? (
@@ -337,7 +337,7 @@ export function AddTrainerSheet({
             <Card className="border-emerald-200 bg-emerald-50">
               <CardContent className="space-y-2 p-4">
                 <p className="text-sm font-bold text-emerald-800">Confirmation</p>
-                <p className="text-sm text-emerald-700">Details captured. Click Create Trainer to finish setup.</p>
+                <p className="text-sm text-emerald-700">Details captured. Click Create Trainer to provision their trainer profile and internal onboarding access.</p>
               </CardContent>
             </Card>
 
@@ -383,7 +383,7 @@ export function AddTrainerSheet({
             <Card className="border-blue-200 bg-blue-50">
               <CardContent className="space-y-2 p-4">
                 <p className="text-sm font-bold text-blue-800">Trainer Created</p>
-                <p className="text-sm text-blue-700">{form.fullName.trim()} has been added successfully.</p>
+                <p className="text-sm text-blue-700">{form.fullName.trim()} has been added successfully and onboarded as an internal trainer account.</p>
               </CardContent>
             </Card>
 

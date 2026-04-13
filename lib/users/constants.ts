@@ -1,6 +1,8 @@
 export const SUPER_ADMIN_ROLE_CODE = "SUPER_ADMIN";
+export const TRAINER_ROLE_CODE = "TRAINER";
+export const CANDIDATE_ROLE_CODE = "CANDIDATE";
 
-export const EXTERNAL_USER_ROLE_CODES = ["CANDIDATE", "TRAINER"] as const;
+export const EXTERNAL_USER_ROLE_CODES = [CANDIDATE_ROLE_CODE] as const;
 
 export const STAFF_USERS_PERMISSIONS = {
   view: "staff_users.view",
@@ -18,4 +20,8 @@ export const CANDIDATE_USERS_PERMISSIONS = {
 
 export function isInternalUserRoleCode(code: string) {
   return !EXTERNAL_USER_ROLE_CODES.includes(code as (typeof EXTERNAL_USER_ROLE_CODES)[number]);
+}
+
+export function isUserManagementAssignableRoleCode(code: string) {
+  return isInternalUserRoleCode(code) && code !== TRAINER_ROLE_CODE;
 }

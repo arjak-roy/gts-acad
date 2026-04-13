@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { buildPendingAccountActivationMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { TRAINER_ROLE_CODE } from "@/lib/users/constants";
 import type { CreateUserInput, UpdateUserInput } from "@/lib/validation-schemas/users";
 import { requestPasswordReset } from "@/services/auth";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
@@ -37,6 +38,10 @@ export async function createInternalUserService(
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
     validateAssignableInternalRoles(input.roleIds, actor.actorRoleCode),
   ]);
+
+  if (roles.some((role) => role.code === TRAINER_ROLE_CODE)) {
+    throw new Error("Use the Trainer Registry to create trainer accounts.");
+  }
 
   if (existingUser) {
     throw new Error("A user account already exists with this email.");
@@ -210,6 +215,20 @@ export async function assignInternalUserRolesService(
   }
 
   const roles = await validateAssignableInternalRoles(roleIds, actor.actorRoleCode);
+  const trainerProfile = await prisma.trainerProfile.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  const hasTrainerRole = roles.some((role) => role.code === TRAINER_ROLE_CODE);
+
+  if (hasTrainerRole && !trainerProfile) {
+    throw new Error("Assign trainer accounts from the Trainer Registry.");
+  }
+
+  if (trainerProfile && !hasTrainerRole) {
+    throw new Error("Trainer accounts must retain the TRAINER role.");
+  }
+
   await assignRolesToUser(userId, roles.map((role) => role.id));
 
   await createAuditLogEntry({

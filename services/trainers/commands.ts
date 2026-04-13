@@ -2,19 +2,18 @@ import { randomUUID } from "crypto";
 
 import { Prisma } from "@prisma/client";
 
-import { buildPendingAccountActivationMetadata, mergeAccountMetadata } from "@/lib/auth/account-metadata";
+import { buildPendingAccountActivationMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword } from "@/lib/auth/password";
-import { INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { TRAINER_ROLE_CODE } from "@/lib/users/constants";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
-import { renderEmailTemplateByKeyService } from "@/services/email-templates";
-import { deliverLoggedEmail } from "@/services/logs-actions-service";
-import { addRoleToUser } from "@/services/rbac-service";
-import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
+import { createAuditLogEntry } from "@/services/logs-actions-service";
+import { invalidateUserPermissionCache } from "@/services/rbac-service";
 import { mapTrainerCourseNames } from "@/services/trainers/course-assignment-helpers";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerCreateResult, TrainerDetail, TrainerOption, TrainerStatus } from "@/services/trainers/types";
 import { CreateTrainerInput, UpdateTrainerCoursesInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
+import { sendInternalUserWelcomeEmail, updateInternalUserMetadata } from "@/services/users/internal-helpers";
 
 function normalizeCourseList(courses: string[]) {
   return Array.from(new Set(courses.map((course) => course.trim()).filter(Boolean)));
@@ -98,63 +97,28 @@ const trainerCourseAssignmentsInclude = {
   },
 };
 
-function buildInternalLoginUrl(fallbackApplicationUrl?: string | null) {
-  const normalizeOrigin = (value: string | undefined) => {
-    const normalized = value?.trim();
-    if (!normalized) {
-      return null;
-    }
-
-    if (/^https?:\/\//i.test(normalized)) {
-      return normalized.replace(/\/$/, "");
-    }
-
-    return `https://${normalized}`.replace(/\/$/, "");
-  };
-
-  const resolvedOrigin =
-    normalizeOrigin(process.env.INTERNAL_APP_ORIGIN) ??
-    normalizeOrigin(process.env.NEXT_PUBLIC_INTERNAL_APP_ORIGIN) ??
-    normalizeOrigin(fallbackApplicationUrl ?? undefined) ??
-    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL) ??
-    "https://gts-acad.vercel.app";
-
-  return `${resolvedOrigin}/login`;
-}
-
 async function sendTrainerWelcomeEmail(input: {
   userId: string;
   recipientEmail: string;
   recipientName: string;
   temporaryPassword: string;
+  actorUserId?: string;
+  roleName: string;
 }) {
-  const generalSettings = await getGeneralRuntimeSettings();
-
-  const template = await renderEmailTemplateByKeyService(INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY, {
-    appName: generalSettings.applicationName,
-    recipientName: input.recipientName,
+  return sendInternalUserWelcomeEmail({
+    userId: input.userId,
     recipientEmail: input.recipientEmail,
+    recipientName: input.recipientName,
     temporaryPassword: input.temporaryPassword,
-    loginUrl: buildInternalLoginUrl(generalSettings.applicationUrl),
-    supportEmail: generalSettings.supportEmail,
-    roleSummary: "Trainer",
-  });
-
-  return deliverLoggedEmail({
-    to: input.recipientEmail,
-    subject: template.subject,
-    text: template.text,
-    html: template.html,
-    category: "SYSTEM",
-    templateKey: INTERNAL_USER_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY,
-    audit: {
-      entityType: "AUTH",
-      entityId: input.userId,
-    },
+    roles: [{ name: input.roleName }],
+    actorUserId: input.actorUserId,
   });
 }
 
-export async function createTrainerService(input: CreateTrainerInput): Promise<TrainerCreateResult> {
+export async function createTrainerService(
+  input: CreateTrainerInput,
+  actor: { actorUserId?: string | null } = {},
+): Promise<TrainerCreateResult> {
   const normalizedFullName = input.fullName.trim();
   const normalizedEmployeeCode = normalizeEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
@@ -183,10 +147,14 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
     };
   }
 
-  const [existingUser, existingTrainerCode, resolvedCourses] = await Promise.all([
+  const [existingUser, existingTrainerCode, resolvedCourses, trainerRole] = await Promise.all([
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
     prisma.trainerProfile.findFirst({ where: { employeeCode: normalizedEmployeeCode }, select: { id: true } }),
     resolveSelectedCourses(normalizedCourses),
+    prisma.role.findUnique({
+      where: { code: TRAINER_ROLE_CODE },
+      select: { id: true, name: true, code: true },
+    }),
   ]);
 
   if (existingUser) {
@@ -195,6 +163,10 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
 
   if (existingTrainerCode) {
     throw new Error("Employee code already exists.");
+  }
+
+  if (!trainerRole) {
+    throw new Error("Trainer role is not configured.");
   }
 
   const temporaryPassword = randomUUID();
@@ -211,7 +183,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         isActive,
         metadata: buildPendingAccountActivationMetadata({
           accountType: "INTERNAL",
-          createdFrom: "academy-admin",
+          createdFrom: "trainer-registry",
           requiresPasswordReset: true,
           welcomeCredentialsEmailStatus: "pending",
           welcomeCredentialsLastIssuedAt: issuedAt,
@@ -224,6 +196,19 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
         phone: true,
         metadata: true,
       },
+    });
+
+    await tx.userSecurity.create({
+      data: {
+        userId: user.id,
+        twoFactorEnabled: true,
+        recoveryCodes: [],
+      },
+    });
+
+    await tx.userRoleAssignment.createMany({
+      data: [{ userId: user.id, roleId: trainerRole.id }],
+      skipDuplicates: true,
     });
 
     const profile = await tx.trainerProfile.create({
@@ -257,10 +242,7 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
     };
   });
 
-  const trainerRole = await prisma.role.findUnique({ where: { code: "TRAINER" } });
-  if (trainerRole) {
-    await addRoleToUser(trainer.user.id, trainerRole.id);
-  }
+  invalidateUserPermissionCache(trainer.user.id);
 
   try {
     const delivery = await sendTrainerWelcomeEmail({
@@ -268,17 +250,14 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
       recipientEmail: trainer.user.email,
       recipientName: trainer.user.name,
       temporaryPassword,
+      actorUserId: actor.actorUserId ?? undefined,
+      roleName: trainerRole.name,
     });
 
-    await prisma.user.update({
-      where: { id: trainer.user.id },
-      data: {
-        metadata: mergeAccountMetadata(trainer.user.metadata, {
-          welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
-          ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
-          welcomeCredentialsFailureReason: null,
-        }) as Prisma.InputJsonValue,
-      },
+    await updateInternalUserMetadata(trainer.user.id, trainer.user.metadata, {
+      welcomeCredentialsEmailStatus: delivery.status === "SENT" ? "sent" : "pending",
+      ...(delivery.status === "SENT" ? { welcomeCredentialsLastSentAt: new Date().toISOString() } : {}),
+      welcomeCredentialsFailureReason: null,
     });
   } catch (error) {
     console.error("Trainer welcome email dispatch failed", {
@@ -286,22 +265,35 @@ export async function createTrainerService(input: CreateTrainerInput): Promise<T
       error,
     });
 
-    await prisma.user.update({
-      where: { id: trainer.user.id },
-      data: {
-        metadata: mergeAccountMetadata(trainer.user.metadata, {
-          welcomeCredentialsEmailStatus: "failed",
-          welcomeCredentialsFailureReason: error instanceof Error ? error.message : "Unknown delivery failure.",
-        }) as Prisma.InputJsonValue,
-      },
+    await updateInternalUserMetadata(trainer.user.id, trainer.user.metadata, {
+      welcomeCredentialsEmailStatus: "failed",
+      welcomeCredentialsFailureReason: error instanceof Error ? error.message : "Unknown delivery failure.",
     });
   }
 
   try {
-    await sendAccountActivationEmail(trainer.user.id);
+    await sendAccountActivationEmail(trainer.user.id, {
+      actorUserId: actor.actorUserId ?? null,
+    });
   } catch (error) {
     console.warn("Trainer activation email dispatch failed.", error);
   }
+
+  await createAuditLogEntry({
+    entityType: "AUTH",
+    entityId: trainer.user.id,
+    action: "CREATED",
+    message: `Trainer ${normalizedEmail} onboarded from the trainer registry.`,
+    metadata: {
+      email: normalizedEmail,
+      employeeCode: normalizedEmployeeCode,
+      role: trainerRole.code,
+      specialization: normalizedSpecialization,
+      courseIds: resolvedCourses.map((course) => course.id),
+      courseNames: resolvedCourses.map((course) => course.name),
+    },
+    actorUserId: actor.actorUserId ?? null,
+  });
 
   return {
     id: trainer.profile.id,
