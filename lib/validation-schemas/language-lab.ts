@@ -208,11 +208,8 @@ export const updateBuddyPersonaSchema = z.object({
   courseIds: z.array(z.string().trim().min(1)).max(200).optional(),
 });
 
-const buddyEmailActionTargetSchema = z.enum(["ACADEMY_SUPPORT", "TRAINER"]);
-
 export const requestBuddyEmailActionSchema = z.object({
   batchId: z.string().trim().min(1, "Batch ID is required."),
-  target: buddyEmailActionTargetSchema,
   subject: z.string().trim().min(3, "Email subject is required.").max(160),
   message: z.string().trim().min(10, "Email message is required.").max(4000),
 });

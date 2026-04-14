@@ -381,26 +381,20 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
   },
   {
     key: BUDDY_EMAIL_ACTION_EMAIL_TEMPLATE_KEY,
-    name: "Buddy Email Action",
-    description: "Email sent to academy support or the assigned trainer after the learner confirms a Buddy-drafted email action.",
-    subject: "Buddy message from {{senderName}}: {{emailSubject}}",
+    name: "Buddy Self Reminder",
+    description: "Email sent to the learner's own inbox after the learner confirms a Buddy reminder draft.",
+    subject: "Buddy reminder: {{emailSubject}}",
     textContent: [
-      "Hello {{recipientName}},",
+      "Hello,",
       "",
-      "Buddy prepared a learner-approved email action for {{targetLabel}}.",
+      "Buddy saved a reminder for you.",
       "",
       "Buddy persona: {{buddyPersonaName}}",
-      "Candidate: {{senderName}}",
-      "Learner code: {{senderLearnerCode}}",
-      "Candidate email: {{senderEmail}}",
-      "Course: {{courseName}}",
-      "Program: {{programName}}",
-      "Batch: {{batchName}}",
       "",
-      "Requested subject:",
+      "Reminder subject:",
       "{{emailSubject}}",
       "",
-      "Requested message:",
+      "Reminder:",
       "{{candidateMessage}}",
       "",
       "Candidate portal: {{portalUrl}}",
@@ -409,23 +403,18 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
       <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
         <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
           <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
-          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Buddy email action</h1>
-          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}}, Buddy prepared and the learner confirmed an email action for <strong>{{targetLabel}}</strong>.</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">Buddy reminder</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Buddy prepared and you confirmed a private reminder email.</p>
           <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
             <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Buddy persona:</strong> {{buddyPersonaName}}</p>
-            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Candidate:</strong> {{senderName}}</p>
-            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Learner code:</strong> {{senderLearnerCode}}</p>
-            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Candidate email:</strong> {{senderEmail}}</p>
-            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
-            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
-            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;">This reminder is delivered only to your own inbox.</p>
           </div>
           <div style="margin: 0 0 20px; border-radius: 16px; background: #eff6ff; border: 1px solid #bfdbfe; padding: 16px;">
-            <p style="margin: 0 0 8px; font-size: 13px; color: #1e3a8a;"><strong>Requested subject</strong></p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #1e3a8a;"><strong>Reminder subject</strong></p>
             <p style="margin: 0; font-size: 15px; color: #0f172a; font-weight: 700;">{{emailSubject}}</p>
           </div>
           <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
-            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Requested message</strong></p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Reminder</strong></p>
             <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #334155; white-space: pre-wrap;">{{candidateMessage}}</p>
           </div>
           <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #64748b;">Candidate portal: <a href="{{portalUrl}}" style="color: #0d3b84;">{{portalUrl}}</a></p>

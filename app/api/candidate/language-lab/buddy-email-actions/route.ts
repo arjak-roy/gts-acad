@@ -46,10 +46,6 @@ export async function POST(request: NextRequest) {
       learnerId: profile.id,
       batchId: input.batchId,
       buddyPersonaName: buddyPersona.name,
-      senderName: profile.fullName,
-      senderLearnerCode: profile.learnerCode,
-      senderEmail: profile.email,
-      target: input.target,
       emailSubject: input.subject,
       candidateMessage: input.message,
       actorUserId: session.userId,
@@ -57,9 +53,7 @@ export async function POST(request: NextRequest) {
 
     const response = apiSuccess({
       sent: true,
-      target: result.target,
-      targetLabel: result.targetLabel,
-      recipientName: result.recipientName,
+      delivery: result.delivery,
     });
 
     return withCors(request, response, METHODS);
