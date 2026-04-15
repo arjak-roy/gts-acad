@@ -435,6 +435,8 @@ function buildContentBlockContract(capabilities: PersonaCapability[]): string {
     lines.push(`- You may include an optional "blocks" array containing structured content elements when they make the answer clearer.`);
     lines.push(`- Each block must have a "type" field. The ONLY supported block types are: ${enabledBlockTypes.map((t) => `"${t}"`).join(", ")}.`);
     lines.push(`- CRITICAL: Each block type has its own required and forbidden fields. Never mix fields from different block types in one block. Never put long text, motivational messages, or explanations inside block fields — keep values short and data-like.`);
+    lines.push(`- If the learner explicitly asks for an enabled structured format such as a table, checklist, list, quiz, comparison, vocabulary card, or grammar pattern, include at least one matching block instead of replying with plain prose alone.`);
+    lines.push(`- When you include a requested block, keep "text" brief and complementary. Do not duplicate every row or list item in the main reply.`);
 
     if (enabledBlockTypes.includes("table")) {
       lines.push(`  - TABLE: {"type":"table","headers":[...],"rows":[[...]]}. REQUIRED: headers, rows. Do NOT include question, options, word, translation, phonetic, example, gender, columns, pattern, or examples.`);

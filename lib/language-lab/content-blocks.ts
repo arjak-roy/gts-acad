@@ -149,6 +149,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizeListStyle(value: unknown, hasItems: boolean): "ordered" | "unordered" | null {
+  if (typeof value === "string") {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (normalizedValue === "ordered" || normalizedValue === "numbered") {
+      return "ordered";
+    }
+
+    if (normalizedValue === "unordered" || normalizedValue === "bullet" || normalizedValue === "bulleted") {
+      return "unordered";
+    }
+  }
+
+  return hasItems ? "unordered" : null;
+}
+
 export function validateTableBlock(block: unknown): TableBlock | null {
   if (!isRecord(block)) return null;
   if (block.type !== "table") return null;
@@ -171,12 +187,14 @@ export function validateTableBlock(block: unknown): TableBlock | null {
 export function validateListBlock(block: unknown): ListBlock | null {
   if (!isRecord(block)) return null;
   if (block.type !== "list") return null;
-  if (block.style !== "ordered" && block.style !== "unordered") return null;
   if (!isStringArray(block.items) || block.items.length === 0) return null;
+
+  const style = normalizeListStyle(block.style, block.items.length > 0);
+  if (!style) return null;
 
   return {
     type: "list",
-    style: block.style,
+    style,
     items: block.items as string[],
   };
 }

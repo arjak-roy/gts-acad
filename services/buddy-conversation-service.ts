@@ -242,19 +242,87 @@ const BUDDY_RESPONSE_SCHEMA = {
       description: "Optional structured study artifacts. Each item must include a supported type value.",
       items: {
         type: "OBJECT",
-        propertyOrdering: ["type"],
+        propertyOrdering: ["type", "headers", "rows", "style", "items", "question", "options", "explanation", "word", "translation", "phonetic", "example", "gender", "columns", "pattern", "examples"],
         required: ["type"],
         properties: {
           type: {
             type: "STRING",
             enum: ["table", "list", "quiz", "vocab-card", "comparison", "grammar"],
           },
+          headers: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+          },
+          rows: {
+            type: "ARRAY",
+            items: {
+              type: "ARRAY",
+              items: { type: "STRING" },
+            },
+          },
+          style: {
+            type: "STRING",
+            enum: ["ordered", "unordered", "numbered", "bullet", "bulleted"],
+          },
+          items: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+          },
+          question: { type: "STRING" },
+          options: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                label: { type: "STRING" },
+                correct: { type: "BOOLEAN" },
+              },
+            },
+          },
+          explanation: { type: "STRING" },
+          word: { type: "STRING" },
+          translation: { type: "STRING" },
+          phonetic: { type: "STRING" },
+          example: { type: "STRING" },
+          gender: { type: "STRING" },
+          columns: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                label: { type: "STRING" },
+                items: {
+                  type: "ARRAY",
+                  items: { type: "STRING" },
+                },
+              },
+            },
+          },
+          pattern: { type: "STRING" },
+          examples: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+          },
         },
       },
     },
     table: {
       type: "OBJECT",
+      propertyOrdering: ["headers", "rows"],
       description: 'Optional legacy simple table object with "headers" and "rows".',
+      properties: {
+        headers: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+        },
+        rows: {
+          type: "ARRAY",
+          items: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+          },
+        },
+      },
     },
     emailAction: {
       type: "OBJECT",
