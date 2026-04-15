@@ -25,6 +25,10 @@ type BuddyConversationServiceInput = {
   settings: BuddyConversationRuntimeSettings;
 };
 
+type BuddyGeminiRequestOptions = {
+  structuredOutput: boolean;
+};
+
 type GeminiGenerateContentResponse = {
   candidates?: Array<{
     content?: {
@@ -216,6 +220,54 @@ function getGeminiResponseText(payload: GeminiGenerateContentResponse | null) {
   return payload?.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
 }
 
+function normalizeGeminiModelId(modelId: string) {
+  return modelId.trim().replace(/^models\//i, "");
+}
+
+const BUDDY_RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  propertyOrdering: ["text", "translation", "blocks", "table", "emailAction"],
+  required: ["text", "translation"],
+  properties: {
+    text: {
+      type: "STRING",
+      description: "Primary learner-facing reply.",
+    },
+    translation: {
+      type: "STRING",
+      description: "English translation of the main reply. Use an empty string when the main reply is already in English.",
+    },
+    blocks: {
+      type: "ARRAY",
+      description: "Optional structured study artifacts. Each item must include a supported type value.",
+      items: {
+        type: "OBJECT",
+        propertyOrdering: ["type"],
+        required: ["type"],
+        properties: {
+          type: {
+            type: "STRING",
+            enum: ["table", "list", "quiz", "vocab-card", "comparison", "grammar"],
+          },
+        },
+      },
+    },
+    table: {
+      type: "OBJECT",
+      description: 'Optional legacy simple table object with "headers" and "rows".',
+    },
+    emailAction: {
+      type: "OBJECT",
+      propertyOrdering: ["subject", "message"],
+      description: "Optional email draft for personas that support email actions.",
+      properties: {
+        subject: { type: "STRING" },
+        message: { type: "STRING" },
+      },
+    },
+  },
+} as const;
+
 function buildBuddySystemPrompt(input: BuddyConversationServiceInput) {
   const capabilities = normalizeCapabilities(input.persona.capabilities);
   const runtimePrompt = buildRuntimePrompt({
@@ -254,7 +306,17 @@ function buildBuddySystemPrompt(input: BuddyConversationServiceInput) {
   ].join("\n");
 }
 
-function buildGeminiRequestBody(input: BuddyConversationServiceInput) {
+function buildGeminiRequestBody(input: BuddyConversationServiceInput, options: BuddyGeminiRequestOptions) {
+  const generationConfig: Record<string, unknown> = {
+    temperature: 0.2,
+    maxOutputTokens: 1600,
+  };
+
+  if (options.structuredOutput) {
+    generationConfig.responseMimeType = "application/json";
+    generationConfig.responseSchema = BUDDY_RESPONSE_SCHEMA;
+  }
+
   return {
     systemInstruction: {
       parts: [{ text: buildBuddySystemPrompt(input) }],
@@ -265,118 +327,38 @@ function buildGeminiRequestBody(input: BuddyConversationServiceInput) {
         parts: [{ text: input.message }],
       },
     ],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 1600,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "OBJECT",
-        required: ["text", "translation"],
-        properties: {
-          text: { type: "STRING" },
-          translation: { type: "STRING" },
-          blocks: {
-            type: "ARRAY",
-            maxItems: 3,
-            items: {
-              type: "OBJECT",
-              required: ["type"],
-              properties: {
-                type: { type: "STRING", enum: ["table", "list", "quiz", "vocab-card", "comparison", "grammar"] },
-                headers: {
-                  type: "ARRAY",
-                  maxItems: 4,
-                  items: { type: "STRING" },
-                },
-                rows: {
-                  type: "ARRAY",
-                  maxItems: 6,
-                  items: {
-                    type: "ARRAY",
-                    maxItems: 4,
-                    items: { type: "STRING" },
-                  },
-                },
-                style: { type: "STRING", enum: ["ordered", "unordered"] },
-                items: {
-                  type: "ARRAY",
-                  maxItems: 6,
-                  items: { type: "STRING" },
-                },
-                question: { type: "STRING" },
-                options: {
-                  type: "ARRAY",
-                  maxItems: 4,
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      label: { type: "STRING" },
-                      correct: { type: "BOOLEAN" },
-                    },
-                  },
-                },
-                explanation: { type: "STRING" },
-                word: { type: "STRING" },
-                translation: { type: "STRING" },
-                phonetic: { type: "STRING" },
-                example: { type: "STRING" },
-                gender: { type: "STRING" },
-                columns: {
-                  type: "ARRAY",
-                  maxItems: 3,
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      label: { type: "STRING" },
-                      items: {
-                        type: "ARRAY",
-                        maxItems: 6,
-                        items: { type: "STRING" },
-                      },
-                    },
-                  },
-                },
-                pattern: { type: "STRING" },
-                examples: {
-                  type: "ARRAY",
-                  maxItems: 4,
-                  items: { type: "STRING" },
-                },
-              },
-            },
-          },
-          table: {
-            type: "OBJECT",
-            required: ["headers", "rows"],
-            properties: {
-              headers: {
-                type: "ARRAY",
-                maxItems: 4,
-                items: { type: "STRING" },
-              },
-              rows: {
-                type: "ARRAY",
-                maxItems: 6,
-                items: {
-                  type: "ARRAY",
-                  maxItems: 4,
-                  items: { type: "STRING" },
-                },
-              },
-            },
-          },
-          emailAction: {
-            type: "OBJECT",
-            required: ["subject", "message"],
-            properties: {
-              subject: { type: "STRING" },
-              message: { type: "STRING" },
-            },
-          },
-        },
-      },
-    },
+    generationConfig,
   };
+}
+
+async function sendGeminiRequest(
+  input: BuddyConversationServiceInput,
+  normalizedMessage: string,
+  normalizedModelId: string,
+  options: BuddyGeminiRequestOptions,
+) {
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(normalizedModelId)}:generateContent?key=${encodeURIComponent(input.settings.geminiApiKey)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+        body: JSON.stringify(buildGeminiRequestBody({
+          ...input,
+          message: normalizedMessage,
+        }, options)),
+      },
+    );
+
+    const payload = (await response.json().catch(() => null)) as GeminiGenerateContentResponse | null;
+
+    return { response, payload };
+  } catch {
+    throw new Error("Buddy could not reach the model right now.");
+  }
 }
 
 function normalizeBuddyConversationResponse(rawText: string) {
@@ -396,7 +378,9 @@ function normalizeBuddyConversationResponse(rawText: string) {
 }
 
 export async function requestBuddyConversationService(input: BuddyConversationServiceInput): Promise<BuddyAIResponse> {
-  if (!input.settings.geminiApiKey || !input.settings.buddyConversationModelId) {
+  const normalizedModelId = normalizeGeminiModelId(input.settings.buddyConversationModelId);
+
+  if (!input.settings.geminiApiKey || !normalizedModelId) {
     throw new Error("Buddy runtime is not configured right now.");
   }
 
@@ -406,28 +390,15 @@ export async function requestBuddyConversationService(input: BuddyConversationSe
     throw new Error("Buddy message is required.");
   }
 
-  let response: Response;
+  let geminiResult;
 
-  try {
-    response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(input.settings.buddyConversationModelId)}:generateContent?key=${encodeURIComponent(input.settings.geminiApiKey)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-        body: JSON.stringify(buildGeminiRequestBody({
-          ...input,
-          message: normalizedMessage,
-        })),
-      },
-    );
-  } catch {
-    throw new Error("Buddy could not reach the model right now.");
+  geminiResult = await sendGeminiRequest(input, normalizedMessage, normalizedModelId, { structuredOutput: true });
+
+  if (!geminiResult.response.ok && /invalid argument/i.test(getGeminiErrorMessage(geminiResult.payload, ""))) {
+    geminiResult = await sendGeminiRequest(input, normalizedMessage, normalizedModelId, { structuredOutput: false });
   }
 
-  const payload = (await response.json().catch(() => null)) as GeminiGenerateContentResponse | null;
+  const { response, payload } = geminiResult;
 
   if (!response.ok) {
     throw new Error(getGeminiErrorMessage(payload, "Buddy could not respond right now."));
