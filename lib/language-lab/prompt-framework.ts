@@ -433,30 +433,31 @@ function buildContentBlockContract(capabilities: PersonaCapability[]): string {
   // Block descriptions based on enabled capabilities
   if (enabledBlockTypes.length > 0) {
     lines.push(`- You may include an optional "blocks" array containing structured content elements when they make the answer clearer.`);
-    lines.push(`- Each block must have a "type" field. Supported block types:`);
+    lines.push(`- Each block must have a "type" field. The ONLY supported block types are: ${enabledBlockTypes.map((t) => `"${t}"`).join(", ")}.`);
+    lines.push(`- CRITICAL: Each block type has its own required and forbidden fields. Never mix fields from different block types in one block. Never put long text, motivational messages, or explanations inside block fields — keep values short and data-like.`);
 
     if (enabledBlockTypes.includes("table")) {
-      lines.push(`  - "table": { "type": "table", "headers": ["Col1", "Col2"], "rows": [["cell", "cell"]] }`);
+      lines.push(`  - TABLE: {"type":"table","headers":[...],"rows":[[...]]}. REQUIRED: headers, rows. Do NOT include question, options, word, translation, phonetic, example, gender, columns, pattern, or examples.`);
     }
 
     if (enabledBlockTypes.includes("list")) {
-      lines.push(`  - "list": { "type": "list", "style": "ordered"|"unordered", "items": ["item1", "item2"] }`);
+      lines.push(`  - LIST: {"type":"list","style":"ordered"|"unordered","items":[...]}. REQUIRED: style, items. Do NOT include question, options, word, translation, headers, rows, columns, pattern, or examples.`);
     }
 
     if (enabledBlockTypes.includes("quiz")) {
-      lines.push(`  - "quiz": { "type": "quiz", "question": "...", "options": [{"label": "A", "correct": true}, ...], "explanation": "..." }`);
+      lines.push(`  - QUIZ: {"type":"quiz","question":"...","options":[{"label":"...","correct":true|false}],"explanation":"..."}. REQUIRED: question (one sentence), options (at least 2 entries each with "label" and "correct"). OPTIONAL: explanation. Do NOT include word, translation, phonetic, example, gender, headers, rows, columns, pattern, or examples.`);
     }
 
     if (enabledBlockTypes.includes("vocab-card")) {
-      lines.push(`  - "vocab-card": { "type": "vocab-card", "word": "...", "translation": "...", "phonetic": "...", "example": "...", "gender": "..." }`);
+      lines.push(`  - VOCAB-CARD: {"type":"vocab-card","word":"...","translation":"...","phonetic":"...","example":"...","gender":"..."}. REQUIRED: word (single word/short phrase), translation (single word/short phrase). OPTIONAL: phonetic, example (one sentence), gender. Do NOT include question, options, headers, rows, columns, pattern, or examples.`);
     }
 
     if (enabledBlockTypes.includes("comparison")) {
-      lines.push(`  - "comparison": { "type": "comparison", "columns": [{"label": "Formal", "items": [...]}, {"label": "Informal", "items": [...]}] }`);
+      lines.push(`  - COMPARISON: {"type":"comparison","columns":[{"label":"...","items":[...]}]}. REQUIRED: columns (at least 2 entries with "label" and "items"). Do NOT include question, options, word, translation, headers, rows, pattern, or examples.`);
     }
 
     if (enabledBlockTypes.includes("grammar")) {
-      lines.push(`  - "grammar": { "type": "grammar", "pattern": "...", "explanation": "...", "examples": ["..."] }`);
+      lines.push(`  - GRAMMAR: {"type":"grammar","pattern":"...","explanation":"...","examples":[...]}. REQUIRED: pattern, explanation, examples. Do NOT include question, options, word, translation, headers, rows, or columns.`);
     }
 
     lines.push(`- Only use blocks when structured presentation genuinely helps. Keep the "text" field as the complete reply — blocks are supplementary.`);
