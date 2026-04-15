@@ -149,6 +149,65 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function pickFirstNonEmptyString(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (isNonEmptyString(value)) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function normalizeLooseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry.trim();
+      }
+
+      if (isRecord(entry)) {
+        return pickFirstNonEmptyString(entry, ["label", "text", "value", "item", "content", "title", "name"]);
+      }
+
+      return null;
+    })
+    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+}
+
+function normalizeLooseQuizOptions(value: unknown): QuizOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const label = entry.trim();
+        return label ? { label } : null;
+      }
+
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const label = pickFirstNonEmptyString(entry, ["label", "text", "value", "option", "content", "title", "name"]);
+      if (!label) {
+        return null;
+      }
+
+      return typeof entry.correct === "boolean"
+        ? { label, correct: entry.correct }
+        : { label };
+    })
+    .filter((entry): entry is QuizOption => Boolean(entry));
+}
+
 function normalizeListStyle(value: unknown, hasItems: boolean): "ordered" | "unordered" | null {
   if (typeof value === "string") {
     const normalizedValue = value.trim().toLowerCase();
@@ -187,39 +246,34 @@ export function validateTableBlock(block: unknown): TableBlock | null {
 export function validateListBlock(block: unknown): ListBlock | null {
   if (!isRecord(block)) return null;
   if (block.type !== "list") return null;
-  if (!isStringArray(block.items) || block.items.length === 0) return null;
 
-  const style = normalizeListStyle(block.style, block.items.length > 0);
+  const items = normalizeLooseStringArray(block.items);
+  if (items.length === 0) return null;
+
+  const style = normalizeListStyle(block.style, items.length > 0);
   if (!style) return null;
 
   return {
     type: "list",
     style,
-    items: block.items as string[],
+    items,
   };
 }
 
 export function validateQuizBlock(block: unknown): QuizBlock | null {
   if (!isRecord(block)) return null;
   if (block.type !== "quiz") return null;
-  if (!isNonEmptyString(block.question)) return null;
-  if (!Array.isArray(block.options) || block.options.length < 2) return null;
 
-  const validOptions = block.options.filter(
-    (option): option is QuizOption =>
-      isRecord(option) && isNonEmptyString((option as Record<string, unknown>).label),
-  ).map((option) => ({
-    label: (option as Record<string, unknown>).label as string,
-    ...(typeof (option as Record<string, unknown>).correct === "boolean"
-      ? { correct: (option as Record<string, unknown>).correct as boolean }
-      : {}),
-  }));
+  const question = pickFirstNonEmptyString(block, ["question", "prompt", "title"]);
+  if (!question) return null;
+
+  const validOptions = normalizeLooseQuizOptions(block.options);
 
   if (validOptions.length < 2) return null;
 
   return {
     type: "quiz",
-    question: block.question as string,
+    question,
     options: validOptions,
     ...(isNonEmptyString(block.explanation) ? { explanation: block.explanation as string } : {}),
   };
@@ -291,11 +345,17 @@ const BLOCK_VALIDATORS: Record<ContentBlockType, (block: unknown) => ContentBloc
  * Returns only valid blocks; invalid/unknown types are silently dropped.
  */
 export function validateContentBlocks(rawBlocks: unknown): ContentBlock[] {
-  if (!Array.isArray(rawBlocks)) return [];
+  const candidateBlocks = Array.isArray(rawBlocks)
+    ? rawBlocks
+    : isRecord(rawBlocks)
+      ? [rawBlocks]
+      : [];
+
+  if (candidateBlocks.length === 0) return [];
 
   const validated: ContentBlock[] = [];
 
-  for (const rawBlock of rawBlocks) {
+  for (const rawBlock of candidateBlocks) {
     if (!isRecord(rawBlock) || !isNonEmptyString(rawBlock.type)) continue;
 
     const blockType = rawBlock.type as string;
@@ -329,6 +389,17 @@ export function validateBuddyAIResponse(raw: unknown): BuddyAIResponse | null {
     const validBlocks = validateContentBlocks(raw.blocks);
     if (validBlocks.length > 0) {
       response.blocks = validBlocks;
+    }
+  }
+
+  if (response.blocks === undefined) {
+    const legacyBlocks = [
+      isRecord(raw.list) ? validateListBlock({ type: "list", ...raw.list }) : null,
+      isRecord(raw.quiz) ? validateQuizBlock({ type: "quiz", ...raw.quiz }) : null,
+    ].filter((block): block is ListBlock | QuizBlock => block !== null);
+
+    if (legacyBlocks.length > 0) {
+      response.blocks = legacyBlocks;
     }
   }
 

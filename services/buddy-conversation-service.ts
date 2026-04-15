@@ -1,7 +1,13 @@
 import { LANGUAGE_LAB_DEFAULT_CONFIG } from "@/lib/language-lab/default-config";
 import { buildRuntimePrompt } from "@/lib/language-lab/prompt-framework";
 import type { CandidateBuddyPersona } from "@/lib/language-lab/types";
-import { normalizeCapabilities, type BuddyAIResponse, validateBuddyAIResponse } from "@/lib/language-lab/content-blocks";
+import {
+  normalizeCapabilities,
+  type BuddyAIResponse,
+  type ListBlock,
+  type QuizBlock,
+  validateBuddyAIResponse,
+} from "@/lib/language-lab/content-blocks";
 
 type BuddyConversationEnrollmentContext = {
   batchId: string;
@@ -229,6 +235,134 @@ function normalizeGeminiModelId(modelId: string) {
   return modelId.trim().replace(/^models\//i, "");
 }
 
+function isListRequest(message: string) {
+  return /\bchecklist\b|step[-\s]?by[-\s]?step|(?:^|\b)list\b|bullet(?:ed)?|key points|takeaways?/i.test(message);
+}
+
+function extractNonEmptyLines(value: string) {
+  return stripMarkdownFence(value)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function stripListMarker(line: string) {
+  return line.replace(/^\s*(?:[-*•]|\d+[.)]|[A-Za-z][.)])\s+/, "").trim();
+}
+
+function buildListBlockFromText(text: string): ListBlock | null {
+  const lines = extractNonEmptyLines(text);
+  const itemLines = lines.filter((line) => /^(?:[-*•]|\d+[.)])\s+/.test(line));
+
+  if (itemLines.length < 2) {
+    return null;
+  }
+
+  const items = itemLines.map(stripListMarker).filter(Boolean).slice(0, 6);
+  if (items.length < 2) {
+    return null;
+  }
+
+  const ordered = itemLines.every((line) => /^\d+[.)]\s+/.test(line));
+
+  return {
+    type: "list",
+    style: ordered ? "ordered" : "unordered",
+    items,
+  };
+}
+
+function buildQuizBlockFromText(text: string): QuizBlock | null {
+  const lines = extractNonEmptyLines(text);
+  if (lines.length < 3) {
+    return null;
+  }
+
+  const optionRegex = /^(?:([A-Za-z])|([0-9]+))[.)]\s+(.*)$/;
+  const bulletOptionRegex = /^[-*•]\s+(.*)$/;
+  const parsedOptions = lines
+    .map((line, index) => {
+      const tokenMatch = line.match(optionRegex);
+      if (tokenMatch) {
+        return {
+          index,
+          token: (tokenMatch[1] ?? tokenMatch[2] ?? "").toUpperCase(),
+          label: tokenMatch[3]?.trim() ?? "",
+        };
+      }
+
+      const bulletMatch = line.match(bulletOptionRegex);
+      if (bulletMatch) {
+        return {
+          index,
+          token: "",
+          label: bulletMatch[1]?.trim() ?? "",
+        };
+      }
+
+      return null;
+    })
+    .filter((entry): entry is { index: number; token: string; label: string } => entry !== null && entry.label.length > 0);
+
+  if (parsedOptions.length < 2) {
+    return null;
+  }
+
+  const firstOptionIndex = parsedOptions[0]?.index ?? -1;
+  if (firstOptionIndex <= 0) {
+    return null;
+  }
+
+  const question = lines
+    .slice(0, firstOptionIndex)
+    .join(" ")
+    .replace(/^question\s*[:\-]\s*/i, "")
+    .trim();
+
+  if (!question) {
+    return null;
+  }
+
+  const trailingLines = lines.slice((parsedOptions.at(-1)?.index ?? firstOptionIndex) + 1);
+  const correctToken = trailingLines
+    .map((line) => line.match(/(?:correct\s+answer|answer)\s*[:\-]\s*([A-Za-z0-9]+)/i)?.[1] ?? null)
+    .find(Boolean)?.toUpperCase();
+  const explanation = trailingLines
+    .map((line) => line.replace(/^explanation\s*[:\-]\s*/i, "").trim())
+    .find((line) => line.length > 0 && !/(?:correct\s+answer|answer)\s*[:\-]/i.test(line));
+
+  return {
+    type: "quiz",
+    question,
+    options: parsedOptions.slice(0, 4).map((option) => ({
+      label: option.label,
+      ...(correctToken && option.token === correctToken ? { correct: true } : {}),
+    })),
+    ...(explanation ? { explanation } : {}),
+  };
+}
+
+function maybeSalvageRequestedBlock(response: BuddyAIResponse, message: string): BuddyAIResponse {
+  if (response.blocks && response.blocks.length > 0) {
+    return response;
+  }
+
+  const nextBlock = isQuizRequest(message)
+    ? buildQuizBlockFromText(response.text)
+    : isListRequest(message)
+      ? buildListBlockFromText(response.text)
+      : null;
+
+  if (!nextBlock) {
+    return response;
+  }
+
+  return validateBuddyAIResponse({
+    ...response,
+    blocks: [nextBlock],
+  }) ?? response;
+}
+
 const BUDDY_RESPONSE_SCHEMA = {
   type: "OBJECT",
   propertyOrdering: ["text", "translation", "blocks", "table", "emailAction"],
@@ -449,17 +583,17 @@ async function sendGeminiRequest(
   }
 }
 
-function normalizeBuddyConversationResponse(rawText: string) {
+function normalizeBuddyConversationResponse(rawText: string, message: string) {
   const validatedResponse = validateBuddyAIResponse(parseBuddyResponsePayload(rawText));
 
   if (validatedResponse) {
-    return validatedResponse;
+    return maybeSalvageRequestedBlock(validatedResponse, message);
   }
 
   const fallbackResponse = buildMalformedPayloadFallback(rawText);
 
   if (fallbackResponse) {
-    return fallbackResponse;
+    return maybeSalvageRequestedBlock(fallbackResponse, message);
   }
 
   throw new Error("Buddy returned an invalid response.");
@@ -498,5 +632,5 @@ export async function requestBuddyConversationService(input: BuddyConversationSe
     throw new Error("Buddy returned an empty response.");
   }
 
-  return normalizeBuddyConversationResponse(rawText);
+  return normalizeBuddyConversationResponse(rawText, normalizedMessage);
 }
