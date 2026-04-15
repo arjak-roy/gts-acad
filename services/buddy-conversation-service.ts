@@ -23,6 +23,7 @@ type BuddyConversationServiceInput = {
   enrollment: BuddyConversationEnrollmentContext;
   persona: CandidateBuddyPersona;
   settings: BuddyConversationRuntimeSettings;
+  signal?: AbortSignal;
 };
 
 type BuddyGeminiRequestOptions = {
@@ -41,6 +42,10 @@ type GeminiGenerateContentResponse = {
     message?: string;
   };
 };
+
+function isQuizRequest(message: string) {
+  return /\bquiz\b|multiple[-\s]?choice|\bmcq\b|test me|question me/i.test(message);
+}
 
 function stripMarkdownFence(value: string) {
   const trimmedValue = value.trim();
@@ -353,7 +358,7 @@ function buildBuddySystemPrompt(input: BuddyConversationServiceInput) {
     },
   });
 
-  return [
+  const lines = [
     runtimePrompt,
     "",
     "Learner context:",
@@ -368,16 +373,30 @@ function buildBuddySystemPrompt(input: BuddyConversationServiceInput) {
     '- Include at most 3 entries in "blocks".',
     '- Keep lists to 6 items or fewer.',
     '- Keep quiz options to 4 choices when possible.',
+    '- For quiz requests, prefer a single quick question over a long worksheet unless the learner explicitly asks for more.',
     '- Keep tables to 4 columns and 6 rows or fewer.',
     '- Keep vocab cards short and literal.',
     '- Do not repeat the full same explanation in both "text" and block content.',
-  ].join("\n");
+  ];
+
+  if (capabilities.includes('quizzes') && isQuizRequest(input.message)) {
+    lines.push(
+      '',
+      'Quiz-specific shaping:',
+      '- Return exactly one quiz block.',
+      '- Keep the quiz concise: 1 question, 3 or 4 short options, and one short explanation.',
+      '- Do not add extra tables, lists, or more than one quiz block unless the learner explicitly asks for them.',
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function buildGeminiRequestBody(input: BuddyConversationServiceInput, options: BuddyGeminiRequestOptions) {
+  const quizMode = isQuizRequest(input.message) && normalizeCapabilities(input.persona.capabilities).includes('quizzes');
   const generationConfig: Record<string, unknown> = {
-    temperature: 0.2,
-    maxOutputTokens: 1600,
+    temperature: quizMode ? 0.15 : 0.2,
+    maxOutputTokens: quizMode ? 900 : 1600,
   };
 
   if (options.structuredOutput) {
@@ -413,6 +432,7 @@ async function sendGeminiRequest(
         headers: {
           "Content-Type": "application/json",
         },
+        signal: input.signal,
         cache: "no-store",
         body: JSON.stringify(buildGeminiRequestBody({
           ...input,

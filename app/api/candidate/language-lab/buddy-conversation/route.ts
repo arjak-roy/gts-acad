@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
         buddyConversationModelId: settings.buddyConversationModelId,
         buddySystemPrompt: settings.buddySystemPrompt,
       },
+      signal: request.signal,
     });
 
     return withCors(request, apiSuccess(conversation), METHODS);
