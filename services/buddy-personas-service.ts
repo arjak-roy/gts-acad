@@ -7,7 +7,11 @@ import type {
   LanguageLabBuddyPersonaItem,
 } from "@/lib/language-lab/types";
 import { resolveCompiledPromptValue } from "@/lib/language-lab/prompt-framework";
-import { normalizeCapabilities, capabilitiesToLegacyFlags } from "@/lib/language-lab/content-blocks";
+import {
+  normalizeCapabilities,
+  capabilitiesToLegacyFlags,
+  legacyFlagsToCapabilities,
+} from "@/lib/language-lab/content-blocks";
 import type { PersonaCapability } from "@/lib/language-lab/content-blocks";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
@@ -89,6 +93,63 @@ function uniqueCourseIds(courseIds: string[] | undefined) {
   return Array.from(
     new Set((courseIds ?? []).map((courseId) => courseId.trim()).filter((courseId) => courseId.length > 0)),
   );
+}
+
+function resolveCreateCapabilities(input: CreateBuddyPersonaInput): PersonaCapability[] {
+  if (input.capabilities !== undefined) {
+    return Array.from(new Set(normalizeCapabilities(input.capabilities)));
+  }
+
+  return legacyFlagsToCapabilities({
+    supportsTables: input.supportsTables,
+    supportsEmailActions: input.supportsEmailActions,
+    supportsSpeech: input.supportsSpeech,
+  });
+}
+
+function resolveUpdatedCapabilities(
+  currentCapabilities: PersonaCapability[],
+  input: UpdateBuddyPersonaInput,
+): PersonaCapability[] | undefined {
+  if (input.capabilities !== undefined) {
+    return Array.from(new Set(normalizeCapabilities(input.capabilities)));
+  }
+
+  if (
+    input.supportsTables === undefined &&
+    input.supportsEmailActions === undefined &&
+    input.supportsSpeech === undefined
+  ) {
+    return undefined;
+  }
+
+  const nextCapabilities = new Set(currentCapabilities);
+
+  if (input.supportsTables !== undefined) {
+    if (input.supportsTables) {
+      nextCapabilities.add("tables");
+    } else {
+      nextCapabilities.delete("tables");
+    }
+  }
+
+  if (input.supportsEmailActions !== undefined) {
+    if (input.supportsEmailActions) {
+      nextCapabilities.add("email-actions");
+    } else {
+      nextCapabilities.delete("email-actions");
+    }
+  }
+
+  if (input.supportsSpeech !== undefined) {
+    if (input.supportsSpeech) {
+      nextCapabilities.add("speech");
+    } else {
+      nextCapabilities.delete("speech");
+    }
+  }
+
+  return Array.from(nextCapabilities);
 }
 
 function mapBuddyPersona(record: BuddyPersonaRecord): LanguageLabBuddyPersonaItem {
@@ -314,6 +375,8 @@ export async function createBuddyPersonaService(
 
   const courseIds = uniqueCourseIds(input.courseIds);
   const normalizedName = normalizePersonaName(input.name);
+  const capabilities = resolveCreateCapabilities(input);
+  const legacyFlags = capabilitiesToLegacyFlags(capabilities);
 
   try {
     const persona = await prisma.$transaction(async (tx) => {
@@ -328,9 +391,10 @@ export async function createBuddyPersonaService(
           languageCode: input.languageCode.trim(),
           systemPrompt: trimToNull(input.systemPrompt),
           welcomeMessage: trimToNull(input.welcomeMessage),
-          supportsTables: input.supportsTables,
-          supportsEmailActions: input.supportsEmailActions,
-          supportsSpeech: input.supportsSpeech,
+          capabilities,
+          supportsTables: legacyFlags.supportsTables,
+          supportsEmailActions: legacyFlags.supportsEmailActions,
+          supportsSpeech: legacyFlags.supportsSpeech,
           isActive: input.isActive,
         },
         select: {
@@ -418,6 +482,7 @@ export async function updateBuddyPersonaService(
         id: true,
         name: true,
         normalizedName: true,
+        capabilities: true,
         isActive: true,
         courseAssignments: {
           select: {
@@ -436,6 +501,8 @@ export async function updateBuddyPersonaService(
     const nextIsActive = input.isActive ?? existing.isActive;
     const addedCourseIds = nextCourseIds.filter((courseId) => !currentCourseIds.includes(courseId));
     const notifyCourseIds = !existing.isActive && nextIsActive ? nextCourseIds : nextIsActive ? addedCourseIds : [];
+    const nextCapabilities = resolveUpdatedCapabilities(normalizeCapabilities(existing.capabilities), input);
+    const nextLegacyFlags = nextCapabilities !== undefined ? capabilitiesToLegacyFlags(nextCapabilities) : null;
 
     await ensureCoursesExist(prisma, nextCourseIds);
 
@@ -486,11 +553,14 @@ export async function updateBuddyPersonaService(
           ...(input.languageCode !== undefined ? { languageCode: input.languageCode.trim() } : {}),
           ...(input.systemPrompt !== undefined ? { systemPrompt: trimToNull(input.systemPrompt) } : {}),
           ...(input.welcomeMessage !== undefined ? { welcomeMessage: trimToNull(input.welcomeMessage) } : {}),
-          ...(input.supportsTables !== undefined ? { supportsTables: input.supportsTables } : {}),
-          ...(input.supportsEmailActions !== undefined
-            ? { supportsEmailActions: input.supportsEmailActions }
+          ...(nextCapabilities !== undefined
+            ? {
+                capabilities: nextCapabilities,
+                supportsTables: nextLegacyFlags!.supportsTables,
+                supportsEmailActions: nextLegacyFlags!.supportsEmailActions,
+                supportsSpeech: nextLegacyFlags!.supportsSpeech,
+              }
             : {}),
-          ...(input.supportsSpeech !== undefined ? { supportsSpeech: input.supportsSpeech } : {}),
           ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         },
       });
