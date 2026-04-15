@@ -44,9 +44,9 @@ const BUDDY_BASE_SECTIONS: PromptSectionDefinition[] = [
   {
     id: "mission",
     label: "Mission and role",
-    description: "Define what Buddy is responsible for before persona-specific instructions are layered in.",
+    description: "Define Buddy's academy-wide role before persona-specific coaching is layered in.",
     placeholder:
-      "You are Buddy, the academy-owned language-learning tutor and conversation partner. The active persona, conversation language, and enabled capabilities are provided separately at runtime. Follow them strictly.",
+      "You are Buddy, the academy-owned language-learning tutor and conversation partner. Persona identity, conversation language, and enabled capabilities are injected separately at runtime. Follow them strictly.",
     compileHeading: "Mission and role",
     required: true,
     maxLength: 1_600,
@@ -84,22 +84,12 @@ const BUDDY_BASE_SECTIONS: PromptSectionDefinition[] = [
   {
     id: "privacyAndBoundaries",
     label: "Privacy and boundaries",
-    description: "Capture academy-owned safety and privacy constraints that must apply across all personas.",
+    description: "Capture academy-owned safety and privacy constraints that must apply across all Buddy personas.",
     placeholder:
       "Treat placeholders such as [CANDIDATE_NAME], [CANDIDATE_EMAIL], [CANDIDATE_PHONE], [CANDIDATE_COUNTRY], [LEARNER_CODE], and [TRAINER_NAME] as opaque. Never ask for, infer, reconstruct, or reveal the hidden values behind them.",
     compileHeading: "Privacy and boundaries",
     required: true,
     maxLength: 1_800,
-  },
-  {
-    id: "runtimeAlignment",
-    label: "Runtime alignment",
-    description: "Tell Buddy how to cooperate with the runtime-owned response contract and capability flags.",
-    placeholder:
-      "Respect the runtime response contract, translation rules, and capability flags without redefining them here. Translate only the main reply text, not structured block content or email bodies.",
-    compileHeading: "Runtime alignment",
-    required: true,
-    maxLength: 1_600,
   },
 ];
 
@@ -147,9 +137,9 @@ const BUDDY_OVERLAY_SECTIONS: PromptSectionDefinition[] = [
   {
     id: "formattingPreferences",
     label: "Formatting preferences",
-    description: "Call out examples, structure, or pacing preferences without redefining the response contract.",
+    description: "Call out example, structure, or pacing preferences without redefining runtime mechanics.",
     placeholder:
-      "Keep explanations concrete and practice-oriented. Use examples only when they materially help and keep them short.",
+      "Keep explanations concrete and practice-oriented. Favor short examples and learner-ready study cues, but do not redefine JSON shape, block types, or capability rules.",
     compileHeading: "Formatting preferences",
     required: true,
     maxLength: 1_400,
@@ -159,7 +149,7 @@ const BUDDY_OVERLAY_SECTIONS: PromptSectionDefinition[] = [
     label: "Special guidance",
     description: "Optional course or persona instructions that do not fit the shared sections above.",
     placeholder:
-      "Add course-specific coaching notes, edge-case handling, or special reminders here if this persona needs them.",
+      "Add course-specific coaching notes, edge-case handling, or special reminders here if this persona needs them. Do not redefine response shape, translation rules, or capability logic.",
     compileHeading: "Special guidance",
     required: false,
     maxLength: 2_200,
@@ -168,7 +158,7 @@ const BUDDY_OVERLAY_SECTIONS: PromptSectionDefinition[] = [
 
 const BUDDY_BASE_DEFAULTS: Record<string, string> = {
   mission:
-    "You are Buddy, the academy-owned language-learning tutor and conversation partner. The active persona, conversation language, and enabled capabilities are provided separately at runtime. Follow them strictly.",
+    "You are Buddy, the academy-owned language-learning tutor and conversation partner. Persona identity, conversation language, and enabled capabilities are injected separately at runtime. Follow them strictly.",
   teachingPriorities:
     "Help the learner practice naturally, explain clearly, adapt to their level, and keep the conversation moving toward useful next steps.",
   toneAndPacing:
@@ -177,8 +167,6 @@ const BUDDY_BASE_DEFAULTS: Record<string, string> = {
     "Correct gently. When a better phrasing is useful, explain the issue briefly, model the improved version clearly, and keep the learner moving.",
   privacyAndBoundaries:
     "Treat placeholders such as [CANDIDATE_NAME], [CANDIDATE_EMAIL], [CANDIDATE_PHONE], [CANDIDATE_COUNTRY], [LEARNER_CODE], and [TRAINER_NAME] as opaque. Never ask for, infer, reconstruct, or reveal the hidden values behind them.",
-  runtimeAlignment:
-    "Respect the runtime response contract, translation rules, and capability flags without redefining them here. Translate only the main reply text, not structured block content or email bodies.",
 };
 
 const BUDDY_OVERLAY_DEFAULTS: Record<string, string> = {
@@ -191,7 +179,7 @@ const BUDDY_OVERLAY_DEFAULTS: Record<string, string> = {
   correctionStyle:
     "Correct mistakes briefly, offer better wording when useful, and avoid overwhelming the learner with too many corrections at once.",
   formattingPreferences:
-    "Keep explanations concrete and practice-oriented. Use examples only when they materially help and keep them short.",
+    "Keep explanations concrete and practice-oriented. Favor short examples and learner-ready study cues, but do not redefine JSON shape, block types, or capability rules.",
   specialGuidance: "",
 };
 

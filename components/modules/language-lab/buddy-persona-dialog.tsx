@@ -341,8 +341,8 @@ export function BuddyPersonaDialog({
           <DialogTitle>{isEditing ? `Edit ${persona.name}` : "Create Buddy Persona"}</DialogTitle>
           <DialogDescription>
             {isEditing
-              ? "Update the persona identity, capabilities, prompt instructions, and course assignments."
-              : "Define a new Buddy persona with its own language, capabilities, and behavior."}
+              ? "Update the persona identity, capabilities, behavior overlay, and course assignments. Runtime still injects language, capabilities, and response mechanics."
+              : "Define a new Buddy persona with its own language, capabilities, and coaching behavior while leaving runtime mechanics to the framework."}
           </DialogDescription>
         </DialogHeader>
 
@@ -514,13 +514,13 @@ export function BuddyPersonaDialog({
                   value={draft.systemPrompt}
                   onChange={handlePromptChange}
                   title="Persona instruction framework"
-                  description="Shape the Buddy's identity and coaching behavior. The compiled output is stored on the persona record."
+                  description="Shape the Buddy's identity and coaching behavior. Leave JSON shape, translation rules, and capability mechanics to runtime."
                   disabled={isSaving}
                   capabilities={draft.capabilities}
                 />
                 <BuddyPromptPreviewPanel
                   title="Runtime preview"
-                  description="Preview shows base prompt + this persona overlay."
+                  description="Preview shows academy base behavior + this persona overlay + runtime-injected mechanics."
                   compiledPrompt={compiledPrompt}
                   assembledPrompt={assembledPrompt}
                   isStructured={promptIsStructured}

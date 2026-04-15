@@ -75,12 +75,12 @@ export function BuddyPromptPreviewPanel({
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetaTile label="Visible length" value={`${visiblePrompt.length}`} helper="Characters in the preview you are currently inspecting." />
-        <MetaTile label="Warnings" value={`${issueSummary.errors + issueSummary.warnings}`} helper="Errors and warnings that may weaken prompt reliability or contradict capabilities." />
-        <MetaTile label="Language" value={languageLabel || "Runtime set"} helper="Runtime preview uses the persona language when available, otherwise the generic Buddy contract." />
+        <MetaTile label="Warnings" value={`${issueSummary.errors + issueSummary.warnings}`} helper="Errors and warnings that may weaken prompt reliability, duplicate runtime-owned mechanics, or contradict capabilities." />
+        <MetaTile label="Language" value={languageLabel || "Runtime set"} helper="Runtime preview uses persona language and capability metadata when available. Compiled view only shows stored prompt text." />
         <MetaTile
           label="Capabilities"
           value={capabilities ? `${capabilities.length}` : "Base"}
-          helper={capabilities ? "Count of enabled response modes visible to this persona at runtime." : "Base prompt preview uses the default capability posture when no persona is supplied."}
+          helper={capabilities ? "Count of response modes that runtime exposes to this persona when assembling the final Buddy prompt." : "Base prompt preview uses the default Buddy runtime posture when no persona is supplied."}
         />
       </div>
 
@@ -89,7 +89,7 @@ export function BuddyPromptPreviewPanel({
           {capabilities?.map((cap) => (
             <Badge key={cap} variant="info">{CAPABILITY_LABELS[cap] ?? cap}</Badge>
           ))}
-          <Badge variant="default">{activeView === "runtime" ? "Mirrors Flutter assembly order" : "Shows framework compile only"}</Badge>
+          <Badge variant="default">{activeView === "runtime" ? "Shows stored behavior plus runtime injection" : "Shows stored prompt text only"}</Badge>
         </div>
 
         <pre className="mt-4 max-h-[540px] overflow-auto whitespace-pre-wrap break-words rounded-[20px] bg-slate-950 px-4 py-4 text-sm leading-6 text-slate-100">
@@ -105,7 +105,7 @@ export function BuddyPromptPreviewPanel({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black tracking-tight text-slate-950">Lint and rollout checks</p>
             <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
-              These checks highlight prompt drift, runtime-contract duplication, and capability conflicts before you save changes into the academy-owned Buddy configuration.
+              These checks highlight prompt drift, duplicated runtime mechanics, and capability conflicts before you save changes into the academy-owned Buddy configuration.
             </p>
             {issues.length > 0 ? (
               <div className="mt-4 space-y-3">

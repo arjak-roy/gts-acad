@@ -49,6 +49,22 @@ export function BuddyInstructionBuilder({
   const sectionDefinitions = useMemo(() => getSectionDefinitions(promptType, scope), [promptType, scope]);
   const completedSections = document ? countCompletedSections(document) : 0;
   const isStructured = !!document;
+  const rawModeHelper =
+    promptType === "buddy"
+      ? "Raw mode stays available for legacy Buddy prompts, but runtime still injects language, capabilities, and response mechanics separately."
+      : "Raw mode stays available for legacy prompts and power-user edits.";
+  const scopeHelper =
+    promptType === "buddy"
+      ? scope === "base"
+        ? "Defines academy-wide Buddy behavior. Runtime still injects persona metadata, capabilities, and response mechanics."
+        : "Shapes persona identity and coaching behavior. Leave JSON shape, translation rules, and capability mechanics to runtime."
+      : scope === "base"
+        ? "Defines shared behavior before overlay-specific instructions are applied."
+        : "Shapes overlay behavior on top of the shared base prompt.";
+  const rawPromptGuidance =
+    promptType === "buddy"
+      ? "This prompt stays editable as raw text so you do not lose legacy wording. For Buddy, keep raw text focused on behavior and avoid hardcoding JSON shape, translation rules, or capability mechanics because runtime injects them separately."
+      : "This prompt stays editable as raw text so you do not lose any legacy wording. Switch to Structured when you want the framework, linting, and section-based preview to take over.";
 
   const handleSwitchToStructured = () => {
     if (document) return;
@@ -123,7 +139,7 @@ export function BuddyInstructionBuilder({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile label="Mode" value={isStructured ? "Structured" : "Raw"} helper="Raw mode stays available for legacy prompts and power-user edits." icon={<Braces className="h-4 w-4 text-[#0d3b84]" />} />
+        <SummaryTile label="Mode" value={isStructured ? "Structured" : "Raw"} helper={rawModeHelper} icon={<Braces className="h-4 w-4 text-[#0d3b84]" />} />
         <SummaryTile
           label="Compiled length"
           value={`${compiledPrompt.length}`}
@@ -139,7 +155,7 @@ export function BuddyInstructionBuilder({
         <SummaryTile
           label="Scope"
           value={scope === "base" ? "Base prompt" : "Persona overlay"}
-          helper={scope === "base" ? "Defines academy-wide Buddy behavior before persona layers are applied." : "Shapes persona identity and coaching behavior without changing the runtime contract."}
+          helper={scopeHelper}
           icon={<FileText className="h-4 w-4 text-[#0d3b84]" />}
         />
       </div>
@@ -183,7 +199,7 @@ export function BuddyInstructionBuilder({
             <div>
               <p className="text-sm font-black uppercase tracking-[0.18em] text-amber-700">Legacy raw prompt</p>
               <p className="mt-2 text-sm font-medium leading-6 text-amber-950">
-                This prompt stays editable as raw text so you do not lose any legacy wording. Switch to Structured when you want the framework, linting, and section-based preview to take over.
+                {rawPromptGuidance}
               </p>
             </div>
           </div>

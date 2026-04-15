@@ -137,7 +137,7 @@ export function PromptManagementDialog({
         <DialogHeader>
           <DialogTitle>Manage Prompts</DialogTitle>
           <DialogDescription>
-            Configure system prompts for each Language Lab feature. These prompts define how the AI behaves.
+            Configure system prompts for each Language Lab feature. For Buddy, the base prompt defines academy-wide behavior while runtime still injects language, capabilities, and response mechanics.
           </DialogDescription>
         </DialogHeader>
 
@@ -179,12 +179,12 @@ export function PromptManagementDialog({
                 value={draft.buddySystemPrompt}
                 onChange={handlePromptChange("buddySystemPrompt")}
                 title="Buddy Base Prompt"
-                description="Define the academy-wide Buddy behavior. Persona overlays extend this base."
+                description="Define the academy-wide Buddy behavior and safety posture. Persona overlays extend this base, while runtime injects language, capabilities, and the response contract."
                 disabled={isSaving}
               />
               <BuddyPromptPreviewPanel
                 title="Runtime Preview"
-                description="Shows the compiled base prompt before any persona overlay."
+                description="Shows the base behavior plus runtime-injected mechanics before any persona overlay is applied."
                 compiledPrompt={compiledPrompt}
                 assembledPrompt={runtimePreview}
                 isStructured={isStructured}

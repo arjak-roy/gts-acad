@@ -273,7 +273,7 @@ const COMPARISON_PATTERN = /\bcomparison\b|\bcompare\b.*\bcolumns\b|\bside.by.si
 const GRAMMAR_PATTERN = /\bgrammar.pattern\b|\bgrammar.block\b|\bgrammar.rule\b/i;
 const EMAIL_PATTERN = /emailaction|reminder email|draft\s+(an\s+)?email|send\s+(an\s+)?email|write\s+(an\s+)?email/i;
 const SPEECH_PATTERN = /\bspeech\b|\bvoice\b|\btts\b|\bstt\b|speak out loud/i;
-const RAW_CONTRACT_PATTERN = /(return exactly one valid json object|required keys\s+"text"|emailaction|response contract|required response shape)/i;
+const RUNTIME_MECHANICS_PATTERN = /(return exactly one valid json object|required keys\s+"text"|response contract|required response shape|do not output markdown fences|outside the json object|main reply in\s+"text"|english translation of\s+"text"|emailaction|"blocks"\s+array)/i;
 
 const CAPABILITY_PATTERNS: Partial<Record<PersonaCapability, RegExp>> = {
   tables: TABLE_PATTERN,
@@ -310,6 +310,34 @@ function collectRepeatedInstructionIssue(compiledPrompt: string): PromptLintIssu
     severity: "info",
     message: "Repeated instruction lines detected. Consolidate duplicates so the final prompt stays easier for the model to follow.",
   };
+}
+
+function collectBuddyRuntimeOwnershipIssue(params: {
+  scope: PromptScope;
+  promptType: PromptType;
+  compiledPrompt: string;
+}): PromptLintIssue | null {
+  if (params.promptType !== "buddy" || !RUNTIME_MECHANICS_PATTERN.test(params.compiledPrompt)) {
+    return null;
+  }
+
+  if (params.scope === "base") {
+    return {
+      code: "base-runtime-mechanics-duplication",
+      severity: "warning",
+      message: "Buddy base prompt appears to define runtime-owned mechanics such as JSON schema, response keys, or email action rules. Keep the base prompt focused on shared Buddy behavior and let runtime inject the contract.",
+    };
+  }
+
+  if (params.scope === "overlay") {
+    return {
+      code: "overlay-runtime-mechanics-duplication",
+      severity: "warning",
+      message: "Buddy overlay appears to define runtime-owned mechanics such as JSON schema, response keys, or email action rules. Keep overlays focused on persona behavior and let runtime inject the contract.",
+    };
+  }
+
+  return null;
 }
 
 export function lintPromptValue(params: {
@@ -356,13 +384,13 @@ export function lintPromptValue(params: {
   const repeatedIssue = collectRepeatedInstructionIssue(compiledPrompt);
   if (repeatedIssue) issues.push(repeatedIssue);
 
-  // Contract duplication (only for overlay scope — base contract is now runtime-injected)
-  if (params.scope === "overlay" && RAW_CONTRACT_PATTERN.test(compiledPrompt)) {
-    issues.push({
-      code: "overlay-contract-override",
-      severity: "warning",
-      message: "Overlay prompt appears to redefine the JSON response contract. Keep overlay instructions focused on behavior and coaching, and let the runtime own the output schema.",
-    });
+  const runtimeOwnershipIssue = collectBuddyRuntimeOwnershipIssue({
+    scope: params.scope,
+    promptType: params.promptType,
+    compiledPrompt,
+  });
+  if (runtimeOwnershipIssue) {
+    issues.push(runtimeOwnershipIssue);
   }
 
   // Capability conflict checks
@@ -397,7 +425,7 @@ function buildContentBlockContract(capabilities: PersonaCapability[]): string {
   }
 
   const lines: string[] = [
-    "Response contract:",
+    "Runtime response contract:",
     '- Return exactly one valid JSON object with required keys "text" and "translation". No text outside the JSON object.',
     "- Omit optional keys completely when they are not needed.",
   ];
@@ -475,6 +503,14 @@ export function buildRuntimePrompt(params: {
 
   const sections: string[] = [basePrompt];
 
+  if (params.promptType !== "buddy") {
+    if (overlayPrompt) {
+      sections.push(`Overlay instructions:\n${overlayPrompt}`);
+    }
+
+    return sections.filter((s) => normalizeValue(s).length > 0).join("\n\n").trim();
+  }
+
   // Persona metadata
   if (params.persona) {
     const personaLines = [
@@ -495,22 +531,7 @@ export function buildRuntimePrompt(params: {
     sections.push(`Persona-specific instructions:\n${overlayPrompt}`);
   }
 
-  // Privacy rules (always present)
-  sections.push([
-    "Privacy rules:",
-    "- The user message may contain placeholders such as [CANDIDATE_NAME], [CANDIDATE_EMAIL], [CANDIDATE_PHONE], [CANDIDATE_COUNTRY], [LEARNER_CODE], or [TRAINER_NAME] instead of real personal data.",
-    "- Do not ask for, infer, reconstruct, or reveal the hidden values behind placeholders.",
-    "- Treat placeholders as opaque references and continue helping without personal data.",
-  ].join("\n"));
-
-  // Core behavior
-  sections.push([
-    "Core behavior:",
-    "- Help the learner practice naturally, explain clearly, and correct gently.",
-    "- Keep the interaction useful, warm, concise, direct, and action-oriented.",
-  ].join("\n"));
-
-  // Language-specific contract
+  // Runtime-owned mechanics
   if (language) {
     const contract = buildContentBlockContract(capabilities);
     const languageLine = `- Put the main reply in "text" using ${language}${languageCode ? ` (${languageCode})` : ""}.`;
