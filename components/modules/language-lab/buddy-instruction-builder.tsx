@@ -7,7 +7,6 @@ import { Braces, FileText, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  compilePromptDocument,
   countCompletedSections,
   createDefaultPromptDocument,
   encodePromptDocument,
@@ -17,7 +16,6 @@ import {
 import { getSectionDefinitions } from "@/lib/language-lab/prompt-types";
 import type { PromptType, PromptScope } from "@/lib/language-lab/prompt-types";
 import type { PersonaCapability } from "@/lib/language-lab/content-blocks";
-import { CAPABILITY_LABELS } from "@/lib/language-lab/content-blocks";
 import { cn } from "@/lib/utils";
 
 const TEXTAREA_CLASS_NAME =

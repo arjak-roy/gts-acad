@@ -297,7 +297,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     }
   }, [isEmailTemplatesSection, searchParams, sectionKey]);
 
-  const setParam = (key: string, value: string | null) => {
+  const setParam = useCallback((key: string, value: string | null) => {
     const next = new URLSearchParams(searchParams.toString());
     next.delete("viewId");
     next.delete("editId");
@@ -306,7 +306,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
       const queryString = next.toString();
       router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
     });
-  };
+  }, [pathname, router, searchParams]);
 
   const setViewMode = (nextMode: ViewMode) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -348,12 +348,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     return index % 3 === 0 ? "wide" : "normal";
   };
 
-  const openViewer = (id: string) => setParam("viewId", id);
-  const openEditor = (id: string) => setParam("editId", id);
-  const closePanel = () => setParam("viewId", null);
-  const closeEditor = () => setParam("editId", null);
+  const openViewer = useCallback((id: string) => setParam("viewId", id), [setParam]);
+  const openEditor = useCallback((id: string) => setParam("editId", id), [setParam]);
+  const closePanel = useCallback(() => setParam("viewId", null), [setParam]);
+  const closeEditor = useCallback(() => setParam("editId", null), [setParam]);
 
-  const openStudentsPopup = (row: PortalSectionTableRow) => {
+  const openStudentsPopup = useCallback((row: PortalSectionTableRow) => {
     const batchCode = row.code;
     if (!batchCode) {
       return;
@@ -361,9 +361,9 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
     setBatchActionError(null);
     setStudentsBatch({ id: row.id, code: batchCode });
-  };
+  }, []);
 
-  const exportBatchCsv = async (row: PortalSectionTableRow) => {
+  const exportBatchCsv = useCallback(async (row: PortalSectionTableRow) => {
     setBatchActionError(null);
     setExportingBatchId(row.id);
 
@@ -393,9 +393,9 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     } finally {
       setExportingBatchId(null);
     }
-  };
+  }, []);
 
-  const handleDuplicateTemplate = async (id: string) => {
+  const handleDuplicateTemplate = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/email-templates/${id}/duplicate`, { method: "POST" });
       const payload = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -404,9 +404,9 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [router]);
 
-  const handleDeleteTemplate = async (row: PortalSectionTableRow) => {
+  const handleDeleteTemplate = useCallback(async (row: PortalSectionTableRow) => {
     if (row.isSystem === "true") return;
     if (!confirm(`Delete template "${row.name}"? This action cannot be undone.`)) return;
     try {
@@ -417,9 +417,9 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [router]);
 
-  const handleToggleTemplateStatus = async (id: string) => {
+  const handleToggleTemplateStatus = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/email-templates/${id}/toggle-status`, { method: "PATCH" });
       const payload = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -428,12 +428,12 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [router]);
 
-  const openTemplateHistory = (row: PortalSectionTableRow) => {
+  const openTemplateHistory = useCallback((row: PortalSectionTableRow) => {
     setHistoryTemplateId(row.id);
     setHistoryTemplateName(row.name);
-  };
+  }, []);
 
   const columns = useMemo<ColumnDef<PortalSectionTableRow>[]>(
     () => {

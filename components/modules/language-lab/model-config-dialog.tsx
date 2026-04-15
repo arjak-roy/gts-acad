@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   buildLanguageLabRegisteredModelsJson,
-  LANGUAGE_LAB_DEFAULT_CONFIG,
   type LanguageLabRegisteredModel,
 } from "@/lib/language-lab/default-config";
 import { cn } from "@/lib/utils";

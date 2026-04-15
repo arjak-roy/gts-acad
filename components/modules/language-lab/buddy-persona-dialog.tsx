@@ -13,7 +13,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -471,7 +470,7 @@ export function BuddyPersonaDialog({
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Persona active</p>
                     <p className="text-xs text-slate-500">
-                      Inactive personas won't resolve into candidate workspaces.
+                      Inactive personas won&apos;t resolve into candidate workspaces.
                     </p>
                   </div>
                 </div>

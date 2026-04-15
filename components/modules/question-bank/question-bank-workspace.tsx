@@ -143,6 +143,7 @@ export function QuestionBankWorkspace() {
 
     const nextEditingQuestion = questions.find((question) => question.id === editingQuestion.id) ?? null;
     setEditingQuestion(nextEditingQuestion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only re-sync when editingQuestion.id changes, not on every editingQuestion reference change
   }, [editingQuestion?.id, questions]);
 
   useEffect(() => {
@@ -153,6 +154,7 @@ export function QuestionBankWorkspace() {
     }
 
     setDraftCourseId(selectedCourseId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only reset drafts when specific editingQuestion properties change
   }, [editingQuestion?.id, editingQuestion?.courseId, editingQuestion?.tags, selectedCourseId]);
 
   useEffect(() => {

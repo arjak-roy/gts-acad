@@ -256,6 +256,7 @@ export function LanguageLabSettingsPanel() {
     return assignedModels.filter((value) => registeredModelIds.has(value.trim())).length;
   }, [form.buddyConversationModelId, form.pronunciationModelId, form.roleplayModelId, registeredModelIds]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future validation UI
   const assignmentIssues = useMemo(() => {
     const issues: string[] = [];
     const assignments: Array<{ label: string; value: string }> = [

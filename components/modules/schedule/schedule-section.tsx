@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 
@@ -770,6 +770,8 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   }));
 
   const range = useMemo(() => getRangeForView(baseDate, viewMode), [baseDate, viewMode]);
+  const rangeFromTime = range.from.getTime();
+  const rangeToTime = range.to.getTime();
   const supportsAssessmentPool = eventTypeSupportsCourseBuilderAssessment(form.type);
   const sortedEvents = useMemo(
     () => sortByAccessor(events, listSortState.direction, scheduleListSortAccessors[listSortState.column]),
@@ -795,7 +797,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     }
   };
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -825,7 +827,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     } finally {
       setLoading(false);
     }
-  };
+  }, [batchFilter, range.from, range.to]);
 
   const loadAssessmentOptions = async (batchId: string) => {
     if (!batchId) {
@@ -904,7 +906,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
   useEffect(() => {
     void loadEvents();
-  }, [range.from.getTime(), range.to.getTime(), batchFilter]);
+  }, [rangeFromTime, rangeToTime, batchFilter, loadEvents]);
 
   useEffect(() => {
     if (!isCreateOpen || !supportsAssessmentPool || !form.batchId) {
