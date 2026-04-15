@@ -84,8 +84,14 @@ export type LanguageLabBuddyPersonaItem = {
   languageCode: string;
   systemPrompt: string | null;
   welcomeMessage: string | null;
+  promptType: string;
+  capabilities: string[];
+  promptVersion: number;
+  /** @deprecated Use capabilities.includes("tables") */
   supportsTables: boolean;
+  /** @deprecated Use capabilities.includes("email-actions") */
   supportsEmailActions: boolean;
+  /** @deprecated Use capabilities.includes("speech") */
   supportsSpeech: boolean;
   isActive: boolean;
   createdAt: string;
@@ -101,8 +107,12 @@ export type CandidateBuddyPersona = {
   languageCode: string;
   systemPrompt: string | null;
   welcomeMessage: string | null;
+  capabilities: string[];
+  /** @deprecated Use capabilities.includes("tables") */
   supportsTables: boolean;
+  /** @deprecated Use capabilities.includes("email-actions") */
   supportsEmailActions: boolean;
+  /** @deprecated Use capabilities.includes("speech") */
   supportsSpeech: boolean;
 };
 
@@ -260,4 +270,20 @@ export type LanguageLabRoleplayAnalytics = {
   scenarioBreakdown: LanguageLabRoleplayScenarioSummary[];
   learnerHighlights: LanguageLabRoleplayLearnerSummary[];
   latestSessions: LanguageLabRoleplayLatestSession[];
+};
+
+// ---------------------------------------------------------------------------
+// Prompt Version History
+// ---------------------------------------------------------------------------
+
+export type PromptVersionItem = {
+  id: string;
+  personaId: string | null;
+  settingKey: string | null;
+  promptType: string;
+  scope: string;
+  version: number;
+  content: string;
+  createdAt: string;
+  createdByName: string | null;
 };

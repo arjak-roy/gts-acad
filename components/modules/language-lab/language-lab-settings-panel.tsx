@@ -2,7 +2,7 @@
 
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Braces, KeyRound, Loader2, RefreshCcw, Save, ShieldCheck, Sparkles } from "lucide-react";
+import { Bot, Braces, KeyRound, Loader2, RefreshCcw, Save, Settings2, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,11 @@ import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ModelConfigDialog, type ModelConfigValues } from "@/components/modules/language-lab/model-config-dialog";
+import { PromptManagementDialog, type PromptValues } from "@/components/modules/language-lab/prompt-management-dialog";
+import {
+  createDefaultPromptValue,
+} from "@/lib/language-lab/prompt-framework";
 import {
   buildLanguageLabRegisteredModelsJson,
   LANGUAGE_LAB_CATEGORY_CODE,
@@ -40,12 +45,6 @@ type ParsedModelRegistry = {
   models: LanguageLabRegisteredModel[];
   error: string | null;
 };
-
-const TEXTAREA_CLASS_NAME =
-  "flex min-h-[168px] w-full rounded-2xl border border-[#dde1e6] bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
-
-const SELECT_CLASS_NAME =
-  "mt-2 flex h-11 w-full rounded-2xl border border-[#dde1e6] bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50";
 
 const EMPTY_FORM: LanguageLabSettingsFormState = {
   geminiApiKey: "",
@@ -78,6 +77,11 @@ function getResolvedSettingValue(setting: SettingDefinitionItem | undefined, fal
 }
 
 function buildFormState(detail: SettingsCategoryDetail | null): LanguageLabSettingsFormState {
+  const buddyPromptSetting = getSettingByKey(detail, LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt);
+  const buddySystemPrompt = buddyPromptSetting?.hasStoredValue
+    ? getResolvedSettingValue(buddyPromptSetting, LANGUAGE_LAB_DEFAULT_CONFIG.prompts.buddy)
+    : createDefaultPromptValue("buddy", "base");
+
   return {
     geminiApiKey: "",
     registeredModelsJson: getResolvedSettingValue(
@@ -96,10 +100,7 @@ function buildFormState(detail: SettingsCategoryDetail | null): LanguageLabSetti
       getSettingByKey(detail, LANGUAGE_LAB_SETTING_KEYS.pronunciationModelId),
       LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.pronunciation,
     ),
-    buddySystemPrompt: getResolvedSettingValue(
-      getSettingByKey(detail, LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt),
-      LANGUAGE_LAB_DEFAULT_CONFIG.prompts.buddy,
-    ),
+    buddySystemPrompt,
     roleplaySystemPrompt: getResolvedSettingValue(
       getSettingByKey(detail, LANGUAGE_LAB_SETTING_KEYS.roleplaySystemPrompt),
       LANGUAGE_LAB_DEFAULT_CONFIG.prompts.roleplay,
@@ -193,6 +194,8 @@ export function LanguageLabSettingsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
+  const [promptsSheetOpen, setPromptsSheetOpen] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
@@ -278,6 +281,98 @@ export function LanguageLabSettingsPanel() {
       },
     [],
   );
+
+  const saveModelConfig = useCallback(async (values: ModelConfigValues) => {
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      const parsed = parseRegisteredModels(values.registeredModelsJson);
+      if (parsed.error) {
+        throw new Error(parsed.error);
+      }
+
+      const modelIds = new Set(parsed.models.map((m) => m.modelId));
+      if (!modelIds.has(values.buddyConversationModelId)) {
+        throw new Error("Buddy conversation model must be a registered model.");
+      }
+      if (!modelIds.has(values.roleplayModelId)) {
+        throw new Error("Roleplay model must be a registered model.");
+      }
+      if (!modelIds.has(values.pronunciationModelId)) {
+        throw new Error("Pronunciation model must be a registered model.");
+      }
+
+      const response = await fetch(`/api/settings/${LANGUAGE_LAB_CATEGORY_CODE}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          values: {
+            [LANGUAGE_LAB_SETTING_KEYS.registeredModelsJson]: values.registeredModelsJson,
+            [LANGUAGE_LAB_SETTING_KEYS.buddyConversationModelId]: values.buddyConversationModelId,
+            [LANGUAGE_LAB_SETTING_KEYS.roleplayModelId]: values.roleplayModelId,
+            [LANGUAGE_LAB_SETTING_KEYS.pronunciationModelId]: values.pronunciationModelId,
+          },
+          preserveEncryptedKeys: [LANGUAGE_LAB_SETTING_KEYS.geminiApiKey],
+        }),
+      });
+
+      const body = (await response.json()) as ApiResponse<SettingsCategoryDetail>;
+
+      if (!response.ok || !body.data) {
+        throw new Error(body.error ?? "Failed to save model configuration.");
+      }
+
+      setDetail(body.data);
+      setForm(buildFormState(body.data));
+      setModelsDialogOpen(false);
+      toast.success("Model configuration saved.");
+    } catch (error) {
+      const nextMessage = error instanceof Error ? error.message : "Failed to save model configuration.";
+      setErrorMessage(nextMessage);
+      toast.error(nextMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
+  const savePrompts = useCallback(async (values: PromptValues) => {
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch(`/api/settings/${LANGUAGE_LAB_CATEGORY_CODE}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          values: {
+            [LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt]: values.buddySystemPrompt,
+            [LANGUAGE_LAB_SETTING_KEYS.roleplaySystemPrompt]: values.roleplaySystemPrompt,
+            [LANGUAGE_LAB_SETTING_KEYS.pronunciationSystemPrompt]: values.pronunciationSystemPrompt,
+            [LANGUAGE_LAB_SETTING_KEYS.speakingTestSystemPrompt]: values.speakingTestSystemPrompt,
+          },
+          preserveEncryptedKeys: [LANGUAGE_LAB_SETTING_KEYS.geminiApiKey],
+        }),
+      });
+
+      const body = (await response.json()) as ApiResponse<SettingsCategoryDetail>;
+
+      if (!response.ok || !body.data) {
+        throw new Error(body.error ?? "Failed to save prompts.");
+      }
+
+      setDetail(body.data);
+      setForm(buildFormState(body.data));
+      setPromptsSheetOpen(false);
+      toast.success("Prompts saved.");
+    } catch (error) {
+      const nextMessage = error instanceof Error ? error.message : "Failed to save prompts.";
+      setErrorMessage(nextMessage);
+      toast.error(nextMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -432,7 +527,7 @@ export function LanguageLabSettingsPanel() {
             <CanAccess permission="settings.edit">
               <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Save Settings
+                Save API Key
               </Button>
             </CanAccess>
           </div>
@@ -468,132 +563,58 @@ export function LanguageLabSettingsPanel() {
             </div>
           </section>
 
-          <section className="space-y-4">
-            <div>
-              <p className="text-sm font-black tracking-tight text-slate-950">Model Registry</p>
-              <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
-                Register Gemini models as JSON objects with <code>name</code> and <code>modelId</code>, then assign them to Buddy conversation, roleplay, and pronunciation.
-              </p>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
-              <div className="rounded-[24px] border border-[#e3e9f2] bg-slate-50 p-4">
-                <label className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Registered Models JSON</label>
-                <textarea
-                  value={form.registeredModelsJson}
-                  onChange={handleFieldChange("registeredModelsJson")}
-                  className={`mt-2 min-h-[260px] font-mono ${TEXTAREA_CLASS_NAME}`}
-                  spellCheck={false}
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-                  <Badge variant={parsedRegistry.error ? "danger" : "success"}>
-                    {parsedRegistry.error ? "Registry needs attention" : "Registry JSON valid"}
-                  </Badge>
-                  <span>Use an array of objects like {`[{ "name": "Buddy Flash Lite", "modelId": "gemini-3.1-flash-lite-preview" }]`}.</span>
-                </div>
-                {parsedRegistry.error ? (
-                  <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-                    {parsedRegistry.error}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-4 rounded-[24px] border border-[#e3e9f2] bg-white p-4">
-                <div className="rounded-2xl bg-slate-50 px-4 py-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Registry preview</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{registeredModels.length} registered model{registeredModels.length === 1 ? "" : "s"}</p>
-                  <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
-                    The selectors below are driven directly from this registry.
+          {/* Configuration Cards - Open Dialogs/Sheets */}
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[24px] border border-[#e3e9f2] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Model Configuration</p>
+                  <p className="mt-2 text-lg font-bold tracking-tight text-slate-950">{registeredModels.length} Models Registered</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                    {assignmentCoverage === 3 
+                      ? "All model assignments are valid."
+                      : `${3 - assignmentCoverage} assignment(s) need attention.`}
                   </p>
                 </div>
+                <Braces className="mt-1 h-5 w-5 text-[#d77f10]" />
+              </div>
+              <CanAccess permission="settings.edit">
+                <Button 
+                  type="button" 
+                  variant="secondary"
+                  onClick={() => setModelsDialogOpen(true)}
+                  className="mt-4 w-full"
+                  disabled={isSaving}
+                >
+                  <Settings2 className="h-4 w-4" />
+                  Configure Models
+                </Button>
+              </CanAccess>
+            </div>
 
-                <div className="space-y-3">
-                  {registeredModels.map((model) => (
-                    <div key={model.modelId} className="rounded-2xl border border-[#e8edf3] bg-slate-50 px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-900">{model.name}</p>
-                        <Badge variant="default">Ready</Badge>
-                      </div>
-                      <p className="mt-2 text-xs font-medium tracking-[0.02em] text-slate-500">{model.modelId}</p>
-                    </div>
-                  ))}
+            <div className="rounded-[24px] border border-[#e3e9f2] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">System Prompts</p>
+                  <p className="mt-2 text-lg font-bold tracking-tight text-slate-950">{promptCoverage}/4 Prompts Configured</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                    Buddy, roleplay, pronunciation analysis, and speaking-test prompts.
+                  </p>
                 </div>
+                <Bot className="mt-1 h-5 w-5 text-slate-600" />
               </div>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <div>
-              <p className="text-sm font-black tracking-tight text-slate-950">Model Assignments</p>
-              <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
-                Each Language Lab action now resolves to a selected model ID instead of staying hardcoded in the Flutter app.
-              </p>
-            </div>
-
-            {assignmentIssues.length > 0 ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                {assignmentIssues.join(" ")}
-              </div>
-            ) : null}
-
-            <div className="grid gap-4 xl:grid-cols-3">
-              <ModelAssignmentCard
-                label="Buddy Conversation"
-                description="Used for Buddy chat and Buddy text conversation flows."
-                value={form.buddyConversationModelId}
-                onChange={handleFieldChange("buddyConversationModelId")}
-                models={registeredModels}
-              />
-              <ModelAssignmentCard
-                label="Roleplay"
-                description="Used for the bakery roleplay flow in the candidate app."
-                value={form.roleplayModelId}
-                onChange={handleFieldChange("roleplayModelId")}
-                models={registeredModels}
-              />
-              <ModelAssignmentCard
-                label="Pronunciation"
-                description="Used for pronunciation analysis and phoneme-level feedback."
-                value={form.pronunciationModelId}
-                onChange={handleFieldChange("pronunciationModelId")}
-                models={registeredModels}
-              />
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <div>
-              <p className="text-sm font-black tracking-tight text-slate-950">System Prompts</p>
-              <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
-                These prompts are returned to the Flutter app at runtime. The speaking-test prompt supports the <code>{"{{exerciseTitle}}"}</code> placeholder.
-              </p>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <PromptEditorCard
-                label="Buddy Prompt"
-                description="Used for Buddy chat and Buddy live text interactions."
-                value={form.buddySystemPrompt}
-                onChange={handleFieldChange("buddySystemPrompt")}
-              />
-              <PromptEditorCard
-                label="Roleplay Prompt"
-                description="Used for the bakery roleplay flow in the Flutter app."
-                value={form.roleplaySystemPrompt}
-                onChange={handleFieldChange("roleplaySystemPrompt")}
-              />
-              <PromptEditorCard
-                label="Pronunciation Analysis Prompt"
-                description="Used for phoneme-level pronunciation analysis and learner correction cues."
-                value={form.pronunciationSystemPrompt}
-                onChange={handleFieldChange("pronunciationSystemPrompt")}
-              />
-              <PromptEditorCard
-                label="Speaking Test Prompt"
-                description="Used for session-level speaking analysis. Supports the {{exerciseTitle}} placeholder."
-                value={form.speakingTestSystemPrompt}
-                onChange={handleFieldChange("speakingTestSystemPrompt")}
-              />
+              <CanAccess permission="settings.edit">
+                <Button 
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPromptsSheetOpen(true)}
+                  className="mt-4 w-full"
+                  disabled={isSaving}
+                >
+                  <Settings2 className="h-4 w-4" />
+                  Manage Prompts
+                </Button>
+              </CanAccess>
             </div>
           </section>
 
@@ -611,6 +632,34 @@ export function LanguageLabSettingsPanel() {
           </section>
         </CardContent>
       </Card>
+
+      {/* Model Configuration Dialog */}
+      <ModelConfigDialog
+        open={modelsDialogOpen}
+        onOpenChange={setModelsDialogOpen}
+        values={{
+          registeredModelsJson: form.registeredModelsJson,
+          buddyConversationModelId: form.buddyConversationModelId,
+          roleplayModelId: form.roleplayModelId,
+          pronunciationModelId: form.pronunciationModelId,
+        }}
+        onSave={saveModelConfig}
+        isSaving={isSaving}
+      />
+
+      {/* Prompt Management Dialog */}
+      <PromptManagementDialog
+        open={promptsSheetOpen}
+        onOpenChange={setPromptsSheetOpen}
+        values={{
+          buddySystemPrompt: form.buddySystemPrompt,
+          roleplaySystemPrompt: form.roleplaySystemPrompt,
+          pronunciationSystemPrompt: form.pronunciationSystemPrompt,
+          speakingTestSystemPrompt: form.speakingTestSystemPrompt,
+        }}
+        onSave={savePrompts}
+        isSaving={isSaving}
+      />
     </div>
   );
 }
@@ -639,54 +688,5 @@ function StatCard({
         <p className="text-sm font-medium leading-6 text-slate-500">{helper}</p>
       </CardContent>
     </Card>
-  );
-}
-
-function ModelAssignmentCard({
-  label,
-  description,
-  value,
-  onChange,
-  models,
-}: {
-  label: string;
-  description: string;
-  value: string;
-  onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
-  models: LanguageLabRegisteredModel[];
-}) {
-  return (
-    <div className="rounded-[24px] border border-[#e3e9f2] bg-slate-50 p-4">
-      <label className="text-sm font-black tracking-tight text-slate-950">{label}</label>
-      <p className="mt-1 text-sm font-medium leading-6 text-slate-500">{description}</p>
-      <select value={value} onChange={onChange} className={SELECT_CLASS_NAME}>
-        <option value="">Select a model</option>
-        {models.map((model) => (
-          <option key={model.modelId} value={model.modelId}>
-            {model.name} ({model.modelId})
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function PromptEditorCard({
-  label,
-  description,
-  value,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  value: string;
-  onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
-}) {
-  return (
-    <div className="rounded-[24px] border border-[#e3e9f2] bg-slate-50 p-4">
-      <p className="text-sm font-black tracking-tight text-slate-950">{label}</p>
-      <p className="mt-1 text-sm font-medium leading-6 text-slate-500">{description}</p>
-      <textarea value={value} onChange={onChange} className={`mt-4 ${TEXTAREA_CLASS_NAME}`} />
-    </div>
   );
 }

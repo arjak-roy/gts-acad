@@ -6,6 +6,9 @@ import type {
   CandidateBuddyPersona,
   LanguageLabBuddyPersonaItem,
 } from "@/lib/language-lab/types";
+import { resolveCompiledPromptValue } from "@/lib/language-lab/prompt-framework";
+import { normalizeCapabilities, capabilitiesToLegacyFlags } from "@/lib/language-lab/content-blocks";
+import type { PersonaCapability } from "@/lib/language-lab/content-blocks";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
   CreateBuddyPersonaInput,
@@ -26,6 +29,9 @@ const buddyPersonaSelect = {
   languageCode: true,
   systemPrompt: true,
   welcomeMessage: true,
+  promptType: true,
+  capabilities: true,
+  promptVersion: true,
   supportsTables: true,
   supportsEmailActions: true,
   supportsSpeech: true,
@@ -60,6 +66,7 @@ const candidateBuddyPersonaSelect = {
   languageCode: true,
   systemPrompt: true,
   welcomeMessage: true,
+  capabilities: true,
   supportsTables: true,
   supportsEmailActions: true,
   supportsSpeech: true,
@@ -85,6 +92,9 @@ function uniqueCourseIds(courseIds: string[] | undefined) {
 }
 
 function mapBuddyPersona(record: BuddyPersonaRecord): LanguageLabBuddyPersonaItem {
+  const capabilities = normalizeCapabilities(record.capabilities);
+  const legacyFlags = capabilitiesToLegacyFlags(capabilities);
+
   return {
     id: record.id,
     name: record.name,
@@ -94,9 +104,12 @@ function mapBuddyPersona(record: BuddyPersonaRecord): LanguageLabBuddyPersonaIte
     languageCode: record.languageCode,
     systemPrompt: record.systemPrompt,
     welcomeMessage: record.welcomeMessage,
-    supportsTables: record.supportsTables,
-    supportsEmailActions: record.supportsEmailActions,
-    supportsSpeech: record.supportsSpeech,
+    promptType: record.promptType ?? "buddy",
+    capabilities,
+    promptVersion: record.promptVersion ?? 1,
+    supportsTables: legacyFlags.supportsTables,
+    supportsEmailActions: legacyFlags.supportsEmailActions,
+    supportsSpeech: legacyFlags.supportsSpeech,
     isActive: record.isActive,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -111,17 +124,21 @@ function mapBuddyPersona(record: BuddyPersonaRecord): LanguageLabBuddyPersonaIte
 }
 
 function mapCandidateBuddyPersona(record: CandidateBuddyPersonaRecord): CandidateBuddyPersona {
+  const capabilities = normalizeCapabilities(record.capabilities);
+  const legacyFlags = capabilitiesToLegacyFlags(capabilities);
+
   return {
     id: record.id,
     name: record.name,
     description: record.description,
     language: record.language,
     languageCode: record.languageCode,
-    systemPrompt: record.systemPrompt,
+    systemPrompt: resolveCompiledPromptValue(record.systemPrompt, { fallbackValue: "" }) || null,
     welcomeMessage: record.welcomeMessage,
-    supportsTables: record.supportsTables,
-    supportsEmailActions: record.supportsEmailActions,
-    supportsSpeech: record.supportsSpeech,
+    capabilities,
+    supportsTables: legacyFlags.supportsTables,
+    supportsEmailActions: legacyFlags.supportsEmailActions,
+    supportsSpeech: legacyFlags.supportsSpeech,
   };
 }
 
@@ -329,19 +346,12 @@ export async function createBuddyPersonaService(
       });
 
       if (courseIds.length > 0) {
-        await tx.buddyPersonaCourseAssignment.deleteMany({
-          where: {
-            courseId: {
-              in: courseIds,
-            },
-          },
-        });
-
         await tx.buddyPersonaCourseAssignment.createMany({
           data: courseIds.map((courseId) => ({
             buddyPersonaId: created.id,
             courseId,
           })),
+          skipDuplicates: true,
         });
       }
 
@@ -375,6 +385,7 @@ export async function createBuddyPersonaService(
         languageCode: persona.languageCode,
         systemPrompt: persona.systemPrompt,
         welcomeMessage: persona.welcomeMessage,
+        capabilities: persona.capabilities,
         supportsTables: persona.supportsTables,
         supportsEmailActions: persona.supportsEmailActions,
         supportsSpeech: persona.supportsSpeech,
@@ -444,17 +455,6 @@ export async function updateBuddyPersonaService(
         });
 
         if (nextCourseIds.length > 0) {
-          await tx.buddyPersonaCourseAssignment.deleteMany({
-            where: {
-              courseId: {
-                in: nextCourseIds,
-              },
-              NOT: {
-                buddyPersonaId: personaId,
-              },
-            },
-          });
-
           const existingAssignmentIds = new Set(currentCourseIds);
           const newAssignments = nextCourseIds
             .filter((courseId) => !existingAssignmentIds.has(courseId))
@@ -466,6 +466,7 @@ export async function updateBuddyPersonaService(
           if (newAssignments.length > 0) {
             await tx.buddyPersonaCourseAssignment.createMany({
               data: newAssignments,
+              skipDuplicates: true,
             });
           }
         }
@@ -519,6 +520,7 @@ export async function updateBuddyPersonaService(
         languageCode: persona.languageCode,
         systemPrompt: persona.systemPrompt,
         welcomeMessage: persona.welcomeMessage,
+        capabilities: persona.capabilities,
         supportsTables: persona.supportsTables,
         supportsEmailActions: persona.supportsEmailActions,
         supportsSpeech: persona.supportsSpeech,
@@ -544,8 +546,13 @@ export async function resolveBuddyPersonaForCourseService(courseId: string): Pro
     return null;
   }
 
-  const assignment = await prisma.buddyPersonaCourseAssignment.findUnique({
-    where: { courseId },
+  // Multi-persona: pick highest-priority active persona for this course
+  const assignment = await prisma.buddyPersonaCourseAssignment.findFirst({
+    where: {
+      courseId,
+      buddyPersona: { isActive: true },
+    },
+    orderBy: { priority: "desc" },
     select: {
       buddyPersona: {
         select: candidateBuddyPersonaSelect,
@@ -553,7 +560,7 @@ export async function resolveBuddyPersonaForCourseService(courseId: string): Pro
     },
   });
 
-  if (!assignment?.buddyPersona || !assignment.buddyPersona.isActive) {
+  if (!assignment?.buddyPersona) {
     return null;
   }
 

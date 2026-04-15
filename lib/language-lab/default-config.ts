@@ -12,6 +12,16 @@ export const LANGUAGE_LAB_SETTING_KEYS = {
   speakingTestSystemPrompt: "language_lab.speaking_test_system_prompt",
 } as const;
 
+/**
+ * Maps each prompt type to its settings key for base prompt storage.
+ */
+export const PROMPT_TYPE_SETTING_KEYS = {
+  buddy: LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt,
+  roleplay: LANGUAGE_LAB_SETTING_KEYS.roleplaySystemPrompt,
+  pronunciation: LANGUAGE_LAB_SETTING_KEYS.pronunciationSystemPrompt,
+  speakingTest: LANGUAGE_LAB_SETTING_KEYS.speakingTestSystemPrompt,
+} as const;
+
 export type LanguageLabRegisteredModel = {
   name: string;
   modelId: string;

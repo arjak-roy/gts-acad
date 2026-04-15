@@ -5,6 +5,7 @@ import {
   LANGUAGE_LAB_SETTING_KEYS,
   normalizeLanguageLabRegisteredModels,
 } from "@/lib/language-lab/default-config";
+import { resolveCompiledPromptValue } from "@/lib/language-lab/prompt-framework";
 import { buildSettingsCatalogDefaultValueMap, SETTINGS_CATALOG } from "@/lib/settings/catalog";
 import { SETTINGS_CACHE_TTL_MS } from "@/lib/settings/constants";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
@@ -205,9 +206,9 @@ export async function getLanguageLabRuntimeSettings() {
     LANGUAGE_LAB_DEFAULT_CONFIG.selectedModels.pronunciation,
     registeredModelIds,
   );
-  const buddySystemPrompt = resolveRuntimeString(
-    await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt, ""),
-    LANGUAGE_LAB_DEFAULT_CONFIG.prompts.buddy,
+  const buddySystemPrompt = resolveCompiledPromptValue(
+    resolveRuntimeString(await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.buddySystemPrompt, "")),
+    { fallbackValue: LANGUAGE_LAB_DEFAULT_CONFIG.prompts.buddy },
   );
   const roleplaySystemPrompt = resolveRuntimeString(
     await getRuntimeSettingValue(LANGUAGE_LAB_SETTING_KEYS.roleplaySystemPrompt, ""),

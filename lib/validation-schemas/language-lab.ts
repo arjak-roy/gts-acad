@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { PERSONA_CAPABILITIES } from "@/lib/language-lab/content-blocks";
 import { LANGUAGE_LAB_VOCAB_IMPORT_MAX_ROWS } from "@/lib/language-lab/vocab-bank";
 
 const booleanishSchema = z.union([z.boolean(), z.string(), z.number()]).transform((value, context) => {
@@ -187,6 +188,8 @@ export const createBuddyPersonaSchema = z.object({
   languageCode: z.string().trim().min(1, "Language code is required.").max(20),
   systemPrompt: z.string().trim().max(12_000).optional().default(""),
   welcomeMessage: z.string().trim().max(2000).optional().default(""),
+  promptType: z.string().trim().max(40).optional().default("buddy"),
+  capabilities: z.array(z.enum(PERSONA_CAPABILITIES)).optional(),
   supportsTables: booleanishSchema.optional().default(true),
   supportsEmailActions: booleanishSchema.optional().default(false),
   supportsSpeech: booleanishSchema.optional().default(true),
@@ -201,6 +204,8 @@ export const updateBuddyPersonaSchema = z.object({
   languageCode: z.string().trim().min(1).max(20).optional(),
   systemPrompt: z.string().trim().max(12_000).optional(),
   welcomeMessage: z.string().trim().max(2000).optional(),
+  promptType: z.string().trim().max(40).optional(),
+  capabilities: z.array(z.enum(PERSONA_CAPABILITIES)).optional(),
   supportsTables: booleanishSchema.optional(),
   supportsEmailActions: booleanishSchema.optional(),
   supportsSpeech: booleanishSchema.optional(),

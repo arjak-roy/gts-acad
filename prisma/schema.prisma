@@ -497,6 +497,7 @@ model User {
   updatedEmailTemplates    EmailTemplate[]          @relation("EmailTemplateUpdatedBy")
   emailTemplateVersions    EmailTemplateVersion[]   @relation("EmailTemplateVersionUpdatedBy")
   activityLogs             UserActivityLog[]        @relation("UserActivityLogs")
+  createdPromptVersions    BuddyPromptVersion[]     @relation("promptVersionCreator")
 
   @@map("users")
 }
@@ -864,6 +865,9 @@ model BuddyPersona {
   languageCode    String                        @map("language_code") @db.VarChar(20)
   systemPrompt    String?                       @map("system_prompt")
   welcomeMessage  String?                       @map("welcome_message")
+  promptType      String                        @default("buddy") @map("prompt_type") @db.VarChar(40)
+  capabilities    Json                          @default("[\"tables\",\"lists\",\"vocab-cards\",\"speech\"]") @map("capabilities")
+  promptVersion   Int                           @default(1) @map("prompt_version")
   supportsTables  Boolean                       @default(true) @map("supports_tables")
   supportsEmailActions Boolean                  @default(false) @map("supports_email_actions")
   supportsSpeech  Boolean                       @default(true) @map("supports_speech")
@@ -871,15 +875,18 @@ model BuddyPersona {
   createdAt       DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   courseAssignments BuddyPersonaCourseAssignment[]
+  promptVersions  BuddyPromptVersion[]
 
   @@index([isActive], map: "idx_buddy_personas_active")
   @@index([languageCode, isActive], map: "idx_buddy_personas_language_active")
+  @@index([promptType, isActive], map: "idx_buddy_personas_prompt_type_active")
   @@map("buddy_personas")
 }
 
 model BuddyPersonaCourseAssignment {
   buddyPersonaId String       @db.Uuid @map("buddy_persona_id")
-  courseId       String       @unique(map: "buddy_persona_course_assignments_course_id_key") @db.Uuid @map("course_id")
+  courseId       String       @db.Uuid @map("course_id")
+  priority       Int          @default(0) @map("priority")
   assignedAt     DateTime     @default(now()) @map("assigned_at") @db.Timestamptz(6)
   buddyPersona   BuddyPersona @relation(fields: [buddyPersonaId], references: [id], onDelete: Cascade)
   course         Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -887,6 +894,24 @@ model BuddyPersonaCourseAssignment {
   @@id([buddyPersonaId, courseId])
   @@index([courseId], map: "idx_buddy_persona_course_assignments_course")
   @@map("buddy_persona_course_assignments")
+}
+
+model BuddyPromptVersion {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("version_id")
+  personaId     String?        @db.Uuid @map("buddy_persona_id")
+  settingKey    String?        @map("setting_key") @db.VarChar(120)
+  promptType    String         @map("prompt_type") @db.VarChar(40)
+  scope         String         @map("scope") @db.VarChar(20)
+  version       Int            @map("version")
+  content       String         @map("content")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdById   String?        @db.Uuid @map("created_by")
+  persona       BuddyPersona?  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  createdBy     User?          @relation("promptVersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([personaId, promptType, scope, version], map: "idx_buddy_prompt_versions_persona_lookup")
+  @@index([settingKey, promptType, scope, version], map: "idx_buddy_prompt_versions_setting_lookup")
+  @@map("buddy_prompt_versions")
 }
 
 model Program {
