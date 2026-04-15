@@ -219,6 +219,11 @@ export const requestBuddyEmailActionSchema = z.object({
   message: z.string().trim().min(10, "Email message is required.").max(4000),
 });
 
+export const requestBuddyConversationSchema = z.object({
+  batchId: z.string().trim().min(1, "Batch ID is required."),
+  message: z.string().trim().min(1, "Message is required.").max(4000),
+});
+
 export const languageLabAnalyticsFiltersSchema = z.object({
   search: z.string().trim().max(120).optional().default(""),
   batchId: z.string().trim().min(1).optional(),
@@ -299,6 +304,7 @@ export type ListBuddyPersonasInput = z.infer<typeof listBuddyPersonasSchema>;
 export type CreateBuddyPersonaInput = z.infer<typeof createBuddyPersonaSchema>;
 export type UpdateBuddyPersonaInput = z.infer<typeof updateBuddyPersonaSchema>;
 export type RequestBuddyEmailActionInput = z.infer<typeof requestBuddyEmailActionSchema>;
+export type RequestBuddyConversationInput = z.infer<typeof requestBuddyConversationSchema>;
 export type LanguageLabAnalyticsFiltersInput = z.infer<typeof languageLabAnalyticsFiltersSchema>;
 export type CreateLanguageLabWordInput = z.infer<typeof createLanguageLabWordSchema>;
 export type UpdateLanguageLabWordInput = z.infer<typeof updateLanguageLabWordSchema>;
