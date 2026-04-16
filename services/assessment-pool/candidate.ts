@@ -94,6 +94,7 @@ type CandidateAssessmentContext = {
   fallbackAssessmentId: string | null;
   attemptRecord: ResolvedAttemptRecord | null;
   attempt: CandidateAssessmentAttemptSummary | null;
+  attemptHistory: CandidateAssessmentAttemptSummary[];
   supportsInAppAttempt: boolean;
 };
 
@@ -202,6 +203,147 @@ function buildAttemptSummaryFromAttempt(options: {
     totalMarks: options.totalMarks,
     requiresManualReview: options.requiresManualReview,
   };
+}
+
+function getAttemptHistorySortTime(attempt: CandidateAssessmentAttemptSummary) {
+  return attempt.gradedAt?.getTime() ?? attempt.submittedAt.getTime() ?? attempt.lastSavedAt.getTime();
+}
+
+async function listCandidateAssessmentAttemptHistory(options: {
+  learnerId: string;
+  batchId: string;
+  assessmentPoolId: string;
+  assignmentId: string;
+  passingMarks: number;
+  totalMarks: number;
+  linkedAssessmentId: string | null;
+  fallbackAssessmentId: string | null;
+}): Promise<CandidateAssessmentAttemptSummary[]> {
+  const fallbackAssessmentPrefix = `${FALLBACK_ASSESSMENT_PREFIX}${options.assignmentId}]`;
+  const [attemptRecords, linkedAssessmentEvents, fallbackAssessments] = await Promise.all([
+    prisma.assessmentAttempt.findMany({
+      where: {
+        learnerId: options.learnerId,
+        batchId: options.batchId,
+        assessmentPoolId: options.assessmentPoolId,
+      },
+      orderBy: [{ startedAt: "desc" }, { lastSavedAt: "desc" }],
+      select: {
+        assessmentId: true,
+        status: true,
+        startedAt: true,
+        lastSavedAt: true,
+        deadlineAt: true,
+        autoSubmittedAt: true,
+        submittedAt: true,
+        gradedAt: true,
+        marksObtained: true,
+        totalMarks: true,
+        percentage: true,
+        passed: true,
+        requiresManualReview: true,
+      },
+    }),
+    prisma.batchScheduleEvent.findMany({
+      where: {
+        batchId: options.batchId,
+        linkedAssessmentPoolId: options.assessmentPoolId,
+        linkedAssessmentId: {
+          not: null,
+        },
+      },
+      select: {
+        linkedAssessmentId: true,
+      },
+    }),
+    prisma.assessment.findMany({
+      where: {
+        batchId: options.batchId,
+        title: {
+          startsWith: fallbackAssessmentPrefix,
+        },
+      },
+      select: {
+        id: true,
+      },
+    }),
+  ]);
+
+  const attemptAssessmentIds = new Set(attemptRecords.map((attempt) => attempt.assessmentId));
+  const relatedAssessmentIds = new Set<string>();
+
+  if (options.linkedAssessmentId) {
+    relatedAssessmentIds.add(options.linkedAssessmentId);
+  }
+
+  if (options.fallbackAssessmentId) {
+    relatedAssessmentIds.add(options.fallbackAssessmentId);
+  }
+
+  for (const event of linkedAssessmentEvents) {
+    if (event.linkedAssessmentId) {
+      relatedAssessmentIds.add(event.linkedAssessmentId);
+    }
+  }
+
+  for (const assessment of fallbackAssessments) {
+    relatedAssessmentIds.add(assessment.id);
+  }
+
+  const legacyAssessmentIds = Array.from(relatedAssessmentIds).filter((assessmentId) => !attemptAssessmentIds.has(assessmentId));
+  const legacyScores = legacyAssessmentIds.length > 0
+    ? await prisma.assessmentScore.findMany({
+        where: {
+          learnerId: options.learnerId,
+          assessmentId: {
+            in: legacyAssessmentIds,
+          },
+        },
+        select: {
+          assessmentId: true,
+          score: true,
+          feedback: true,
+          gradedAt: true,
+        },
+      })
+    : [];
+
+  return [
+    ...attemptRecords.map((attempt) =>
+      buildAttemptSummaryFromAttempt({
+        assessmentId: attempt.assessmentId,
+        status: attempt.status,
+        startedAt: attempt.startedAt,
+        lastSavedAt: attempt.lastSavedAt,
+        deadlineAt: attempt.deadlineAt,
+        autoSubmittedAt: attempt.autoSubmittedAt,
+        submittedAt: attempt.submittedAt,
+        gradedAt: attempt.gradedAt,
+        marksObtained: attempt.marksObtained,
+        totalMarks: attempt.totalMarks,
+        percentage: attempt.percentage,
+        passed: attempt.passed,
+        requiresManualReview: attempt.requiresManualReview,
+      }),
+    ),
+    ...legacyScores.map((score) =>
+      buildAttemptSummary({
+        assessmentId: score.assessmentId,
+        status: "GRADED",
+        startedAt: score.gradedAt,
+        lastSavedAt: score.gradedAt,
+        deadlineAt: null,
+        autoSubmittedAt: null,
+        submittedAt: score.gradedAt,
+        gradedAt: score.gradedAt,
+        storedScore: score.score,
+        storedFeedback: score.feedback,
+        passingMarks: options.passingMarks,
+        totalMarks: options.totalMarks,
+        requiresManualReview: false,
+      }),
+    ),
+  ].sort((left, right) => getAttemptHistorySortTime(right) - getAttemptHistorySortTime(left));
 }
 
 function normalizeCandidateAnswers(
@@ -533,6 +675,16 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
         },
       })
     : null;
+  const attemptHistory = await listCandidateAssessmentAttemptHistory({
+    learnerId: learner.id,
+    batchId,
+    assessmentPoolId,
+    assignmentId,
+    passingMarks: pool.passingMarks,
+    totalMarks: pool.totalMarks,
+    linkedAssessmentId: linkedEvent?.linkedAssessmentId ?? null,
+    fallbackAssessmentId: fallbackAssessment?.id ?? null,
+  });
 
   return {
     learnerId: learner.id,
@@ -596,6 +748,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
           requiresManualReview: false,
         })
       : null,
+    attemptHistory,
     supportsInAppAttempt: pool.questions.every((question) => SUPPORTED_IN_APP_QUESTION_TYPES.has(question.questionType)),
   };
 }
@@ -709,6 +862,7 @@ export async function getCandidateAssessmentDetailService(options: {
         : [],
     savedAnswers: getDraftSavedAnswers(context.attemptRecord),
     attempt: context.attempt,
+    attemptHistory: context.attemptHistory,
   };
 }
 

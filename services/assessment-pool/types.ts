@@ -125,6 +125,7 @@ export type CandidateAssessmentDetail = {
   questions: CandidateAssessmentQuestion[];
   savedAnswers: CandidateAssessmentSavedAnswer[];
   attempt: CandidateAssessmentAttemptSummary | null;
+  attemptHistory: CandidateAssessmentAttemptSummary[];
 };
 
 export type CandidateAssessmentDraftSaveResult = {
