@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { withCors, handleCorsPreflight } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireCandidateSession } from "@/lib/auth/route-guards";
+import { prisma } from "@/lib/prisma-client";
 import { batchIdSchema } from "@/lib/validation-schemas/batches";
 import { listBatchAssessmentsService, listBatchContentService } from "@/services/batch-content-service";
 import { resolveBuddyPersonaForBatchService } from "@/services/buddy-personas-service";
@@ -15,6 +16,23 @@ import {
 } from "@/services/curriculum-service";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
 import { listScheduleEventsService } from "@/services/schedule-service";
+
+type CandidateProgramLatestAttemptRecord = {
+  assessmentPoolId: string;
+  assessmentId: string;
+  status: "DRAFT" | "PENDING_REVIEW" | "IN_REVIEW" | "GRADED";
+  startedAt: Date;
+  lastSavedAt: Date;
+  deadlineAt: Date | null;
+  autoSubmittedAt: Date | null;
+  submittedAt: Date;
+  gradedAt: Date | null;
+  marksObtained: number | null;
+  totalMarks: number;
+  percentage: number | null;
+  passed: boolean | null;
+  requiresManualReview: boolean;
+};
 
 type RouteContext = {
   params: {
@@ -65,6 +83,24 @@ function serializeCurriculumAssessmentContext(context: CandidateCurriculumAssess
   };
 }
 
+function serializeLatestAttempt(record: CandidateProgramLatestAttemptRecord) {
+  return {
+    assessmentId: record.assessmentId,
+    status: record.status,
+    percentage: record.percentage,
+    passed: record.passed,
+    startedAt: record.startedAt,
+    lastSavedAt: record.lastSavedAt,
+    deadlineAt: record.deadlineAt,
+    autoSubmittedAt: record.autoSubmittedAt,
+    submittedAt: record.submittedAt,
+    gradedAt: record.gradedAt,
+    marksObtained: record.marksObtained,
+    totalMarks: record.totalMarks,
+    requiresManualReview: record.requiresManualReview,
+  };
+}
+
 export function OPTIONS(request: NextRequest) {
   return handleCorsPreflight(request, ["GET", "OPTIONS"]);
 }
@@ -105,6 +141,43 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       assignedCurricula: curriculumWorkspace.assignedCurricula,
     };
     const curriculumAssessmentContextByPoolId = buildCandidateCurriculumAssessmentContextMap(curriculumWorkspace);
+    const assessmentPoolIds = Array.from(new Set(assessments.map((assessment) => assessment.assessmentPoolId)));
+    const latestAttemptByPoolId = new Map<string, ReturnType<typeof serializeLatestAttempt>>();
+
+    if (assessmentPoolIds.length > 0) {
+      const latestAttempts = await prisma.assessmentAttempt.findMany({
+        where: {
+          learnerId: profile.id,
+          batchId,
+          assessmentPoolId: {
+            in: assessmentPoolIds,
+          },
+        },
+        orderBy: [{ assessmentPoolId: "asc" }, { startedAt: "desc" }, { lastSavedAt: "desc" }],
+        select: {
+          assessmentPoolId: true,
+          assessmentId: true,
+          status: true,
+          startedAt: true,
+          lastSavedAt: true,
+          deadlineAt: true,
+          autoSubmittedAt: true,
+          submittedAt: true,
+          gradedAt: true,
+          marksObtained: true,
+          totalMarks: true,
+          percentage: true,
+          passed: true,
+          requiresManualReview: true,
+        },
+      });
+
+      for (const attempt of latestAttempts) {
+        if (!latestAttemptByPoolId.has(attempt.assessmentPoolId)) {
+          latestAttemptByPoolId.set(attempt.assessmentPoolId, serializeLatestAttempt(attempt));
+        }
+      }
+    }
 
     const candidateAssessments = assessments.map((assessment) => {
       const linkedEvent = selectLinkedAssessmentEvent(scheduleResponse.items, assessment.assessmentPoolId);
@@ -125,6 +198,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         hardClosesAt: resolvedWindow.hardClosesAt,
         deadlineSource: resolvedWindow.deadlineSource,
         curriculumContext: curriculumContext ? serializeCurriculumAssessmentContext(curriculumContext) : null,
+        latestAttempt: latestAttemptByPoolId.get(assessment.assessmentPoolId) ?? null,
       };
     });
 
