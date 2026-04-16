@@ -1,6 +1,57 @@
-import { ContentStatus, ContentType, CurriculumItemType, CurriculumStatus, DifficultyLevel, QuestionType } from "@prisma/client";
+import {
+  ContentStatus,
+  ContentType,
+  CurriculumItemReleaseType,
+  CurriculumItemType,
+  CurriculumProgressStatus,
+  CurriculumStatus,
+  DifficultyLevel,
+  QuestionType,
+} from "@prisma/client";
 
 export type CurriculumAssignmentSource = "COURSE" | "BATCH" | "COURSE_AND_BATCH";
+
+export type CurriculumStageItemAvailabilityStatus = "AVAILABLE" | "LOCKED" | "SCHEDULED";
+
+export type CurriculumStageItemAvailabilityReasonType =
+  | "AVAILABLE_NOW"
+  | "UNLOCKS_AT_DATE"
+  | "UNLOCKS_AFTER_BATCH_OFFSET"
+  | "WAITING_FOR_PREVIOUS_ITEM"
+  | "WAITING_FOR_PASSING_SCORE"
+  | "MANUAL_RELEASE_REQUIRED"
+  | "MANUALLY_RELEASED";
+
+export type CurriculumStageItemAvailabilityReason = {
+  type: CurriculumStageItemAvailabilityReasonType;
+  message: string;
+  unlocksAt: Date | null;
+  prerequisiteStageItemId: string | null;
+  prerequisiteTitle: string | null;
+  requiredScorePercent: number | null;
+  batchOffsetDays: number | null;
+};
+
+export type CurriculumStageItemReleaseDetail = {
+  releaseType: CurriculumItemReleaseType;
+  releaseAt: Date | null;
+  releaseOffsetDays: number | null;
+  prerequisiteStageItemId: string | null;
+  prerequisiteTitle: string | null;
+  minimumScorePercent: number | null;
+  estimatedDurationMinutes: number | null;
+  dueAt: Date | null;
+  dueOffsetDays: number | null;
+  resolvedUnlockAt: Date | null;
+  resolvedDueAt: Date | null;
+};
+
+export type CurriculumStageItemBatchManualRelease = {
+  isReleased: boolean;
+  releasedAt: Date | null;
+  releasedByName: string | null;
+  note: string | null;
+};
 
 export type CurriculumStageItemDetail = {
   id: string;
@@ -18,6 +69,14 @@ export type CurriculumStageItemDetail = {
   questionType: QuestionType | null;
   difficultyLevel: DifficultyLevel | null;
   folderName: string | null;
+  progressStatus: CurriculumProgressStatus;
+  progressPercent: number;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  availabilityStatus: CurriculumStageItemAvailabilityStatus;
+  availabilityReason: CurriculumStageItemAvailabilityReason;
+  release: CurriculumStageItemReleaseDetail;
+  batchManualRelease: CurriculumStageItemBatchManualRelease | null;
 };
 
 export type CurriculumStageSummary = {

@@ -1,5 +1,7 @@
 import { AssessmentPoolStatus, DifficultyLevel, QuestionType } from "@prisma/client";
 
+import type { CandidateAssessmentDeadlineSource, CandidateCurriculumAssessmentContext } from "@/services/curriculum";
+
 export type AssessmentPoolListItem = {
   id: string;
   code: string;
@@ -75,7 +77,7 @@ export type CandidateAssessmentSavedAnswer = {
   answer: unknown;
 };
 
-export type CandidateAssessmentAvailabilityStatus = "SCHEDULED" | "OPEN" | "CLOSED" | "EXPIRED";
+export type CandidateAssessmentAvailabilityStatus = "LOCKED" | "SCHEDULED" | "OPEN" | "CLOSED" | "EXPIRED";
 
 export type CandidateAssessmentAttemptSummary = {
   assessmentId: string;
@@ -110,7 +112,10 @@ export type CandidateAssessmentDetail = {
   opensAt: Date | null;
   hardClosesAt: Date | null;
   closesAt: Date | null;
+  deadlineSource: CandidateAssessmentDeadlineSource;
   attemptDeadlineAt: Date | null;
+  attemptDeadlineSource: CandidateAssessmentDeadlineSource;
+  curriculumContext: CandidateCurriculumAssessmentContext | null;
   availabilityStatus: CandidateAssessmentAvailabilityStatus;
   isOpen: boolean;
   isClosed: boolean;
@@ -127,6 +132,7 @@ export type CandidateAssessmentDraftSaveResult = {
   assessmentPoolId: string;
   serverNow: Date;
   attemptDeadlineAt: Date | null;
+  attemptDeadlineSource: CandidateAssessmentDeadlineSource;
   savedAnswers: CandidateAssessmentSavedAnswer[];
   attempt: CandidateAssessmentAttemptSummary;
 };

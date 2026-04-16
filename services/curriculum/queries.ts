@@ -1,8 +1,9 @@
 import "server-only";
 
-import type { QuestionType } from "@prisma/client";
+import type { CurriculumProgressStatus, QuestionType } from "@prisma/client";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { listCurriculumItemProgressForLearnerService } from "@/services/curriculum/progress";
+import { resolveCurriculumStageItemAvailability } from "@/services/curriculum/release";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import { MOCK_BATCHES } from "@/services/batches/mock-data";
 import type {
@@ -11,8 +12,16 @@ import type {
   CurriculumAssignmentSource,
   CurriculumBatchMappingItem,
   CurriculumDetail,
+  CurriculumStageItemDetail,
   CurriculumSummary,
 } from "@/services/curriculum/types";
+
+type BatchManualReleaseSnapshot = {
+  isReleased: boolean;
+  releasedAt: Date | null;
+  releasedByName: string | null;
+  note: string | null;
+};
 
 type GetCurriculaForBatchOptions = {
   publishedOnly?: boolean;
@@ -68,6 +77,16 @@ type CurriculumDetailRecord = {
         assessmentPoolId: string | null;
         sortOrder: number;
         isRequired: boolean;
+        releaseConfig: {
+          releaseType: "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "MANUAL";
+          releaseAt: Date | null;
+          releaseOffsetDays: number | null;
+          prerequisiteStageItemId: string | null;
+          minimumScorePercent: number | null;
+          estimatedDurationMinutes: number | null;
+          dueAt: Date | null;
+          dueOffsetDays: number | null;
+        } | null;
         content: {
           title: string;
           description: string | null;
@@ -138,9 +157,103 @@ function collectCurriculumStageItemIds(curriculum: CurriculumDetail) {
   );
 }
 
-function applyProgressToCurriculum(
+function collectCurriculumAssessmentPoolIds(curriculum: CurriculumDetail) {
+  return curriculum.modules.flatMap((moduleRecord) =>
+    moduleRecord.stages.flatMap((stage) => stage.items.flatMap((item) => item.assessmentPoolId ? [item.assessmentPoolId] : [])),
+  );
+}
+
+function buildCurriculumItemMetadata(curriculum: CurriculumDetail) {
+  const orderedItems = curriculum.modules.flatMap((moduleRecord) =>
+    moduleRecord.stages.flatMap((stage) => stage.items),
+  );
+
+  return new Map(orderedItems.map((item, index) => [
+    item.id,
+    {
+      title: item.referenceTitle,
+      previousStageItemId: index > 0 ? orderedItems[index - 1]?.id ?? null : null,
+      previousTitle: index > 0 ? orderedItems[index - 1]?.referenceTitle ?? null : null,
+    },
+  ]));
+}
+
+function applyLearnerStateToCurriculum(
   curriculum: CurriculumDetail,
-  progressByStageItemId: Map<string, { status: string }>,
+  options: {
+    batchStartDate: Date;
+    progressByStageItemId: Map<string, {
+      status: CurriculumProgressStatus;
+      progressPercent: number;
+      startedAt: Date | null;
+      completedAt: Date | null;
+    }>;
+    scoreByStageItemId: Map<string, number | null>;
+    manualReleaseAtByStageItemId: Map<string, Date>;
+  },
+): CurriculumDetail {
+  const itemMetadata = buildCurriculumItemMetadata(curriculum);
+
+  return {
+    ...curriculum,
+    modules: curriculum.modules.map((moduleRecord) => ({
+      ...moduleRecord,
+      stages: moduleRecord.stages.map((stage) => ({
+        ...stage,
+        items: stage.items.map((item) => ({
+          ...(() => {
+            const progressRecord = options.progressByStageItemId.get(item.id);
+            const metadata = itemMetadata.get(item.id);
+            const explicitPrerequisiteStageItemId = item.release.prerequisiteStageItemId;
+            const effectivePrerequisiteStageItemId = explicitPrerequisiteStageItemId ?? metadata?.previousStageItemId ?? null;
+            const effectivePrerequisiteTitle = effectivePrerequisiteStageItemId
+              ? itemMetadata.get(effectivePrerequisiteStageItemId)?.title ?? null
+              : metadata?.previousTitle ?? null;
+            const availability = resolveCurriculumStageItemAvailability({
+              batchStartDate: options.batchStartDate,
+              progressStatus: progressRecord?.status ?? "NOT_STARTED",
+              manualReleaseAt: options.manualReleaseAtByStageItemId.get(item.id) ?? null,
+              release: {
+                releaseType: item.release.releaseType,
+                releaseAt: item.release.releaseAt,
+                releaseOffsetDays: item.release.releaseOffsetDays,
+                prerequisiteStageItemId: explicitPrerequisiteStageItemId,
+                prerequisiteTitle: explicitPrerequisiteStageItemId ? effectivePrerequisiteTitle : null,
+                minimumScorePercent: item.release.minimumScorePercent,
+                estimatedDurationMinutes: item.release.estimatedDurationMinutes,
+                dueAt: item.release.dueAt,
+                dueOffsetDays: item.release.dueOffsetDays,
+              },
+              defaultPrerequisiteStageItemId: metadata?.previousStageItemId ?? null,
+              defaultPrerequisiteTitle: metadata?.previousTitle ?? null,
+              prerequisiteProgressStatus: effectivePrerequisiteStageItemId
+                ? options.progressByStageItemId.get(effectivePrerequisiteStageItemId)?.status ?? "NOT_STARTED"
+                : null,
+              prerequisiteScorePercent: effectivePrerequisiteStageItemId
+                ? options.scoreByStageItemId.get(effectivePrerequisiteStageItemId) ?? null
+                : null,
+            });
+
+            return {
+              ...item,
+              progressStatus: progressRecord?.status ?? "NOT_STARTED",
+              progressPercent: progressRecord?.progressPercent ?? 0,
+              startedAt: progressRecord?.startedAt ?? null,
+              completedAt: progressRecord?.completedAt ?? null,
+              availabilityStatus: availability.availabilityStatus,
+              availabilityReason: availability.availabilityReason,
+              release: availability.release,
+            } satisfies CurriculumStageItemDetail;
+          })(),
+        })),
+      })),
+    })),
+  };
+}
+
+function applyBatchManualReleaseStateToCurriculum(
+  curriculum: CurriculumDetail,
+  manualReleaseByStageItemId: Map<string, BatchManualReleaseSnapshot>,
 ): CurriculumDetail {
   return {
     ...curriculum,
@@ -150,7 +263,7 @@ function applyProgressToCurriculum(
         ...stage,
         items: stage.items.map((item) => ({
           ...item,
-          status: progressByStageItemId.get(item.id)?.status ?? "NOT_STARTED",
+          batchManualRelease: manualReleaseByStageItemId.get(item.id) ?? null,
         })),
       })),
     })),
@@ -200,7 +313,7 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
       description: stage.description,
       sortOrder: stage.sortOrder,
       itemCount: stage.items.length,
-      items: stage.items.map((item) => ({
+      items: stage.items.map((item): CurriculumStageItemDetail => ({
         id: item.id,
         itemType: item.itemType,
         contentId: item.contentId,
@@ -216,6 +329,34 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
         questionType: item.assessmentPool?.questionType ?? null,
         difficultyLevel: item.assessmentPool?.difficultyLevel ?? null,
         folderName: item.content?.folder?.name ?? null,
+        progressStatus: "NOT_STARTED",
+        progressPercent: 0,
+        startedAt: null,
+        completedAt: null,
+        availabilityStatus: "AVAILABLE",
+        availabilityReason: {
+          type: "AVAILABLE_NOW",
+          message: "Available now.",
+          unlocksAt: null,
+          prerequisiteStageItemId: null,
+          prerequisiteTitle: null,
+          requiredScorePercent: null,
+          batchOffsetDays: null,
+        },
+        release: {
+          releaseType: item.releaseConfig?.releaseType ?? "IMMEDIATE",
+          releaseAt: item.releaseConfig?.releaseAt ?? null,
+          releaseOffsetDays: item.releaseConfig?.releaseOffsetDays ?? null,
+          prerequisiteStageItemId: item.releaseConfig?.prerequisiteStageItemId ?? null,
+          prerequisiteTitle: null,
+          minimumScorePercent: item.releaseConfig?.minimumScorePercent ?? null,
+          estimatedDurationMinutes: item.releaseConfig?.estimatedDurationMinutes ?? null,
+          dueAt: item.releaseConfig?.dueAt ?? null,
+          dueOffsetDays: item.releaseConfig?.dueOffsetDays ?? null,
+          resolvedUnlockAt: null,
+          resolvedDueAt: null,
+        },
+        batchManualRelease: null,
       })),
     }));
 
@@ -330,6 +471,18 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
                   assessmentPoolId: true,
                   sortOrder: true,
                   isRequired: true,
+                  releaseConfig: {
+                    select: {
+                      releaseType: true,
+                      releaseAt: true,
+                      releaseOffsetDays: true,
+                      prerequisiteStageItemId: true,
+                      minimumScorePercent: true,
+                      estimatedDurationMinutes: true,
+                      dueAt: true,
+                      dueOffsetDays: true,
+                    },
+                  },
                   content: {
                     select: {
                       title: true,
@@ -515,6 +668,53 @@ export async function getCurriculaForBatchService(batchId: string, options?: Get
     ...inheritedCurricula.map((curriculum) => curriculum.id),
     ...mappedCurricula.map((mapping) => mapping.curriculum.id),
   ]);
+  const stageItemIds = Array.from(new Set(
+    Array.from(detailMap.values()).flatMap((curriculum) => collectCurriculumStageItemIds(curriculum)),
+  ));
+  const manualReleaseByStageItemId = new Map<string, BatchManualReleaseSnapshot>();
+
+  if (stageItemIds.length > 0) {
+    const manualReleaseRecords = await prisma.batchCurriculumStageItemRelease.findMany({
+      where: {
+        batchId,
+        stageItemId: {
+          in: stageItemIds,
+        },
+      },
+      select: {
+        stageItemId: true,
+        releasedAt: true,
+        releasedById: true,
+        note: true,
+      },
+    });
+
+    const releaserIds = Array.from(new Set(
+      manualReleaseRecords.flatMap((record) => record.releasedById ? [record.releasedById] : []),
+    ));
+    const releaserNameById = releaserIds.length === 0
+      ? new Map<string, string | null>()
+      : new Map((await prisma.user.findMany({
+        where: {
+          id: {
+            in: releaserIds,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      })).map((user) => [user.id, user.name ?? null]));
+
+    for (const record of manualReleaseRecords) {
+      manualReleaseByStageItemId.set(record.stageItemId, {
+        isReleased: true,
+        releasedAt: record.releasedAt,
+        releasedByName: record.releasedById ? (releaserNameById.get(record.releasedById) ?? null) : null,
+        note: record.note ?? null,
+      });
+    }
+  }
 
   const inheritedAssignments = inheritedCurricula
     .map((curriculumSummary): BatchAssignedCurriculumDetail | null => {
@@ -541,7 +741,7 @@ export async function getCurriculaForBatchService(batchId: string, options?: Get
         isInheritedFromCourse: true,
         isBatchMapped: Boolean(mapping),
         canRemoveBatchMapping: Boolean(mapping),
-        curriculum,
+        curriculum: applyBatchManualReleaseStateToCurriculum(curriculum, manualReleaseByStageItemId),
       };
     })
     .filter((item): item is BatchAssignedCurriculumDetail => Boolean(item));
@@ -565,7 +765,7 @@ export async function getCurriculaForBatchService(batchId: string, options?: Get
         isInheritedFromCourse: false,
         isBatchMapped: true,
         canRemoveBatchMapping: true,
-        curriculum,
+        curriculum: applyBatchManualReleaseStateToCurriculum(curriculum, manualReleaseByStageItemId),
       };
     })
     .filter((item): item is BatchAssignedCurriculumDetail => Boolean(item));
@@ -594,31 +794,85 @@ export async function getCandidateCurriculaForBatchService(options: {
   learnerId: string;
 }): Promise<BatchCurriculumWorkspace> {
   const workspace = await getCurriculaForBatchService(options.batchId, { publishedOnly: true });
+  const batch = await getBatchCourseContext(options.batchId);
   const stageItemIds = Array.from(new Set(
     workspace.assignedCurricula.flatMap((assignment) => collectCurriculumStageItemIds(assignment.curriculum)),
   ));
 
-  if (stageItemIds.length === 0) {
+  if (!batch || stageItemIds.length === 0) {
     return {
       ...workspace,
       availableCurricula: [],
     };
   }
 
-  const progressRecords = await listCurriculumItemProgressForLearnerService({
-    learnerId: options.learnerId,
-    batchId: options.batchId,
-    stageItemIds,
-  });
+  const assessmentPoolIds = Array.from(new Set(
+    workspace.assignedCurricula.flatMap((assignment) => collectCurriculumAssessmentPoolIds(assignment.curriculum)),
+  ));
+
+  const [progressRecords, manualReleases, assessmentAttempts] = await Promise.all([
+    listCurriculumItemProgressForLearnerService({
+      learnerId: options.learnerId,
+      batchId: options.batchId,
+      stageItemIds,
+    }),
+    prisma.batchCurriculumStageItemRelease.findMany({
+      where: {
+        batchId: options.batchId,
+        stageItemId: {
+          in: stageItemIds,
+        },
+      },
+      select: {
+        stageItemId: true,
+        releasedAt: true,
+      },
+    }),
+    assessmentPoolIds.length === 0
+      ? Promise.resolve([])
+      : prisma.assessmentAttempt.findMany({
+        where: {
+          learnerId: options.learnerId,
+          batchId: options.batchId,
+          assessmentPoolId: {
+            in: assessmentPoolIds,
+          },
+        },
+        orderBy: [{ gradedAt: "desc" }, { submittedAt: "desc" }, { startedAt: "desc" }],
+        select: {
+          assessmentPoolId: true,
+          percentage: true,
+        },
+      }),
+  ]);
 
   const progressByStageItemId = new Map(progressRecords.map((record) => [record.stageItemId, record]));
+  const manualReleaseAtByStageItemId = new Map(manualReleases.map((record) => [record.stageItemId, record.releasedAt]));
+  const scoreByAssessmentPoolId = new Map<string, number | null>();
+
+  for (const attempt of assessmentAttempts) {
+    if (!scoreByAssessmentPoolId.has(attempt.assessmentPoolId)) {
+      scoreByAssessmentPoolId.set(attempt.assessmentPoolId, attempt.percentage ?? null);
+    }
+  }
 
   return {
     ...workspace,
     availableCurricula: [],
     assignedCurricula: workspace.assignedCurricula.map((assignment) => ({
       ...assignment,
-      curriculum: applyProgressToCurriculum(assignment.curriculum, progressByStageItemId),
+      curriculum: applyLearnerStateToCurriculum(assignment.curriculum, {
+        batchStartDate: batch.startDate,
+        progressByStageItemId,
+        scoreByStageItemId: new Map(
+          assignment.curriculum.modules.flatMap((moduleRecord) =>
+            moduleRecord.stages.flatMap((stage) =>
+              stage.items.map((item) => [item.id, item.assessmentPoolId ? (scoreByAssessmentPoolId.get(item.assessmentPoolId) ?? null) : null] as const),
+            ),
+          ),
+        ),
+        manualReleaseAtByStageItemId,
+      }),
     })),
   };
 }

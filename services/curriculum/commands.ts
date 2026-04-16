@@ -14,6 +14,8 @@ import type {
   ReorderCurriculumModulesInput,
   ReorderCurriculumStageItemsInput,
   ReorderCurriculumStagesInput,
+  ReleaseCurriculumStageItemForBatchInput,
+  RevokeCurriculumStageItemReleaseForBatchInput,
   UpdateCurriculumInput,
   UpdateCurriculumModuleInput,
   UpdateCurriculumStageInput,
@@ -104,7 +106,20 @@ async function ensureStageExists(tx: DbClient, stageId: string) {
 async function ensureStageItemExists(tx: DbClient, itemId: string) {
   const item = await tx.curriculumStageItem.findUnique({
     where: { id: itemId },
-    select: { id: true, stageId: true, itemType: true },
+    select: {
+      id: true,
+      stageId: true,
+      itemType: true,
+      stage: {
+        select: {
+          module: {
+            select: {
+              curriculumId: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!item) {
@@ -112,6 +127,97 @@ async function ensureStageItemExists(tx: DbClient, itemId: string) {
   }
 
   return item;
+}
+
+async function ensureBatchCanManageCurriculumStageItemRelease(tx: DbClient, options: {
+  batchId: string;
+  itemId: string;
+}) {
+  const [batch, item] = await Promise.all([
+    ensureBatchExists(tx, options.batchId),
+    tx.curriculumStageItem.findUnique({
+      where: { id: options.itemId },
+      select: {
+        id: true,
+        releaseConfig: {
+          select: {
+            releaseType: true,
+          },
+        },
+        stage: {
+          select: {
+            title: true,
+            module: {
+              select: {
+                title: true,
+                curriculumId: true,
+                curriculum: {
+                  select: {
+                    id: true,
+                    title: true,
+                    courseId: true,
+                    status: true,
+                    batchMappings: {
+                      where: {
+                        batchId: options.batchId,
+                      },
+                      select: {
+                        id: true,
+                      },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        content: {
+          select: {
+            title: true,
+          },
+        },
+        assessmentPool: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!item) {
+    throw new Error("Curriculum item not found.");
+  }
+
+  const curriculum = item.stage.module.curriculum;
+
+  if (batch.program.courseId !== curriculum.courseId) {
+    throw new Error("The selected curriculum item does not belong to the same course as this batch.");
+  }
+
+  const isAvailableToBatch = curriculum.status === "PUBLISHED" || item.stage.module.curriculum.batchMappings.length > 0;
+
+  if (!isAvailableToBatch) {
+    throw new Error("This batch does not currently have access to the selected curriculum item.");
+  }
+
+  if ((item.releaseConfig?.releaseType ?? "IMMEDIATE") !== "MANUAL") {
+    throw new Error("Only manually released curriculum items can be managed from the batch workspace.");
+  }
+
+  return {
+    batch,
+    item: {
+      id: item.id,
+      title: item.content?.title ?? item.assessmentPool?.title ?? "Untitled item",
+      stageTitle: item.stage.title,
+    },
+    curriculum: {
+      id: curriculum.id,
+      title: curriculum.title,
+    },
+  };
 }
 
 async function getNextModuleSortOrder(tx: DbClient, curriculumId: string) {
@@ -150,6 +256,71 @@ function normalizeReferenceIds(values: Array<string | null | undefined>) {
       .map((value) => value?.trim() ?? "")
       .filter(Boolean),
   ));
+}
+
+function buildStageItemReleaseConfigData(
+  releaseConfig: NonNullable<CreateCurriculumStageItemsInput["releaseConfig"]>,
+) {
+  return {
+    releaseType: releaseConfig.releaseType,
+    releaseAt: releaseConfig.releaseAt ?? null,
+    releaseOffsetDays: releaseConfig.releaseOffsetDays ?? null,
+    prerequisiteStageItemId: releaseConfig.prerequisiteStageItemId ?? null,
+    minimumScorePercent: releaseConfig.minimumScorePercent ?? null,
+    estimatedDurationMinutes: releaseConfig.estimatedDurationMinutes ?? null,
+    dueAt: releaseConfig.dueAt ?? null,
+    dueOffsetDays: releaseConfig.dueOffsetDays ?? null,
+  };
+}
+
+async function validateStageItemReleasePrerequisite(options: {
+  tx: DbClient;
+  stageItemId: string;
+  curriculumId: string;
+  prerequisiteStageItemId: string | null | undefined;
+}) {
+  if (!options.prerequisiteStageItemId) {
+    return;
+  }
+
+  if (options.prerequisiteStageItemId === options.stageItemId) {
+    throw new Error("A curriculum item cannot depend on itself.");
+  }
+
+  const prerequisiteItem = await ensureStageItemExists(options.tx, options.prerequisiteStageItemId);
+
+  if (prerequisiteItem.stage.module.curriculumId !== options.curriculumId) {
+    throw new Error("Release prerequisites must belong to the same curriculum.");
+  }
+}
+
+async function upsertStageItemReleaseConfig(options: {
+  tx: DbClient;
+  stageItemId: string;
+  curriculumId: string;
+  releaseConfig: CreateCurriculumStageItemsInput["releaseConfig"] | UpdateCurriculumStageItemInput["releaseConfig"];
+}) {
+  if (!options.releaseConfig) {
+    return;
+  }
+
+  await validateStageItemReleasePrerequisite({
+    tx: options.tx,
+    stageItemId: options.stageItemId,
+    curriculumId: options.curriculumId,
+    prerequisiteStageItemId: options.releaseConfig.prerequisiteStageItemId,
+  });
+
+  const data = buildStageItemReleaseConfigData(options.releaseConfig);
+
+  await options.tx.curriculumStageItemRelease.upsert({
+    where: { stageItemId: options.stageItemId },
+    create: {
+      stageItemId: options.stageItemId,
+      ...data,
+    },
+    update: data,
+  });
 }
 
 async function ensureUniqueModuleTitle(tx: DbClient, curriculumId: string, title: string, excludeId?: string) {
@@ -643,6 +814,7 @@ export async function createCurriculumStageItemService(
     contentIds: input.contentId ? [input.contentId] : [],
     assessmentPoolIds: input.assessmentPoolId ? [input.assessmentPoolId] : [],
     isRequired: input.isRequired ?? false,
+    releaseConfig: input.releaseConfig,
   }, options);
 
   return stageItem;
@@ -670,6 +842,7 @@ export async function createCurriculumStageItemsService(
 
   const stageItems = await prisma.$transaction(async (tx) => {
     const stage = await ensureStageExists(tx, input.stageId);
+    const curriculumId = stage.module.curriculumId;
     const courseId = stage.module.curriculum.courseId;
     const contentIds = input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [];
     const assessmentPoolIds = input.itemType === "ASSESSMENT" ? normalizeReferenceIds(input.assessmentPoolIds) : [];
@@ -704,7 +877,7 @@ export async function createCurriculumStageItemsService(
     const createdItems: CurriculumStageItemMutationResult[] = [];
 
     for (const [index, referenceId] of referenceIds.entries()) {
-      createdItems.push(await tx.curriculumStageItem.create({
+      const createdItem = await tx.curriculumStageItem.create({
         data: {
           stageId: input.stageId,
           itemType: input.itemType,
@@ -722,7 +895,16 @@ export async function createCurriculumStageItemsService(
           sortOrder: true,
           isRequired: true,
         },
-      }));
+      });
+
+      await upsertStageItemReleaseConfig({
+        tx,
+        stageItemId: createdItem.id,
+        curriculumId,
+        releaseConfig: input.releaseConfig,
+      });
+
+      createdItems.push(createdItem);
     }
 
     return createdItems;
@@ -754,7 +936,14 @@ export async function updateCurriculumStageItemService(
   }
 
   const item = await prisma.$transaction(async (tx) => {
-    await ensureStageItemExists(tx, input.itemId);
+    const existing = await ensureStageItemExists(tx, input.itemId);
+
+    await upsertStageItemReleaseConfig({
+      tx,
+      stageItemId: input.itemId,
+      curriculumId: existing.stage.module.curriculumId,
+      releaseConfig: input.releaseConfig,
+    });
 
     return tx.curriculumStageItem.update({
       where: { id: input.itemId },
@@ -927,6 +1116,97 @@ export async function removeCurriculumFromBatchService(
     metadata: {
       batchId: input.batchId,
       batchCode: removal.batch.code,
+    },
+  });
+}
+
+export async function releaseCurriculumStageItemForBatchService(
+  input: ReleaseCurriculumStageItemForBatchInput,
+  options?: { actorUserId?: string },
+): Promise<void> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const release = await prisma.$transaction(async (tx) => {
+    const context = await ensureBatchCanManageCurriculumStageItemRelease(tx, {
+      batchId: input.batchId,
+      itemId: input.itemId,
+    });
+
+    await tx.batchCurriculumStageItemRelease.upsert({
+      where: {
+        batchId_stageItemId: {
+          batchId: input.batchId,
+          stageItemId: input.itemId,
+        },
+      },
+      create: {
+        batchId: input.batchId,
+        stageItemId: input.itemId,
+        releasedById: options?.actorUserId ?? null,
+        note: input.note?.trim() || null,
+      },
+      update: {
+        releasedById: options?.actorUserId ?? null,
+        note: input.note?.trim() || null,
+        releasedAt: new Date(),
+      },
+    });
+
+    return context;
+  });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
+    entityId: release.curriculum.id,
+    action: AUDIT_ACTION_TYPE.UPDATED,
+    message: `Curriculum item "${release.item.title}" manually released for batch ${release.batch.code}.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      batchId: input.batchId,
+      batchCode: release.batch.code,
+      itemId: input.itemId,
+      stageTitle: release.item.stageTitle,
+    },
+  });
+}
+
+export async function revokeCurriculumStageItemReleaseForBatchService(
+  input: RevokeCurriculumStageItemReleaseForBatchInput,
+  options?: { actorUserId?: string },
+): Promise<void> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const release = await prisma.$transaction(async (tx) => {
+    const context = await ensureBatchCanManageCurriculumStageItemRelease(tx, {
+      batchId: input.batchId,
+      itemId: input.itemId,
+    });
+
+    await tx.batchCurriculumStageItemRelease.deleteMany({
+      where: {
+        batchId: input.batchId,
+        stageItemId: input.itemId,
+      },
+    });
+
+    return context;
+  });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
+    entityId: release.curriculum.id,
+    action: AUDIT_ACTION_TYPE.UPDATED,
+    message: `Manual release revoked for curriculum item "${release.item.title}" in batch ${release.batch.code}.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      batchId: input.batchId,
+      batchCode: release.batch.code,
+      itemId: input.itemId,
+      stageTitle: release.item.stageTitle,
     },
   });
 }

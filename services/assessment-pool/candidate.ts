@@ -11,9 +11,14 @@ import {
   sendCandidateAssessmentResultNotification,
 } from "@/services/candidate-notifications";
 import {
+  buildCandidateCurriculumAssessmentContextMap,
+  getCandidateCurriculaForBatchService,
   markCurriculumAssessmentCompletedForLearnerService,
   markCurriculumAssessmentInProgressForLearnerService,
-} from "@/services/curriculum/progress";
+  resolveCandidateAssessmentWindow,
+  type CandidateAssessmentDeadlineSource,
+  type CandidateCurriculumAssessmentContext,
+} from "@/services/curriculum-service";
 import { parseAssessmentAttemptAnswers } from "@/services/assessment-reviews/internal";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import type {
@@ -64,9 +69,12 @@ type CandidateAssessmentContext = {
   batchMode: "ONLINE" | "OFFLINE";
   programId: string;
   assignmentId: string;
+  scheduledAt: Date | null;
   opensAt: Date | null;
   hardClosesAt: Date | null;
   closesAt: Date | null;
+  deadlineSource: CandidateAssessmentDeadlineSource;
+  curriculumContext: CandidateCurriculumAssessmentContext | null;
   pool: {
     id: string;
     code: string;
@@ -96,33 +104,28 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
-function resolveAssessmentWindow(options: {
-  mappedOpensAt: Date | null | undefined;
-  linkedOpensAt: Date | null | undefined;
-  linkedClosesAt: Date | null | undefined;
-}) {
-  const opensAt = options.linkedOpensAt ?? options.mappedOpensAt ?? null;
-  const hardClosesAt = options.linkedClosesAt ?? null;
-
-  return {
-    opensAt,
-    hardClosesAt,
-    closesAt: hardClosesAt,
-  };
-}
-
 function resolveAttemptDeadline(options: {
   startedAt: Date;
   timeLimitMinutes: number | null;
-  hardClosesAt: Date | null;
+  closesAt: Date | null;
+  closesAtSource: CandidateAssessmentDeadlineSource;
 }) {
   const timedDeadline = options.timeLimitMinutes ? addMinutes(options.startedAt, options.timeLimitMinutes) : null;
 
-  if (timedDeadline && options.hardClosesAt) {
-    return timedDeadline.getTime() < options.hardClosesAt.getTime() ? timedDeadline : options.hardClosesAt;
+  if (timedDeadline && options.closesAt) {
+    return timedDeadline.getTime() < options.closesAt.getTime()
+      ? { deadlineAt: timedDeadline, deadlineSource: "TIME_LIMIT" as const }
+      : { deadlineAt: options.closesAt, deadlineSource: options.closesAtSource };
   }
 
-  return timedDeadline ?? options.hardClosesAt;
+  if (timedDeadline) {
+    return { deadlineAt: timedDeadline, deadlineSource: "TIME_LIMIT" as const };
+  }
+
+  return {
+    deadlineAt: options.closesAt,
+    deadlineSource: options.closesAt ? options.closesAtSource : "NONE",
+  };
 }
 
 function isPastDeadline(deadlineAt: Date | null, now: number) {
@@ -282,6 +285,10 @@ function resolveAvailabilityStatus(context: CandidateAssessmentContext, now: num
     return "EXPIRED";
   }
 
+  if (context.curriculumContext?.availabilityStatus === "LOCKED") {
+    return "LOCKED";
+  }
+
   if (!context.opensAt || context.opensAt.getTime() > now) {
     return "SCHEDULED";
   }
@@ -290,7 +297,7 @@ function resolveAvailabilityStatus(context: CandidateAssessmentContext, now: num
     return "EXPIRED";
   }
 
-  if (context.hardClosesAt && context.hardClosesAt.getTime() < now) {
+  if (context.closesAt && context.closesAt.getTime() < now) {
     return "CLOSED";
   }
 
@@ -327,98 +334,120 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     throw new Error("Assessment not found.");
   }
 
-  const mapping = await prisma.batchAssessmentMapping.findUnique({
-    where: {
-      batchId_assessmentPoolId: {
-        batchId,
+  const [mapping, courseLink, linkedEvent, curriculumWorkspace] = await Promise.all([
+    prisma.batchAssessmentMapping.findUnique({
+      where: {
+        batchId_assessmentPoolId: {
+          batchId,
+          assessmentPoolId,
+        },
+      },
+      select: {
+        id: true,
+        scheduledAt: true,
+        batch: {
+          select: {
+            id: true,
+            mode: true,
+            programId: true,
+          },
+        },
+        assessmentPool: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            description: true,
+            questionType: true,
+            difficultyLevel: true,
+            totalMarks: true,
+            passingMarks: true,
+            timeLimitMinutes: true,
+            status: true,
+            questions: {
+              orderBy: {
+                sortOrder: "asc",
+              },
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                options: true,
+                correctAnswer: true,
+                explanation: true,
+                marks: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.courseAssessmentLink.findFirst({
+      where: {
+        courseId: batch.courseId,
         assessmentPoolId,
-      },
-    },
-    select: {
-      id: true,
-      scheduledAt: true,
-      batch: {
-        select: {
-          id: true,
-          mode: true,
-          programId: true,
+        assessmentPool: {
+          is: {
+            status: "PUBLISHED",
+          },
         },
       },
-      assessmentPool: {
-        select: {
-          id: true,
-          code: true,
-          title: true,
-          description: true,
-          questionType: true,
-          difficultyLevel: true,
-          totalMarks: true,
-          passingMarks: true,
-          timeLimitMinutes: true,
-          status: true,
-          questions: {
-            orderBy: {
-              sortOrder: "asc",
-            },
-            select: {
-              id: true,
-              questionText: true,
-              questionType: true,
-              options: true,
-              correctAnswer: true,
-              explanation: true,
-              marks: true,
-              sortOrder: true,
+      select: {
+        id: true,
+        createdAt: true,
+        assessmentPool: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            description: true,
+            questionType: true,
+            difficultyLevel: true,
+            totalMarks: true,
+            passingMarks: true,
+            timeLimitMinutes: true,
+            questions: {
+              orderBy: {
+                sortOrder: "asc",
+              },
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                options: true,
+                correctAnswer: true,
+                explanation: true,
+                marks: true,
+                sortOrder: true,
+              },
             },
           },
         },
       },
-    },
-  });
-
-  const courseLink = await prisma.courseAssessmentLink.findFirst({
-    where: {
-      courseId: batch.courseId,
-      assessmentPoolId,
-      assessmentPool: {
-        is: {
-          status: "PUBLISHED",
+    }),
+    prisma.batchScheduleEvent.findFirst({
+      where: {
+        batchId,
+        linkedAssessmentPoolId: assessmentPoolId,
+        status: {
+          not: "CANCELLED",
         },
       },
-    },
-    select: {
-      id: true,
-      createdAt: true,
-      assessmentPool: {
-        select: {
-          id: true,
-          code: true,
-          title: true,
-          description: true,
-          questionType: true,
-          difficultyLevel: true,
-          totalMarks: true,
-          passingMarks: true,
-          timeLimitMinutes: true,
-          questions: {
-            orderBy: {
-              sortOrder: "asc",
-            },
-            select: {
-              id: true,
-              questionText: true,
-              questionType: true,
-              options: true,
-              correctAnswer: true,
-              explanation: true,
-              marks: true,
-              sortOrder: true,
-            },
-          },
-        },
+      orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
+      select: {
+        linkedAssessmentId: true,
+        type: true,
+        classMode: true,
+        startsAt: true,
+        endsAt: true,
       },
-    },
-  });
+    }),
+    getCandidateCurriculaForBatchService({
+      batchId,
+      learnerId: learner.id,
+    }),
+  ]);
 
   const pool = mapping?.assessmentPool.status === "PUBLISHED"
     ? mapping.assessmentPool
@@ -434,28 +463,13 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     throw new Error("Assessment not found.");
   }
 
-  const linkedEvent = await prisma.batchScheduleEvent.findFirst({
-    where: {
-      batchId,
-      linkedAssessmentPoolId: assessmentPoolId,
-      status: {
-        not: "CANCELLED",
-      },
-    },
-    orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
-    select: {
-      linkedAssessmentId: true,
-      type: true,
-      classMode: true,
-      startsAt: true,
-      endsAt: true,
-    },
-  });
-
-  const { opensAt, hardClosesAt, closesAt } = resolveAssessmentWindow({
+  const curriculumContext = buildCandidateCurriculumAssessmentContextMap(curriculumWorkspace).get(assessmentPoolId) ?? null;
+  const resolvedWindow = resolveCandidateAssessmentWindow({
     mappedOpensAt: mapping?.scheduledAt,
     linkedOpensAt: linkedEvent?.startsAt,
     linkedClosesAt: linkedEvent?.endsAt,
+    curriculumUnlockAt: curriculumContext?.unlockAt,
+    curriculumDueAt: curriculumContext?.dueAt,
   });
   const fallbackAssessment = !linkedEvent?.linkedAssessmentId
     ? await prisma.assessment.findFirst({
@@ -524,9 +538,12 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     batchMode: batch.batchMode,
     programId: batch.programId,
     assignmentId,
-    opensAt,
-    hardClosesAt,
-    closesAt,
+    scheduledAt: resolvedWindow.scheduledAt,
+    opensAt: resolvedWindow.opensAt,
+    hardClosesAt: resolvedWindow.hardClosesAt,
+    closesAt: resolvedWindow.closesAt,
+    deadlineSource: resolvedWindow.deadlineSource,
+    curriculumContext,
     pool: {
       id: pool.id,
       code: pool.code,
@@ -586,20 +603,26 @@ function getAvailabilityMessage(context: CandidateAssessmentContext, now: number
     return "Time expired and your saved answers were submitted automatically.";
   }
 
+  if (context.curriculumContext?.availabilityStatus === "LOCKED") {
+    return context.curriculumContext.availabilityReason.message;
+  }
+
   if (!context.supportsInAppAttempt) {
     return "This assessment includes question types that are not supported in the candidate app yet.";
   }
 
   if (!context.opensAt) {
-    return "This assessment is mapped to your batch, but its start time has not been published yet.";
+    return context.curriculumContext?.availabilityReason.message ?? "This assessment is mapped to your batch, but its start time has not been published yet.";
   }
 
   if (context.opensAt.getTime() > now) {
-    return "This assessment will unlock once the scheduled start time has been crossed.";
+    return context.curriculumContext?.availabilityReason.message ?? "This assessment will unlock once the scheduled start time has been crossed.";
   }
 
-  if (context.hardClosesAt && context.hardClosesAt.getTime() < now) {
-    return "This assessment window has already closed.";
+  if (context.closesAt && context.closesAt.getTime() < now) {
+    return context.deadlineSource === "CURRICULUM_DUE"
+      ? "The curriculum deadline for this assessment has already passed."
+      : "This assessment window has already closed.";
   }
 
   return null;
@@ -628,8 +651,16 @@ export async function getCandidateAssessmentDetailService(options: {
 
   const availabilityStatus = resolveAvailabilityStatus(context, now);
   const hasFinalAttempt = Boolean(context.attempt && context.attempt.status !== AssessmentAttemptStatus.DRAFT);
-  const isClosed = availabilityStatus === "CLOSED" || availabilityStatus === "EXPIRED";
+  const isClosed = availabilityStatus === "CLOSED" || availabilityStatus === "EXPIRED" || availabilityStatus === "LOCKED";
   const isOpen = availabilityStatus === "OPEN";
+  const draftDeadline = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT
+    ? resolveAttemptDeadline({
+        startedAt: context.attemptRecord.startedAt,
+        timeLimitMinutes: context.pool.timeLimitMinutes,
+        closesAt: context.closesAt,
+        closesAtSource: context.deadlineSource,
+      })
+    : { deadlineAt: null, deadlineSource: "NONE" as const };
 
   if (isOpen && context.supportsInAppAttempt && !hasFinalAttempt) {
     try {
@@ -656,11 +687,14 @@ export async function getCandidateAssessmentDetailService(options: {
     passingMarks: context.pool.passingMarks,
     timeLimitMinutes: context.pool.timeLimitMinutes,
     serverNow: new Date(now),
-    scheduledAt: context.opensAt,
+    scheduledAt: context.scheduledAt,
     opensAt: context.opensAt,
     hardClosesAt: context.hardClosesAt,
     closesAt: context.closesAt,
+    deadlineSource: context.deadlineSource,
     attemptDeadlineAt: context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT ? context.attemptRecord.deadlineAt : null,
+    attemptDeadlineSource: draftDeadline.deadlineSource,
+    curriculumContext: context.curriculumContext,
     availabilityStatus,
     isOpen,
     isClosed,
@@ -821,6 +855,10 @@ async function finalizeCandidateAssessmentAttemptService(options: {
     throw new Error("Invalid request: this assessment cannot be submitted in the app yet.");
   }
 
+  if (!existingDraft && context.curriculumContext?.availabilityStatus === "LOCKED") {
+    throw new Error(context.curriculumContext.availabilityReason.message);
+  }
+
   if (!context.opensAt) {
     throw new Error("Invalid request: assessment start time has not been published yet.");
   }
@@ -831,11 +869,23 @@ async function finalizeCandidateAssessmentAttemptService(options: {
   }
 
   const startedAt = existingDraft?.startedAt ?? now;
-  const deadlineAt = existingDraft?.deadlineAt ?? resolveAttemptDeadline({
-    startedAt,
-    timeLimitMinutes: context.pool.timeLimitMinutes,
-    hardClosesAt: context.hardClosesAt,
-  });
+  const resolvedDeadline = existingDraft?.deadlineAt
+    ? {
+        deadlineAt: existingDraft.deadlineAt,
+        deadlineSource: resolveAttemptDeadline({
+          startedAt,
+          timeLimitMinutes: context.pool.timeLimitMinutes,
+          closesAt: context.closesAt,
+          closesAtSource: context.deadlineSource,
+        }).deadlineSource,
+      }
+    : resolveAttemptDeadline({
+        startedAt,
+        timeLimitMinutes: context.pool.timeLimitMinutes,
+        closesAt: context.closesAt,
+        closesAtSource: context.deadlineSource,
+      });
+  const deadlineAt = resolvedDeadline.deadlineAt;
 
   if (
     deadlineAt
@@ -1034,6 +1084,10 @@ export async function saveCandidateAssessmentDraftService(options: {
     throw new Error("Invalid request: this assessment cannot be saved in the app yet.");
   }
 
+  if (context.curriculumContext?.availabilityStatus === "LOCKED" && context.attemptRecord?.status !== AssessmentAttemptStatus.DRAFT) {
+    throw new Error(context.curriculumContext.availabilityReason.message);
+  }
+
   if (!context.opensAt) {
     throw new Error("Invalid request: assessment start time has not been published yet.");
   }
@@ -1044,13 +1098,23 @@ export async function saveCandidateAssessmentDraftService(options: {
   }
 
   const startedAt = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT ? context.attemptRecord.startedAt : now;
-  const deadlineAt = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT
-    ? context.attemptRecord.deadlineAt
+  const resolvedDeadline = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT && context.attemptRecord.deadlineAt
+    ? {
+        deadlineAt: context.attemptRecord.deadlineAt,
+        deadlineSource: resolveAttemptDeadline({
+          startedAt,
+          timeLimitMinutes: context.pool.timeLimitMinutes,
+          closesAt: context.closesAt,
+          closesAtSource: context.deadlineSource,
+        }).deadlineSource,
+      }
     : resolveAttemptDeadline({
         startedAt,
         timeLimitMinutes: context.pool.timeLimitMinutes,
-        hardClosesAt: context.hardClosesAt,
+        closesAt: context.closesAt,
+        closesAtSource: context.deadlineSource,
       });
+  const deadlineAt = resolvedDeadline.deadlineAt;
 
   if (deadlineAt && deadlineAt.getTime() + DRAFT_FINALIZATION_TOLERANCE_MS < now.getTime()) {
     throw new Error("Invalid request: assessment time has expired.");
@@ -1146,6 +1210,7 @@ export async function saveCandidateAssessmentDraftService(options: {
     assessmentPoolId: context.pool.id,
     serverNow: now,
     attemptDeadlineAt: attempt.deadlineAt,
+    attemptDeadlineSource: resolvedDeadline.deadlineSource,
     savedAnswers: normalizedAnswers,
     attempt: buildAttemptSummaryFromAttempt({
       assessmentId: attempt.assessmentId,

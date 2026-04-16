@@ -2,6 +2,57 @@ import { z } from "zod";
 
 export const curriculumStatusEnum = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 export const curriculumItemTypeEnum = z.enum(["CONTENT", "ASSESSMENT"]);
+export const curriculumItemReleaseTypeEnum = z.enum([
+  "IMMEDIATE",
+  "ABSOLUTE_DATE",
+  "BATCH_RELATIVE",
+  "PREVIOUS_ITEM_COMPLETION",
+  "PREVIOUS_ITEM_SCORE",
+  "MANUAL",
+]);
+
+const curriculumStageItemReleaseConfigSchema = z.object({
+  releaseType: curriculumItemReleaseTypeEnum,
+  releaseAt: z.coerce.date().optional().nullable(),
+  releaseOffsetDays: z.coerce.number().int().min(0).max(3650).optional().nullable(),
+  prerequisiteStageItemId: z.string().trim().min(1).optional().nullable(),
+  minimumScorePercent: z.coerce.number().int().min(0).max(100).optional().nullable(),
+  estimatedDurationMinutes: z.coerce.number().int().min(1).max(10080).optional().nullable(),
+  dueAt: z.coerce.date().optional().nullable(),
+  dueOffsetDays: z.coerce.number().int().min(0).max(3650).optional().nullable(),
+}).superRefine((value, context) => {
+  if (value.releaseType === "ABSOLUTE_DATE" && !value.releaseAt) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["releaseAt"],
+      message: "A release date is required for absolute-date release rules.",
+    });
+  }
+
+  if (value.releaseType === "BATCH_RELATIVE" && typeof value.releaseOffsetDays !== "number") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["releaseOffsetDays"],
+      message: "A batch-relative day offset is required for batch-relative release rules.",
+    });
+  }
+
+  if (value.releaseType === "PREVIOUS_ITEM_SCORE" && typeof value.minimumScorePercent !== "number") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["minimumScorePercent"],
+      message: "A minimum passing score is required for score-based release rules.",
+    });
+  }
+
+  if (value.dueAt && typeof value.dueOffsetDays === "number") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["dueOffsetDays"],
+      message: "Choose either an absolute due date or a batch-relative due offset, not both.",
+    });
+  }
+});
 
 export const createCurriculumSchema = z.object({
   courseId: z.string().trim().min(1, "Course is required."),
@@ -68,6 +119,7 @@ export const createCurriculumStageItemSchema = z.object({
   contentId: z.string().trim().min(1).optional().nullable(),
   assessmentPoolId: z.string().trim().min(1).optional().nullable(),
   isRequired: z.coerce.boolean().optional().default(false),
+  releaseConfig: curriculumStageItemReleaseConfigSchema.optional(),
 }).superRefine((value, context) => {
   if (value.itemType === "CONTENT") {
     if (!value.contentId) {
@@ -112,6 +164,7 @@ export const createCurriculumStageItemsSchema = z.object({
   contentIds: z.array(z.string().trim().min(1)).optional().default([]),
   assessmentPoolIds: z.array(z.string().trim().min(1)).optional().default([]),
   isRequired: z.coerce.boolean().optional().default(false),
+  releaseConfig: curriculumStageItemReleaseConfigSchema.optional(),
 }).superRefine((value, context) => {
   if (value.itemType === "CONTENT") {
     if (value.contentIds.length === 0) {
@@ -157,6 +210,7 @@ export const stageItemIdSchema = z.object({
 export const updateCurriculumStageItemSchema = z.object({
   itemId: z.string().trim().min(1),
   isRequired: z.coerce.boolean().optional(),
+  releaseConfig: curriculumStageItemReleaseConfigSchema.optional(),
 });
 
 export const reorderCurriculumStageItemsSchema = z.object({
@@ -170,6 +224,17 @@ export const assignCurriculumToBatchSchema = z.object({
 });
 
 export const removeCurriculumFromBatchSchema = assignCurriculumToBatchSchema;
+
+export const releaseCurriculumStageItemForBatchSchema = z.object({
+  batchId: z.string().trim().min(1, "Batch ID is required."),
+  itemId: z.string().trim().min(1, "Item ID is required."),
+  note: z.string().trim().max(500).optional().default(""),
+});
+
+export const revokeCurriculumStageItemReleaseForBatchSchema = z.object({
+  batchId: z.string().trim().min(1, "Batch ID is required."),
+  itemId: z.string().trim().min(1, "Item ID is required."),
+});
 
 export type CreateCurriculumInput = z.infer<typeof createCurriculumSchema>;
 export type UpdateCurriculumInput = z.infer<typeof updateCurriculumSchema>;
@@ -185,3 +250,5 @@ export type UpdateCurriculumStageItemInput = z.infer<typeof updateCurriculumStag
 export type ReorderCurriculumStageItemsInput = z.infer<typeof reorderCurriculumStageItemsSchema>;
 export type AssignCurriculumToBatchInput = z.infer<typeof assignCurriculumToBatchSchema>;
 export type RemoveCurriculumFromBatchInput = z.infer<typeof removeCurriculumFromBatchSchema>;
+export type ReleaseCurriculumStageItemForBatchInput = z.infer<typeof releaseCurriculumStageItemForBatchSchema>;
+export type RevokeCurriculumStageItemReleaseForBatchInput = z.infer<typeof revokeCurriculumStageItemReleaseForBatchSchema>;

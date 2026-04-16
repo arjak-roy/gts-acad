@@ -349,6 +349,17 @@ enum CurriculumProgressStatus {
   @@map("curriculum_progress_status")
 }
 
+enum CurriculumItemReleaseType {
+  IMMEDIATE                @map("immediate")
+  ABSOLUTE_DATE            @map("absolute_date")
+  BATCH_RELATIVE           @map("batch_relative")
+  PREVIOUS_ITEM_COMPLETION @map("previous_item_completion")
+  PREVIOUS_ITEM_SCORE      @map("previous_item_score")
+  MANUAL                   @map("manual")
+
+  @@map("curriculum_item_release_type")
+}
+
 enum QuestionType {
   MCQ                   @map("mcq")
   TRUE_FALSE            @map("true_false")
@@ -991,6 +1002,7 @@ model Batch {
   batchContentMappings    BatchContentMapping[]
   batchAssessmentMappings BatchAssessmentMapping[]
   batchCurriculumMappings BatchCurriculumMapping[]
+  curriculumItemReleases  BatchCurriculumStageItemRelease[]
   curriculumItemProgress  LearnerCurriculumItemProgress[]
 
   @@index([programId, status], map: "idx_batches_program_status")
@@ -1681,12 +1693,51 @@ model CurriculumStageItem {
   stage            CurriculumStage     @relation(fields: [stageId], references: [id], onDelete: Cascade)
   content          CourseContent?      @relation("CurriculumContentItems", fields: [contentId], references: [id], onDelete: SetNull)
   assessmentPool   AssessmentPool?     @relation("CurriculumAssessmentItems", fields: [assessmentPoolId], references: [id], onDelete: SetNull)
+  releaseConfig    CurriculumStageItemRelease? @relation("CurriculumStageItemReleaseConfig")
+  releaseDependents CurriculumStageItemRelease[] @relation("CurriculumStageItemReleaseDependency")
+  batchReleases    BatchCurriculumStageItemRelease[]
   learnerProgress  LearnerCurriculumItemProgress[]
 
   @@index([stageId, sortOrder], map: "idx_curriculum_stage_items_stage_order")
   @@index([contentId], map: "idx_curriculum_stage_items_content")
   @@index([assessmentPoolId], map: "idx_curriculum_stage_items_assessment")
   @@map("curriculum_stage_items")
+}
+
+model CurriculumStageItemRelease {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("release_id")
+  stageItemId             String                    @unique @db.Uuid @map("stage_item_id")
+  releaseType             CurriculumItemReleaseType @default(IMMEDIATE) @map("release_type")
+  releaseAt               DateTime?                 @map("release_at") @db.Timestamptz(6)
+  releaseOffsetDays       Int?                      @map("release_offset_days")
+  prerequisiteStageItemId String?                   @db.Uuid @map("prerequisite_stage_item_id")
+  minimumScorePercent     Int?                      @map("minimum_score_percent")
+  estimatedDurationMinutes Int?                     @map("estimated_duration_minutes")
+  dueAt                   DateTime?                 @map("due_at") @db.Timestamptz(6)
+  dueOffsetDays           Int?                      @map("due_offset_days")
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  stageItem               CurriculumStageItem       @relation("CurriculumStageItemReleaseConfig", fields: [stageItemId], references: [id], onDelete: Cascade)
+  prerequisiteStageItem   CurriculumStageItem?      @relation("CurriculumStageItemReleaseDependency", fields: [prerequisiteStageItemId], references: [id], onDelete: SetNull)
+
+  @@index([releaseType], map: "idx_curriculum_stage_item_releases_type")
+  @@index([prerequisiteStageItemId], map: "idx_curriculum_stage_item_releases_prerequisite")
+  @@map("curriculum_stage_item_releases")
+}
+
+model BatchCurriculumStageItemRelease {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("release_id")
+  batchId     String              @db.Uuid @map("batch_id")
+  stageItemId String              @db.Uuid @map("stage_item_id")
+  releasedById String?            @db.Uuid @map("released_by_user_id")
+  note        String?             @db.VarChar(500)
+  releasedAt  DateTime            @default(now()) @map("released_at") @db.Timestamptz(6)
+  batch       Batch               @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  stageItem   CurriculumStageItem @relation(fields: [stageItemId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, stageItemId])
+  @@index([stageItemId], map: "idx_batch_curriculum_stage_item_releases_item")
+  @@map("batch_curriculum_stage_item_releases")
 }
 
 model AssessmentPool {

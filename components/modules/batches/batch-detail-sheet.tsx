@@ -39,6 +39,29 @@ type BatchDetail = {
 
 type CurriculumItemType = "CONTENT" | "ASSESSMENT";
 
+type CurriculumItemReleaseType = "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "MANUAL";
+
+type CurriculumStageItemReleaseDetail = {
+  releaseType: CurriculumItemReleaseType;
+  releaseAt: string | null;
+  releaseOffsetDays: number | null;
+  prerequisiteStageItemId: string | null;
+  prerequisiteTitle: string | null;
+  minimumScorePercent: number | null;
+  estimatedDurationMinutes: number | null;
+  dueAt: string | null;
+  dueOffsetDays: number | null;
+  resolvedUnlockAt: string | null;
+  resolvedDueAt: string | null;
+};
+
+type CurriculumStageItemBatchManualRelease = {
+  isReleased: boolean;
+  releasedAt: string | null;
+  releasedByName: string | null;
+  note: string | null;
+};
+
 type CurriculumStageItemDetail = {
   id: string;
   itemType: CurriculumItemType;
@@ -55,6 +78,8 @@ type CurriculumStageItemDetail = {
   questionType: string | null;
   difficultyLevel: string | null;
   folderName: string | null;
+  release: CurriculumStageItemReleaseDetail;
+  batchManualRelease: CurriculumStageItemBatchManualRelease | null;
 };
 
 type CurriculumStageSummary = {
@@ -202,6 +227,15 @@ function formatDate(iso?: string | null) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatDateTime(iso?: string | Date | null) {
+  if (!iso) return "—";
+
+  const date = iso instanceof Date ? iso : new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 async function readApiData<T>(response: Response, fallbackMessage: string) {
   const payload = (await response.json()) as ApiEnvelope<T>;
 
@@ -240,6 +274,21 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
   const availableCount = curriculumWorkspace?.availableCurricula.length ?? 0;
   const assignedAssessmentCount = assignedAssessments.length;
   const availableAssessmentCount = availableAssessments.length;
+  const manualReleaseSummary = useMemo(() => {
+    const manualItems = curriculumWorkspace?.assignedCurricula.flatMap((assignment) => (
+      assignment.curriculum.modules.flatMap((moduleRecord) => (
+        moduleRecord.stages.flatMap((stage) => (
+          stage.items.filter((item) => item.release.releaseType === "MANUAL")
+        ))
+      ))
+    )) ?? [];
+
+    return {
+      total: manualItems.length,
+      released: manualItems.filter((item) => item.batchManualRelease?.isReleased).length,
+      pending: manualItems.filter((item) => !item.batchManualRelease?.isReleased).length,
+    };
+  }, [curriculumWorkspace]);
 
   const preferredAssignCurriculumId = useMemo(() => {
     if (selectedCurriculumId && curriculumWorkspace?.availableCurricula.some((curriculum) => curriculum.id === selectedCurriculumId)) {
@@ -453,6 +502,56 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
       setCurriculumWorkspace(payload);
     } catch (removeError) {
       setCurriculumError(removeError instanceof Error ? removeError.message : "Failed to remove curriculum from batch.");
+    } finally {
+      setIsUpdatingCurriculum(false);
+    }
+  }
+
+  async function handleReleaseCurriculumItem(itemId: string) {
+    if (!batchId) {
+      return;
+    }
+
+    setIsUpdatingCurriculum(true);
+    setCurriculumError(null);
+
+    try {
+      const response = await fetch(`/api/batches/${batchId}/curriculum/stage-items/${itemId}/release`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      const payload = await readApiData<BatchCurriculumWorkspace>(response, "Failed to release curriculum item for batch.");
+      setCurriculumWorkspace(payload);
+    } catch (releaseError) {
+      setCurriculumError(releaseError instanceof Error ? releaseError.message : "Failed to release curriculum item for batch.");
+    } finally {
+      setIsUpdatingCurriculum(false);
+    }
+  }
+
+  async function handleRevokeCurriculumItemRelease(itemId: string) {
+    if (!batchId) {
+      return;
+    }
+
+    setIsUpdatingCurriculum(true);
+    setCurriculumError(null);
+
+    try {
+      const response = await fetch(`/api/batches/${batchId}/curriculum/stage-items/${itemId}/release`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      const payload = await readApiData<BatchCurriculumWorkspace>(response, "Failed to revoke manual release for curriculum item.");
+      setCurriculumWorkspace(payload);
+    } catch (releaseError) {
+      setCurriculumError(releaseError instanceof Error ? releaseError.message : "Failed to revoke manual release for curriculum item.");
     } finally {
       setIsUpdatingCurriculum(false);
     }
@@ -734,7 +833,7 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                             <div>
                               <p className="text-lg font-semibold text-slate-950">Curriculum Workspace</p>
                               <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Review every curriculum available to this batch. Published course curricula are inherited automatically, while unpublished curricula can still be batch-mapped for batch-level planning.
+                                Review every curriculum available to this batch. Published course curricula are inherited automatically, while unpublished curricula can still be batch-mapped for batch-level planning. Manual item releases can be actioned inline when a sequence uses controlled drip unlocks.
                               </p>
                             </div>
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-primary">
@@ -793,6 +892,18 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                                 <Plus className="h-4 w-4" />
                                 {isUpdatingCurriculum ? "Updating..." : "Add Batch Mapping"}
                               </Button>
+
+                              <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Manual Gates</p>
+                                {manualReleaseSummary.total > 0 ? (
+                                  <>
+                                    <p className="mt-2 font-semibold text-slate-900">{manualReleaseSummary.released} released · {manualReleaseSummary.pending} pending</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-500">Use the inline release controls below on any item configured for manual release.</p>
+                                  </>
+                                ) : (
+                                  <p className="mt-2 text-xs leading-5 text-slate-500">No manually released curriculum items are configured in the currently assigned curricula.</p>
+                                )}
+                              </div>
                             </>
                           ) : (
                             <p className="text-sm leading-6 text-slate-500">You can review inherited and batch-mapped curricula here, but only batch or curriculum editors can change explicit mappings.</p>
@@ -847,6 +958,47 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                               curriculum={assignment.curriculum}
                               assignedAt={assignment.assignedAt}
                               assignedByName={assignment.assignedByName}
+                              renderItemFooter={(item) => item.release?.releaseType === "MANUAL" ? (
+                                <div className="mt-3 rounded-2xl border border-[#e2e8f0] bg-white/90 px-3 py-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="space-y-1 text-xs leading-5 text-slate-500">
+                                      <p className="font-semibold text-slate-700">
+                                        {item.batchManualRelease?.isReleased
+                                          ? `Released ${formatDateTime(item.batchManualRelease.releasedAt)}${item.batchManualRelease.releasedByName ? ` by ${item.batchManualRelease.releasedByName}` : ""}`
+                                          : "Pending manual release for this batch."}
+                                      </p>
+                                      {item.batchManualRelease?.note ? <p>Note: {item.batchManualRelease.note}</p> : null}
+                                    </div>
+
+                                    {canEditCurriculumAssignments ? (
+                                      item.batchManualRelease?.isReleased ? (
+                                        <Button
+                                          type="button"
+                                          variant="secondary"
+                                          size="sm"
+                                          disabled={isUpdatingCurriculum}
+                                          onClick={() => {
+                                            if (window.confirm(`Revoke manual release for \"${item.referenceTitle}\" in this batch?`)) {
+                                              void handleRevokeCurriculumItemRelease(item.id);
+                                            }
+                                          }}
+                                        >
+                                          Revoke Release
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          disabled={isUpdatingCurriculum}
+                                          onClick={() => void handleReleaseCurriculumItem(item.id)}
+                                        >
+                                          Release For Batch
+                                        </Button>
+                                      )
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
                             />
                           </div>
                         ))}

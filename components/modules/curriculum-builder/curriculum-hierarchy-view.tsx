@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, ClipboardList, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,64 @@ const statusVariant: Record<string, "default" | "info" | "warning"> = {
   DRAFT: "info",
   PUBLISHED: "default",
   ARCHIVED: "warning",
+};
+
+type CurriculumItemReleaseType = "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "MANUAL";
+
+type CurriculumStageItemReleaseDetail = {
+  releaseType: CurriculumItemReleaseType;
+  releaseAt: string | Date | null;
+  releaseOffsetDays: number | null;
+  prerequisiteStageItemId: string | null;
+  prerequisiteTitle: string | null;
+  minimumScorePercent: number | null;
+  estimatedDurationMinutes: number | null;
+  dueAt: string | Date | null;
+  dueOffsetDays: number | null;
+  resolvedUnlockAt: string | Date | null;
+  resolvedDueAt: string | Date | null;
+};
+
+type CurriculumStageItemBatchManualRelease = {
+  isReleased: boolean;
+  releasedAt: string | Date | null;
+  releasedByName: string | null;
+  note: string | null;
+};
+
+type CurriculumHierarchyStageItem = {
+  id: string;
+  itemType: "CONTENT" | "ASSESSMENT";
+  isRequired: boolean;
+  referenceCode: string | null;
+  referenceTitle: string;
+  referenceDescription: string | null;
+  courseName: string | null;
+  status: string | null;
+  contentType: string | null;
+  questionType: string | null;
+  difficultyLevel: string | null;
+  folderName: string | null;
+  release?: CurriculumStageItemReleaseDetail;
+  batchManualRelease?: CurriculumStageItemBatchManualRelease | null;
+};
+
+const releaseTypeLabels: Record<CurriculumItemReleaseType, string> = {
+  IMMEDIATE: "Immediate",
+  ABSOLUTE_DATE: "On date",
+  BATCH_RELATIVE: "After batch start",
+  PREVIOUS_ITEM_COMPLETION: "After completion",
+  PREVIOUS_ITEM_SCORE: "After score",
+  MANUAL: "Manual release",
+};
+
+const releaseTypeVariant: Record<CurriculumItemReleaseType, "default" | "info" | "warning" | "accent"> = {
+  IMMEDIATE: "default",
+  ABSOLUTE_DATE: "info",
+  BATCH_RELATIVE: "info",
+  PREVIOUS_ITEM_COMPLETION: "accent",
+  PREVIOUS_ITEM_SCORE: "accent",
+  MANUAL: "warning",
 };
 
 type CurriculumHierarchyViewProps = {
@@ -34,26 +92,14 @@ type CurriculumHierarchyViewProps = {
         title: string;
         description: string | null;
         itemCount: number;
-        items: Array<{
-          id: string;
-          itemType: "CONTENT" | "ASSESSMENT";
-          isRequired: boolean;
-          referenceCode: string | null;
-          referenceTitle: string;
-          referenceDescription: string | null;
-          courseName: string | null;
-          status: string | null;
-          contentType: string | null;
-          questionType: string | null;
-          difficultyLevel: string | null;
-          folderName: string | null;
-        }>;
+        items: CurriculumHierarchyStageItem[];
       }>;
     }>;
   };
   assignedAt?: string | Date | null;
   assignedByName?: string | null;
   className?: string;
+  renderItemFooter?: (item: CurriculumHierarchyStageItem) => ReactNode;
 };
 
 function formatDateTime(value?: string | Date | null) {
@@ -65,7 +111,68 @@ function formatDateTime(value?: string | Date | null) {
   return Number.isNaN(date.getTime()) ? null : date.toLocaleString();
 }
 
-export function CurriculumHierarchyView({ curriculum, assignedAt, assignedByName, className }: CurriculumHierarchyViewProps) {
+function formatDate(value?: string | Date | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatDuration(minutes?: number | null) {
+  if (!minutes || minutes <= 0) {
+    return null;
+  }
+
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (remainingMinutes === 0) {
+    return `${hours} hr`;
+  }
+
+  return `${hours} hr ${remainingMinutes} min`;
+}
+
+function describeRelease(item: CurriculumHierarchyStageItem) {
+  const release = item.release;
+
+  if (!release) {
+    return null;
+  }
+
+  if (release.releaseType === "ABSOLUTE_DATE") {
+    return release.resolvedUnlockAt ? `Unlocks ${formatDate(release.resolvedUnlockAt)}` : "Unlocks on a fixed date";
+  }
+
+  if (release.releaseType === "BATCH_RELATIVE") {
+    const dayCount = release.releaseOffsetDays ?? 0;
+    return `Unlocks ${dayCount === 1 ? "1 day" : `${dayCount} days`} after batch start`;
+  }
+
+  if (release.releaseType === "PREVIOUS_ITEM_COMPLETION") {
+    return `Unlocks after ${release.prerequisiteTitle ?? "the previous item"} is completed`;
+  }
+
+  if (release.releaseType === "PREVIOUS_ITEM_SCORE") {
+    return `Unlocks after ${release.prerequisiteTitle ?? "the previous assessment"} reaches ${release.minimumScorePercent ?? 40}%`;
+  }
+
+  if (release.releaseType === "MANUAL") {
+    return item.batchManualRelease?.isReleased
+      ? `Manually released${item.batchManualRelease.releasedAt ? ` on ${formatDate(item.batchManualRelease.releasedAt)}` : ""}`
+      : "Requires manual batch release";
+  }
+
+  return "Available immediately";
+}
+
+export function CurriculumHierarchyView({ curriculum, assignedAt, assignedByName, className, renderItemFooter }: CurriculumHierarchyViewProps) {
   const [expandedModuleIds, setExpandedModuleIds] = useState<string[]>(() => curriculum.modules.map((moduleRecord) => moduleRecord.id));
 
   useEffect(() => {
@@ -180,6 +287,12 @@ export function CurriculumHierarchyView({ curriculum, assignedAt, assignedByName
                                         <p className="text-sm font-semibold text-slate-900">{itemIndex + 1}. {item.referenceTitle}</p>
                                         {item.isRequired ? <Badge variant="default">Required</Badge> : null}
                                         {item.status ? <Badge variant={statusVariant[item.status] ?? "default"}>{item.status}</Badge> : null}
+                                        {item.release ? <Badge variant={releaseTypeVariant[item.release.releaseType]}>{releaseTypeLabels[item.release.releaseType]}</Badge> : null}
+                                        {item.release?.releaseType === "MANUAL"
+                                          ? <Badge variant={item.batchManualRelease?.isReleased ? "success" : "warning"}>{item.batchManualRelease?.isReleased ? "Released" : "Pending release"}</Badge>
+                                          : null}
+                                        {item.release?.estimatedDurationMinutes ? <Badge variant="default">{formatDuration(item.release.estimatedDurationMinutes)}</Badge> : null}
+                                        {item.release?.resolvedDueAt ? <Badge variant="warning">Due {formatDate(item.release.resolvedDueAt)}</Badge> : null}
                                       </div>
                                       <p className="text-xs leading-5 text-slate-500">
                                         {[
@@ -191,7 +304,10 @@ export function CurriculumHierarchyView({ curriculum, assignedAt, assignedByName
                                           item.courseName,
                                         ].filter(Boolean).join(" · ") || "No additional metadata available."}
                                       </p>
+                                      {item.release ? <p className="text-xs leading-5 text-slate-500">{describeRelease(item)}</p> : null}
                                       {item.referenceDescription ? <p className="text-sm leading-6 text-slate-600">{item.referenceDescription}</p> : null}
+                                      {item.batchManualRelease?.note ? <p className="text-xs leading-5 text-slate-500">Release note: {item.batchManualRelease.note}</p> : null}
+                                      {renderItemFooter ? renderItemFooter(item) : null}
                                     </div>
                                   </div>
                                 ))}

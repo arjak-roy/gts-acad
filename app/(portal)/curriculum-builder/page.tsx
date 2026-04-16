@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -57,6 +57,45 @@ type AssessmentOption = {
 };
 
 type CurriculumItemType = "CONTENT" | "ASSESSMENT";
+type CurriculumItemReleaseType = "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "MANUAL";
+
+type CurriculumStageItemReleaseDetail = {
+  releaseType: CurriculumItemReleaseType;
+  releaseAt: string | null;
+  releaseOffsetDays: number | null;
+  prerequisiteStageItemId: string | null;
+  prerequisiteTitle: string | null;
+  minimumScorePercent: number | null;
+  estimatedDurationMinutes: number | null;
+  dueAt: string | null;
+  dueOffsetDays: number | null;
+  resolvedUnlockAt: string | null;
+  resolvedDueAt: string | null;
+};
+
+type CurriculumStageItemBatchManualRelease = {
+  isReleased: boolean;
+  releasedAt: string | null;
+  releasedByName: string | null;
+  note: string | null;
+};
+
+type StageItemReferenceOption = {
+  id: string;
+  label: string;
+};
+
+type StageItemReleaseDraft = {
+  releaseType: CurriculumItemReleaseType;
+  releaseAt: string;
+  releaseOffsetDays: string;
+  prerequisiteStageItemId: string;
+  minimumScorePercent: string;
+  estimatedDurationMinutes: string;
+  dueMode: "NONE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE";
+  dueAt: string;
+  dueOffsetDays: string;
+};
 
 type CurriculumStageItemDetail = {
   id: string;
@@ -74,6 +113,8 @@ type CurriculumStageItemDetail = {
   questionType: string | null;
   difficultyLevel: string | null;
   folderName: string | null;
+  release: CurriculumStageItemReleaseDetail;
+  batchManualRelease: CurriculumStageItemBatchManualRelease | null;
 };
 
 type CurriculumStageSummary = {
@@ -183,6 +224,24 @@ const assignmentSourceLabels: Record<CurriculumBatchMapping["assignmentSource"],
   COURSE_AND_BATCH: "Inherited + batch mapping",
 };
 
+const releaseTypeLabels: Record<CurriculumItemReleaseType, string> = {
+  IMMEDIATE: "Immediate",
+  ABSOLUTE_DATE: "On fixed date",
+  BATCH_RELATIVE: "After batch start",
+  PREVIOUS_ITEM_COMPLETION: "After completion",
+  PREVIOUS_ITEM_SCORE: "After score",
+  MANUAL: "Manual release",
+};
+
+const releaseTypeVariant: Record<CurriculumItemReleaseType, "default" | "info" | "warning" | "accent"> = {
+  IMMEDIATE: "default",
+  ABSOLUTE_DATE: "info",
+  BATCH_RELATIVE: "info",
+  PREVIOUS_ITEM_COMPLETION: "accent",
+  PREVIOUS_ITEM_SCORE: "accent",
+  MANUAL: "warning",
+};
+
 async function readApiData<T>(response: Response, fallbackMessage: string) {
   const payload = (await response.json()) as ApiEnvelope<T>;
 
@@ -208,6 +267,124 @@ async function sendJson<T>(url: string, init: RequestInit, fallbackMessage: stri
 function formatDateTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatDateTimeInput(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function formatDurationLabel(minutes?: number | null) {
+  if (!minutes || minutes <= 0) {
+    return null;
+  }
+
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes === 0 ? `${hours} hr` : `${hours} hr ${remainingMinutes} min`;
+}
+
+function buildReleaseSummary(release: CurriculumStageItemReleaseDetail) {
+  if (release.releaseType === "ABSOLUTE_DATE") {
+    return release.resolvedUnlockAt ? `Unlocks ${formatDateLabel(release.resolvedUnlockAt)}` : "Unlocks on a fixed date";
+  }
+
+  if (release.releaseType === "BATCH_RELATIVE") {
+    const dayCount = release.releaseOffsetDays ?? 0;
+    return `Unlocks ${dayCount === 1 ? "1 day" : `${dayCount} days`} after batch start`;
+  }
+
+  if (release.releaseType === "PREVIOUS_ITEM_COMPLETION") {
+    return `Unlocks after ${release.prerequisiteTitle ?? "the previous item"} is completed`;
+  }
+
+  if (release.releaseType === "PREVIOUS_ITEM_SCORE") {
+    return `Unlocks after ${release.prerequisiteTitle ?? "the previous assessment"} reaches ${release.minimumScorePercent ?? 40}%`;
+  }
+
+  if (release.releaseType === "MANUAL") {
+    return "Requires manual release per batch";
+  }
+
+  return "Available immediately";
+}
+
+function createReleaseDraft(release: CurriculumStageItemReleaseDetail): StageItemReleaseDraft {
+  return {
+    releaseType: release.releaseType,
+    releaseAt: formatDateTimeInput(release.releaseAt),
+    releaseOffsetDays: typeof release.releaseOffsetDays === "number" ? String(release.releaseOffsetDays) : "",
+    prerequisiteStageItemId: release.prerequisiteStageItemId ?? "",
+    minimumScorePercent: typeof release.minimumScorePercent === "number" ? String(release.minimumScorePercent) : "",
+    estimatedDurationMinutes: typeof release.estimatedDurationMinutes === "number" ? String(release.estimatedDurationMinutes) : "",
+    dueMode: release.dueAt ? "ABSOLUTE_DATE" : typeof release.dueOffsetDays === "number" ? "BATCH_RELATIVE" : "NONE",
+    dueAt: formatDateTimeInput(release.dueAt),
+    dueOffsetDays: typeof release.dueOffsetDays === "number" ? String(release.dueOffsetDays) : "",
+  };
+}
+
+function validateReleaseDraft(draft: StageItemReleaseDraft) {
+  if (draft.releaseType === "ABSOLUTE_DATE" && !draft.releaseAt) {
+    return "Choose the unlock date for this item.";
+  }
+
+  if (draft.releaseType === "BATCH_RELATIVE" && draft.releaseOffsetDays.trim() === "") {
+    return "Enter the number of days after batch start for this item to unlock.";
+  }
+
+  if (draft.releaseType === "PREVIOUS_ITEM_SCORE" && draft.minimumScorePercent.trim() === "") {
+    return "Enter the minimum score required to unlock this item.";
+  }
+
+  if (draft.dueMode === "ABSOLUTE_DATE" && !draft.dueAt) {
+    return "Choose the due date for this item or switch due mode.";
+  }
+
+  if (draft.dueMode === "BATCH_RELATIVE" && draft.dueOffsetDays.trim() === "") {
+    return "Enter the batch-relative due offset or switch due mode.";
+  }
+
+  return null;
+}
+
+function buildReleaseConfigPayload(draft: StageItemReleaseDraft) {
+  return {
+    releaseType: draft.releaseType,
+    releaseAt: draft.releaseType === "ABSOLUTE_DATE" && draft.releaseAt ? new Date(draft.releaseAt).toISOString() : null,
+    releaseOffsetDays: draft.releaseType === "BATCH_RELATIVE" && draft.releaseOffsetDays.trim() !== "" ? Number(draft.releaseOffsetDays) : null,
+    prerequisiteStageItemId: draft.releaseType === "PREVIOUS_ITEM_COMPLETION" || draft.releaseType === "PREVIOUS_ITEM_SCORE"
+      ? draft.prerequisiteStageItemId || null
+      : null,
+    minimumScorePercent: draft.releaseType === "PREVIOUS_ITEM_SCORE" && draft.minimumScorePercent.trim() !== ""
+      ? Number(draft.minimumScorePercent)
+      : null,
+    estimatedDurationMinutes: draft.estimatedDurationMinutes.trim() !== "" ? Number(draft.estimatedDurationMinutes) : null,
+    dueAt: draft.dueMode === "ABSOLUTE_DATE" && draft.dueAt ? new Date(draft.dueAt).toISOString() : null,
+    dueOffsetDays: draft.dueMode === "BATCH_RELATIVE" && draft.dueOffsetDays.trim() !== "" ? Number(draft.dueOffsetDays) : null,
+  };
 }
 
 function reorderByIds<T extends { id: string; sortOrder: number }>(items: T[], orderedIds: string[]) {
@@ -323,19 +500,47 @@ function SortableStageItemRow({
   item,
   disabled,
   canEdit,
+  stageItemOptions,
   onToggleRequired,
+  onSaveReleaseConfig,
   onDelete,
 }: {
   item: CurriculumStageItemDetail;
   disabled: boolean;
   canEdit: boolean;
+  stageItemOptions: StageItemReferenceOption[];
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
+  onSaveReleaseConfig: (itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) => Promise<boolean>;
   onDelete: (itemId: string) => Promise<boolean>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     disabled: disabled || !canEdit,
   });
+  const [isEditingRelease, setIsEditingRelease] = useState(false);
+  const [releaseDraft, setReleaseDraft] = useState<StageItemReleaseDraft>(() => createReleaseDraft(item.release));
+  const initialReleaseDraft = createReleaseDraft(item.release);
+  const isReleaseDirty = JSON.stringify(releaseDraft) !== JSON.stringify(initialReleaseDraft);
+  const prerequisiteOptions = stageItemOptions.filter((option) => option.id !== item.id);
+
+  useEffect(() => {
+    setReleaseDraft(createReleaseDraft(item.release));
+  }, [item.id, item.release]);
+
+  async function handleSaveReleaseRules() {
+    const validationError = validateReleaseDraft(releaseDraft);
+
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const ok = await onSaveReleaseConfig(item.id, buildReleaseConfigPayload(releaseDraft));
+
+    if (ok) {
+      setIsEditingRelease(false);
+    }
+  }
 
   return (
     <div
@@ -362,6 +567,9 @@ function SortableStageItemRow({
             <p className="truncate text-sm font-semibold text-slate-900">{item.referenceTitle}</p>
             <Badge variant={itemTypeVariant[item.itemType]}>{item.itemType}</Badge>
             {item.status ? <Badge variant={statusVariant[item.status] ?? "default"}>{item.status}</Badge> : null}
+            <Badge variant={releaseTypeVariant[item.release.releaseType]}>{releaseTypeLabels[item.release.releaseType]}</Badge>
+            {item.release.estimatedDurationMinutes ? <Badge variant="default">{formatDurationLabel(item.release.estimatedDurationMinutes)}</Badge> : null}
+            {item.release.resolvedDueAt ? <Badge variant="warning">Due {formatDateLabel(item.release.resolvedDueAt)}</Badge> : null}
           </div>
 
           <p className="text-xs text-muted-foreground">
@@ -379,8 +587,194 @@ function SortableStageItemRow({
               ].filter(Boolean).join(" · ")}
           </p>
 
+          <p className="text-xs text-slate-500">{buildReleaseSummary(item.release)}</p>
+
           {item.referenceDescription ? (
             <p className="text-sm text-slate-600">{item.referenceDescription}</p>
+          ) : null}
+
+          {isEditingRelease ? (
+            <div className="rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/80 p-4">
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Unlock rule</label>
+                  <select
+                    value={releaseDraft.releaseType}
+                    disabled={disabled || !canEdit}
+                    onChange={(event) => setReleaseDraft((current) => ({
+                      ...current,
+                      releaseType: event.target.value as CurriculumItemReleaseType,
+                    }))}
+                    className={selectClassName}
+                  >
+                    {Object.entries(releaseTypeLabels).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Estimated duration (minutes)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10080}
+                    value={releaseDraft.estimatedDurationMinutes}
+                    disabled={disabled || !canEdit}
+                    onChange={(event) => setReleaseDraft((current) => ({
+                      ...current,
+                      estimatedDurationMinutes: event.target.value,
+                    }))}
+                    placeholder="e.g. 45"
+                  />
+                </div>
+
+                {releaseDraft.releaseType === "ABSOLUTE_DATE" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Unlock on</label>
+                    <Input
+                      type="datetime-local"
+                      value={releaseDraft.releaseAt}
+                      disabled={disabled || !canEdit}
+                      onChange={(event) => setReleaseDraft((current) => ({
+                        ...current,
+                        releaseAt: event.target.value,
+                      }))}
+                    />
+                  </div>
+                ) : null}
+
+                {releaseDraft.releaseType === "BATCH_RELATIVE" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Unlock after batch start (days)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={3650}
+                      value={releaseDraft.releaseOffsetDays}
+                      disabled={disabled || !canEdit}
+                      onChange={(event) => setReleaseDraft((current) => ({
+                        ...current,
+                        releaseOffsetDays: event.target.value,
+                      }))}
+                      placeholder="e.g. 7"
+                    />
+                  </div>
+                ) : null}
+
+                {releaseDraft.releaseType === "PREVIOUS_ITEM_COMPLETION" || releaseDraft.releaseType === "PREVIOUS_ITEM_SCORE" ? (
+                  <div className="space-y-2 lg:col-span-2">
+                    <label className="text-sm font-medium">Prerequisite item</label>
+                    <select
+                      value={releaseDraft.prerequisiteStageItemId}
+                      disabled={disabled || !canEdit}
+                      onChange={(event) => setReleaseDraft((current) => ({
+                        ...current,
+                        prerequisiteStageItemId: event.target.value,
+                      }))}
+                      className={selectClassName}
+                    >
+                      <option value="">Use previous sequence item</option>
+                      {prerequisiteOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+
+                {releaseDraft.releaseType === "PREVIOUS_ITEM_SCORE" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Minimum score (%)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={releaseDraft.minimumScorePercent}
+                      disabled={disabled || !canEdit}
+                      onChange={(event) => setReleaseDraft((current) => ({
+                        ...current,
+                        minimumScorePercent: event.target.value,
+                      }))}
+                      placeholder="e.g. 70"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Due rule</label>
+                  <select
+                    value={releaseDraft.dueMode}
+                    disabled={disabled || !canEdit}
+                    onChange={(event) => setReleaseDraft((current) => ({
+                      ...current,
+                      dueMode: event.target.value as StageItemReleaseDraft["dueMode"],
+                    }))}
+                    className={selectClassName}
+                  >
+                    <option value="NONE">No due date</option>
+                    <option value="ABSOLUTE_DATE">Fixed due date</option>
+                    <option value="BATCH_RELATIVE">Relative to batch start</option>
+                  </select>
+                </div>
+
+                {releaseDraft.dueMode === "ABSOLUTE_DATE" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Due on</label>
+                    <Input
+                      type="datetime-local"
+                      value={releaseDraft.dueAt}
+                      disabled={disabled || !canEdit}
+                      onChange={(event) => setReleaseDraft((current) => ({
+                        ...current,
+                        dueAt: event.target.value,
+                      }))}
+                    />
+                  </div>
+                ) : null}
+
+                {releaseDraft.dueMode === "BATCH_RELATIVE" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Due after batch start (days)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={3650}
+                      value={releaseDraft.dueOffsetDays}
+                      disabled={disabled || !canEdit}
+                      onChange={(event) => setReleaseDraft((current) => ({
+                        ...current,
+                        dueOffsetDays: event.target.value,
+                      }))}
+                      placeholder="e.g. 14"
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={disabled || !canEdit}
+                  onClick={() => {
+                    setReleaseDraft(createReleaseDraft(item.release));
+                    setIsEditingRelease(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={disabled || !canEdit || !isReleaseDirty}
+                  onClick={() => void handleSaveReleaseRules()}
+                >
+                  <Save className="h-4 w-4" />
+                  Save Release Rules
+                </Button>
+              </div>
+            </div>
           ) : null}
         </div>
 
@@ -395,6 +789,15 @@ function SortableStageItemRow({
             />
             Required
           </label>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={disabled || !canEdit}
+            onClick={() => setIsEditingRelease((current) => !current)}
+          >
+            {isEditingRelease ? "Close Rules" : "Release Rules"}
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -426,11 +829,13 @@ function SortableStageCard({
   disabled,
   canEdit,
   canCreateContent,
+  stageItemOptions,
   onSave,
   onDelete,
   onCreateItems,
   onRefreshContentReferences,
   onToggleRequired,
+  onSaveReleaseConfig,
   onDeleteItem,
   onReorderItems,
 }: {
@@ -443,11 +848,13 @@ function SortableStageCard({
   disabled: boolean;
   canEdit: boolean;
   canCreateContent: boolean;
+  stageItemOptions: StageItemReferenceOption[];
   onSave: (stageId: string, input: { title: string; description: string }) => Promise<boolean>;
   onDelete: (stageId: string) => Promise<boolean>;
   onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
   onRefreshContentReferences: () => Promise<void>;
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
+  onSaveReleaseConfig: (itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) => Promise<boolean>;
   onDeleteItem: (itemId: string) => Promise<boolean>;
   onReorderItems: (stageId: string, itemIds: string[]) => Promise<void>;
 }) {
@@ -596,7 +1003,9 @@ function SortableStageCard({
                         item={item}
                         disabled={disabled}
                         canEdit={canEdit}
+                        stageItemOptions={stageItemOptions}
                         onToggleRequired={onToggleRequired}
+                        onSaveReleaseConfig={onSaveReleaseConfig}
                         onDelete={onDeleteItem}
                       />
                     ))}
@@ -709,6 +1118,7 @@ function SortableModuleCard({
   disabled,
   canEdit,
   canCreateContent,
+  stageItemOptions,
   onSave,
   onDelete,
   onCreateStage,
@@ -718,6 +1128,7 @@ function SortableModuleCard({
   onCreateItems,
   onRefreshContentReferences,
   onToggleRequired,
+  onSaveReleaseConfig,
   onDeleteItem,
   onReorderItems,
 }: {
@@ -730,6 +1141,7 @@ function SortableModuleCard({
   disabled: boolean;
   canEdit: boolean;
   canCreateContent: boolean;
+  stageItemOptions: StageItemReferenceOption[];
   onSave: (moduleId: string, input: { title: string; description: string }) => Promise<boolean>;
   onDelete: (moduleId: string) => Promise<boolean>;
   onCreateStage: (moduleId: string, input: { title: string; description: string }) => Promise<boolean>;
@@ -739,6 +1151,7 @@ function SortableModuleCard({
   onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
   onRefreshContentReferences: () => Promise<void>;
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
+  onSaveReleaseConfig: (itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) => Promise<boolean>;
   onDeleteItem: (itemId: string) => Promise<boolean>;
   onReorderItems: (stageId: string, itemIds: string[]) => Promise<void>;
 }) {
@@ -906,11 +1319,13 @@ function SortableModuleCard({
                           disabled={disabled}
                           canEdit={canEdit}
                           canCreateContent={canCreateContent}
+                          stageItemOptions={stageItemOptions}
                           onSave={onSaveStage}
                           onDelete={onDeleteStage}
                           onCreateItems={onCreateItems}
                           onRefreshContentReferences={onRefreshContentReferences}
                           onToggleRequired={onToggleRequired}
+                          onSaveReleaseConfig={onSaveReleaseConfig}
                           onDeleteItem={onDeleteItem}
                           onReorderItems={onReorderItems}
                         />
@@ -1618,6 +2033,26 @@ export default function CurriculumBuilderPage() {
     }
   }
 
+  async function handleSaveStageItemReleaseConfig(itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) {
+    setActiveAction(`item:${itemId}:release`);
+
+    try {
+      await sendJson(`/api/curriculum/stage-items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ releaseConfig }),
+      }, "Failed to update stage item release rules.");
+
+      toast.success("Release rules updated.");
+      await loadCurriculumDetail(selectedCurriculumId);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update stage item release rules.");
+      return false;
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
   async function handleDeleteStageItem(itemId: string) {
     setActiveAction(`item:${itemId}:delete`);
 
@@ -1774,6 +2209,20 @@ export default function CurriculumBuilderPage() {
   const currentBatchCount = curriculum?.batchCount ?? selectedCurriculumSummary?.batchCount ?? 0;
   const mappedBatchCount = curriculumBatches.filter((batch) => batch.isMapped).length;
   const availableBatchCount = curriculumBatches.length - mappedBatchCount;
+  const stageItemOptions = useMemo<StageItemReferenceOption[]>(() => {
+    if (!curriculum) {
+      return [];
+    }
+
+    return curriculum.modules.flatMap((moduleRecord) => (
+      moduleRecord.stages.flatMap((stage) => (
+        stage.items.map((item) => ({
+          id: item.id,
+          label: `${moduleRecord.title} / ${stage.title} / ${item.referenceTitle}`,
+        }))
+      ))
+    ));
+  }, [curriculum]);
   const activeSequenceTitle = selectedCurriculumId ? currentCurriculumTitle : "Select a curriculum variant";
   const activeSequenceSummary = !selectedCurriculumId
     ? "Choose a curriculum from the left to edit order, structure, and batch rollout."
@@ -2139,6 +2588,7 @@ export default function CurriculumBuilderPage() {
                                 disabled={isMutating}
                                 canEdit={canEditCurriculum}
                                 canCreateContent={canCreateContent}
+                                stageItemOptions={stageItemOptions}
                                 onSave={handleSaveModule}
                                 onDelete={handleDeleteModule}
                                 onCreateStage={handleCreateStage}
@@ -2148,6 +2598,7 @@ export default function CurriculumBuilderPage() {
                                 onCreateItems={handleCreateStageItems}
                                 onRefreshContentReferences={refreshReferenceInventory}
                                 onToggleRequired={handleToggleItemRequired}
+                                onSaveReleaseConfig={handleSaveStageItemReleaseConfig}
                                 onDeleteItem={handleDeleteStageItem}
                                 onReorderItems={handleReorderStageItems}
                               />

@@ -6,7 +6,12 @@ import { requireCandidateSession } from "@/lib/auth/route-guards";
 import { batchIdSchema } from "@/lib/validation-schemas/batches";
 import { listBatchAssessmentsService, listBatchContentService } from "@/services/batch-content-service";
 import { resolveBuddyPersonaForBatchService } from "@/services/buddy-personas-service";
-import { getCandidateCurriculaForBatchService } from "@/services/curriculum-service";
+import {
+  buildCandidateCurriculumAssessmentContextMap,
+  type CandidateCurriculumAssessmentContext,
+  getCandidateCurriculaForBatchService,
+  resolveCandidateAssessmentWindow,
+} from "@/services/curriculum-service";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
 import { listScheduleEventsService } from "@/services/schedule-service";
 
@@ -30,6 +35,32 @@ function selectLinkedAssessmentEvent(
         return leftTime - rightTime;
       })[0] ?? null
   );
+}
+
+function serializeCurriculumAssessmentContext(context: CandidateCurriculumAssessmentContext) {
+  return {
+    assessmentPoolId: context.assessmentPoolId,
+    curriculumId: context.curriculumId,
+    curriculumTitle: context.curriculumTitle,
+    mappingId: context.mappingId,
+    moduleId: context.moduleId,
+    moduleTitle: context.moduleTitle,
+    stageId: context.stageId,
+    stageTitle: context.stageTitle,
+    stageItemId: context.stageItemId,
+    referenceCode: context.referenceCode,
+    itemTitle: context.itemTitle,
+    itemDescription: context.itemDescription,
+    isRequired: context.isRequired,
+    availabilityStatus: context.availabilityStatus,
+    availabilityReason: context.availabilityReason,
+    unlockAt: context.unlockAt,
+    dueAt: context.dueAt,
+    progressStatus: context.progressStatus,
+    progressPercent: context.progressPercent,
+    startedAt: context.startedAt,
+    completedAt: context.completedAt,
+  };
 }
 
 export function OPTIONS(request: NextRequest) {
@@ -71,17 +102,27 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       courseName: curriculumWorkspace.courseName,
       assignedCurricula: curriculumWorkspace.assignedCurricula,
     };
+    const curriculumAssessmentContextByPoolId = buildCandidateCurriculumAssessmentContextMap(curriculumWorkspace);
 
     const candidateAssessments = assessments.map((assessment) => {
       const linkedEvent = selectLinkedAssessmentEvent(scheduleResponse.items, assessment.assessmentPoolId);
-      const opensAt = linkedEvent ? new Date(linkedEvent.startsAt) : assessment.scheduledAt;
-      const closesAt = linkedEvent?.endsAt ? new Date(linkedEvent.endsAt) : null;
+      const curriculumContext = curriculumAssessmentContextByPoolId.get(assessment.assessmentPoolId) ?? null;
+      const resolvedWindow = resolveCandidateAssessmentWindow({
+        mappedOpensAt: assessment.scheduledAt,
+        linkedOpensAt: linkedEvent ? new Date(linkedEvent.startsAt) : null,
+        linkedClosesAt: linkedEvent?.endsAt ? new Date(linkedEvent.endsAt) : null,
+        curriculumUnlockAt: curriculumContext?.unlockAt,
+        curriculumDueAt: curriculumContext?.dueAt,
+      });
 
       return {
         ...assessment,
-        scheduledAt: opensAt,
-        opensAt,
-        closesAt,
+        scheduledAt: resolvedWindow.scheduledAt,
+        opensAt: resolvedWindow.opensAt,
+        closesAt: resolvedWindow.closesAt,
+        hardClosesAt: resolvedWindow.hardClosesAt,
+        deadlineSource: resolvedWindow.deadlineSource,
+        curriculumContext: curriculumContext ? serializeCurriculumAssessmentContext(curriculumContext) : null,
       };
     });
 

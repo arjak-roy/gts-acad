@@ -11,10 +11,12 @@ export {
 	deleteCurriculumService,
 	deleteCurriculumStageItemService,
 	deleteCurriculumStageService,
+	releaseCurriculumStageItemForBatchService,
 	removeCurriculumFromBatchService,
 	reorderCurriculumModulesService,
 	reorderCurriculumStageItemsService,
 	reorderCurriculumStagesService,
+	revokeCurriculumStageItemReleaseForBatchService,
 	updateCurriculumModuleService,
 	updateCurriculumService,
 	updateCurriculumStageItemService,
@@ -27,6 +29,15 @@ export {
 	getCurriculumByIdService,
 	listCurriculaByCourseService,
 } from "@/services/curriculum/queries";
+export {
+	buildCandidateCurriculumAssessmentContextMap,
+	resolveCandidateAssessmentWindow,
+} from "@/services/curriculum/assessment-context";
+export type {
+	CandidateAssessmentDeadlineSource,
+	CandidateCurriculumAssessmentContext,
+	ResolvedCandidateAssessmentWindow,
+} from "@/services/curriculum/assessment-context";
 export {
 	listCurriculumItemProgressForLearnerService,
 	markCurriculumAssessmentCompletedForLearnerService,

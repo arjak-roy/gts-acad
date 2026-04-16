@@ -9,6 +9,8 @@ export type BatchCourseContext = {
   batchCode: string;
   batchName: string;
   batchMode: BatchMode;
+  startDate: Date;
+  endDate: Date | null;
   programId: string;
   programName: string;
   courseId: string;
@@ -28,6 +30,8 @@ export async function getBatchCourseContext(batchId: string): Promise<BatchCours
       code: true,
       name: true,
       mode: true,
+      startDate: true,
+      endDate: true,
       programId: true,
       program: {
         select: {
@@ -53,6 +57,8 @@ export async function getBatchCourseContext(batchId: string): Promise<BatchCours
     batchCode: batch.code,
     batchName: batch.name,
     batchMode: batch.mode,
+    startDate: batch.startDate,
+    endDate: batch.endDate,
     programId: batch.programId,
     programName: batch.program.name,
     courseId: batch.program.courseId,
