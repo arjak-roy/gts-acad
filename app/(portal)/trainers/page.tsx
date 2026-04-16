@@ -9,6 +9,7 @@ import { AssignTrainerAssessmentsSheet } from "@/components/modules/trainers/ass
 import { AssignTrainerCoursesSheet } from "@/components/modules/trainers/assign-trainer-courses-sheet";
 import { EditTrainerSheet } from "@/components/modules/trainers/edit-trainer-sheet";
 import { TrainerDetailSheet } from "@/components/modules/trainers/trainer-detail-sheet";
+import { TrainerBulkImportCard } from "@/components/modules/trainers/trainer-bulk-import-card";
 import { TrainersTable } from "@/components/modules/trainers/trainers-table";
 import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -145,6 +146,8 @@ export default function TrainersPage() {
           <AddTrainerSheet onCreated={refreshTrainers} />
         </CanAccess>
       </div>
+
+      <TrainerBulkImportCard onImported={refreshTrainers} />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>

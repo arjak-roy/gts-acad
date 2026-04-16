@@ -10,73 +10,15 @@ import { sendAccountActivationEmail } from "@/services/auth/account-activation";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { invalidateUserPermissionCache } from "@/services/rbac-service";
 import { mapTrainerCourseNames } from "@/services/trainers/course-assignment-helpers";
+import {
+  normalizeTrainerCourseList,
+  normalizeTrainerEmployeeCode,
+  resolveTrainerSelectedCourses,
+} from "@/services/trainers/import-helpers";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerCreateResult, TrainerDetail, TrainerOption, TrainerStatus } from "@/services/trainers/types";
 import { CreateTrainerInput, UpdateTrainerCoursesInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
 import { sendInternalUserWelcomeEmail, updateInternalUserMetadata } from "@/services/users/internal-helpers";
-
-function normalizeCourseList(courses: string[]) {
-  return Array.from(new Set(courses.map((course) => course.trim()).filter(Boolean)));
-}
-
-function normalizeEmployeeCode(employeeCode: string) {
-  return employeeCode.trim().toUpperCase();
-}
-
-function isUuidLike(value: string) {
-  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value.trim());
-}
-
-async function resolveSelectedCourses(courseSelections: string[]) {
-  const normalizedSelections = normalizeCourseList(courseSelections);
-
-  if (normalizedSelections.length === 0) {
-    return [];
-  }
-
-  const matchingCourses = await prisma.course.findMany({
-    where: {
-      OR: normalizedSelections.flatMap((courseSelection) => {
-        const courseFilters: Prisma.CourseWhereInput[] = [
-          {
-            name: {
-              equals: courseSelection,
-              mode: "insensitive" as const,
-            },
-          },
-        ];
-
-        if (isUuidLike(courseSelection)) {
-          courseFilters.unshift({ id: courseSelection });
-        }
-
-        return courseFilters;
-      }),
-    },
-    select: {
-      id: true,
-      name: true,
-    },
-  });
-
-  const coursesById = new Map(matchingCourses.map((course) => [course.id, course]));
-  const coursesByNormalizedName = new Map(
-    matchingCourses.map((course) => [course.name.trim().toLowerCase(), course]),
-  );
-
-  const resolvedCourses = normalizedSelections.map((courseSelection) => {
-    const resolvedCourse = coursesById.get(courseSelection)
-      ?? coursesByNormalizedName.get(courseSelection.trim().toLowerCase());
-
-    if (!resolvedCourse) {
-      throw new Error("Invalid course selection.");
-    }
-
-    return resolvedCourse;
-  });
-
-  return Array.from(new Map(resolvedCourses.map((course) => [course.id, course])).values());
-}
 
 const trainerCourseAssignmentsInclude = {
   courseAssignments: {
@@ -120,12 +62,12 @@ export async function createTrainerService(
   actor: { actorUserId?: string | null } = {},
 ): Promise<TrainerCreateResult> {
   const normalizedFullName = input.fullName.trim();
-  const normalizedEmployeeCode = normalizeEmployeeCode(input.employeeCode);
+  const normalizedEmployeeCode = normalizeTrainerEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
   const normalizedBio = input.bio.trim() || null;
-  const normalizedCourses = normalizeCourseList(input.courses);
+  const normalizedCourses = normalizeTrainerCourseList(input.courses);
   const isActive = input.status === "ACTIVE";
 
   if (!isDatabaseConfigured) {
@@ -150,7 +92,7 @@ export async function createTrainerService(
   const [existingUser, existingTrainerCode, resolvedCourses, trainerRole] = await Promise.all([
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
     prisma.trainerProfile.findFirst({ where: { employeeCode: normalizedEmployeeCode }, select: { id: true } }),
-    resolveSelectedCourses(normalizedCourses),
+    resolveTrainerSelectedCourses(normalizedCourses),
     prisma.role.findUnique({
       where: { code: TRAINER_ROLE_CODE },
       select: { id: true, name: true, code: true },
@@ -314,12 +256,12 @@ export async function createTrainerService(
 
 export async function updateTrainerService(input: UpdateTrainerInput): Promise<TrainerCreateResult> {
   const normalizedFullName = input.fullName.trim();
-  const normalizedEmployeeCode = normalizeEmployeeCode(input.employeeCode);
+  const normalizedEmployeeCode = normalizeTrainerEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
   const normalizedBio = input.bio.trim() || null;
-  const normalizedCourses = normalizeCourseList(input.courses);
+  const normalizedCourses = normalizeTrainerCourseList(input.courses);
   const isActive = input.status === "ACTIVE";
 
   if (!isDatabaseConfigured) {
@@ -364,7 +306,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       },
       select: { id: true },
     }),
-    resolveSelectedCourses(normalizedCourses),
+    resolveTrainerSelectedCourses(normalizedCourses),
   ]);
 
   if (existingUser) {
@@ -505,7 +447,7 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
 }
 
 export async function updateTrainerCoursesService(trainerId: string, input: UpdateTrainerCoursesInput): Promise<TrainerDetail> {
-  const normalizedCourses = normalizeCourseList(input.courses);
+  const normalizedCourses = normalizeTrainerCourseList(input.courses);
 
   if (!isDatabaseConfigured) {
     const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
@@ -539,7 +481,7 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
     throw new Error("Trainer not found.");
   }
 
-  const resolvedCourses = await resolveSelectedCourses(normalizedCourses);
+  const resolvedCourses = await resolveTrainerSelectedCourses(normalizedCourses);
 
   const updated = await prisma.trainerProfile.update({
     where: { id: trainerId },

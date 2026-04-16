@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { TRAINER_IMPORT_MAX_ROWS } from "@/lib/imports/trainers";
+
 const trainerStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 const trainerAvailabilitySchema = z.enum(["AVAILABLE", "LIMITED", "UNAVAILABLE", "ON_LEAVE"]);
 const trainerRegistryStatusSchema = z.enum(["ALL", "ACTIVE", "INACTIVE"]);
@@ -55,8 +57,19 @@ export const updateTrainerCoursesSchema = z.object({
   courses: z.array(z.string().trim().min(1).max(255)).min(1, "Select at least one course."),
 });
 
+export const trainerImportCommitRowSchema = createTrainerSchema.extend({
+  rowNumber: z.coerce.number().int().min(2),
+});
+
+export const commitTrainerImportSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  rows: z.array(trainerImportCommitRowSchema).min(1).max(TRAINER_IMPORT_MAX_ROWS),
+});
+
 export type CreateTrainerInput = z.infer<typeof createTrainerSchema>;
 export type GetTrainerRegistryInput = z.infer<typeof getTrainerRegistrySchema>;
 export type UpdateTrainerInput = z.infer<typeof updateTrainerSchema>;
 export type UpdateTrainerStatusInput = z.infer<typeof updateTrainerStatusSchema>;
 export type UpdateTrainerCoursesInput = z.infer<typeof updateTrainerCoursesSchema>;
+export type TrainerImportCommitRow = z.infer<typeof trainerImportCommitRowSchema>;
+export type CommitTrainerImportInput = z.infer<typeof commitTrainerImportSchema>;

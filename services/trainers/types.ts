@@ -1,3 +1,6 @@
+import type { CsvImportIssue } from "@/lib/bulk-import/csv";
+import type { TrainerImportCommitRow } from "@/lib/validation-schemas/trainers";
+
 export const TRAINER_AVAILABILITY_STATUSES = ["AVAILABLE", "LIMITED", "UNAVAILABLE", "ON_LEAVE"] as const;
 export const TRAINER_AVAILABILITY_LABELS: Record<TrainerAvailabilityStatus, string> = {
   AVAILABLE: "Available",
@@ -62,4 +65,48 @@ export type TrainerDetail = {
   availabilityStatus: TrainerAvailabilityStatus;
   courses: string[];
   lastActiveAt: string | null;
+};
+
+export type TrainerImportIssue = CsvImportIssue;
+
+export type TrainerImportRowInput = {
+  fullName: string;
+  employeeCode: string;
+  email: string;
+  phone: string;
+  specialization: string;
+  capacity: string;
+  status: string;
+  availabilityStatus: string;
+  courses: string;
+  bio: string;
+};
+
+export type TrainerImportNormalizedRow = TrainerImportCommitRow;
+
+export type TrainerImportRow = {
+  rowNumber: number;
+  status: "create" | "error";
+  input: TrainerImportRowInput;
+  normalizedEmail: string | null;
+  normalizedEmployeeCode: string | null;
+  normalizedData: TrainerImportNormalizedRow | null;
+  issues: TrainerImportIssue[];
+};
+
+export type TrainerImportPreview = {
+  fileName: string;
+  headers: string[];
+  totalRows: number;
+  createCount: number;
+  errorCount: number;
+  actionableCount: number;
+  hasBlockingErrors: boolean;
+  rows: TrainerImportRow[];
+};
+
+export type TrainerImportCommitResult = {
+  fileName: string;
+  createdCount: number;
+  totalCount: number;
 };

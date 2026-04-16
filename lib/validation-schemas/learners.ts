@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { LEARNER_IMPORT_MAX_ROWS } from "@/lib/imports/learners";
+
 export const getLearnersSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
@@ -55,7 +57,18 @@ export const updateLearnerSchema = z
     },
   );
 
+export const learnerImportCommitRowSchema = createLearnerSchema.extend({
+  rowNumber: z.coerce.number().int().min(2),
+});
+
+export const commitLearnerImportSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  rows: z.array(learnerImportCommitRowSchema).min(1).max(LEARNER_IMPORT_MAX_ROWS),
+});
+
 export type GetLearnersInput = z.infer<typeof getLearnersSchema>;
 export type CreateLearnerInput = z.infer<typeof createLearnerSchema>;
 export type CreateLearnerEnrollmentInput = z.infer<typeof createLearnerEnrollmentSchema>;
 export type UpdateLearnerInput = z.infer<typeof updateLearnerSchema>;
+export type LearnerImportCommitRow = z.infer<typeof learnerImportCommitRowSchema>;
+export type CommitLearnerImportInput = z.infer<typeof commitLearnerImportSchema>;

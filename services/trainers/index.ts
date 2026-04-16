@@ -14,11 +14,17 @@ export {
   listTrainersService,
   searchTrainersService,
 } from "@/services/trainers/queries";
+export { commitTrainerImportService, previewTrainerImportService } from "@/services/trainers/import";
 
 export type {
   TrainerAvailabilityStatus,
   TrainerCreateResult,
   TrainerDetail,
+  TrainerImportCommitResult,
+  TrainerImportNormalizedRow,
+  TrainerImportPreview,
+  TrainerImportRow,
+  TrainerImportRowInput,
   TrainerOption,
   TrainerRegistryResponse,
   TrainerStatus,

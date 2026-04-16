@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { getLearnerByCode, getLearners } from "@/app/actions/learners";
 import { AttendanceBulkForm } from "@/components/modules/learners/attendance-bulk-form";
+import { LearnerBulkImportCard } from "@/components/modules/learners/learner-bulk-import-card";
 import { LearnerEditSheet } from "@/components/modules/learners/learner-edit-sheet";
 import { LearnerSheet } from "@/components/modules/learners/learner-sheet";
 import { LearnersTable } from "@/components/modules/learners/learners-table";
@@ -51,6 +52,7 @@ async function LearnersPageContent({ searchParams }: LearnersPageProps) {
 
   return (
     <div className="space-y-6">
+      <LearnerBulkImportCard />
       <LearnersTable response={response} filters={filters} />
       <AttendanceBulkForm />
       <LearnerSheet learner={learner} />
