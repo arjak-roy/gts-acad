@@ -423,6 +423,14 @@ function getDraftSavedAnswers(attemptRecord: ResolvedAttemptRecord | null) {
   return attemptRecord?.status === AssessmentAttemptStatus.DRAFT ? parseAssessmentAttemptAnswers(attemptRecord.answers) : [];
 }
 
+function isAssessmentWindowPending(context: CandidateAssessmentContext, now: number) {
+  if (context.opensAt) {
+    return context.opensAt.getTime() > now;
+  }
+
+  return !context.closesAt;
+}
+
 function resolveAvailabilityStatus(context: CandidateAssessmentContext, now: number): CandidateAssessmentDetail["availabilityStatus"] {
   if (context.attempt?.autoSubmittedAt) {
     return "EXPIRED";
@@ -432,7 +440,7 @@ function resolveAvailabilityStatus(context: CandidateAssessmentContext, now: num
     return "LOCKED";
   }
 
-  if (!context.opensAt || context.opensAt.getTime() > now) {
+  if (isAssessmentWindowPending(context, now)) {
     return "SCHEDULED";
   }
 
@@ -766,11 +774,11 @@ function getAvailabilityMessage(context: CandidateAssessmentContext, now: number
     return "This assessment includes question types that are not supported in the candidate app yet.";
   }
 
-  if (!context.opensAt) {
+  if (!context.opensAt && !context.closesAt) {
     return context.curriculumContext?.availabilityReason.message ?? "This assessment is mapped to your batch, but its start time has not been published yet.";
   }
 
-  if (context.opensAt.getTime() > now) {
+  if (context.opensAt && context.opensAt.getTime() > now) {
     return context.curriculumContext?.availabilityReason.message ?? "This assessment will unlock once the scheduled start time has been crossed.";
   }
 
@@ -1015,12 +1023,12 @@ async function finalizeCandidateAssessmentAttemptService(options: {
     throw new Error(context.curriculumContext.availabilityReason.message);
   }
 
-  if (!context.opensAt) {
+  if (!context.opensAt && !context.closesAt) {
     throw new Error("Invalid request: assessment start time has not been published yet.");
   }
 
   const now = new Date();
-  if (context.opensAt.getTime() > now.getTime()) {
+  if (context.opensAt && context.opensAt.getTime() > now.getTime()) {
     throw new Error("Invalid request: assessment is not open yet.");
   }
 
@@ -1244,12 +1252,12 @@ export async function saveCandidateAssessmentDraftService(options: {
     throw new Error(context.curriculumContext.availabilityReason.message);
   }
 
-  if (!context.opensAt) {
+  if (!context.opensAt && !context.closesAt) {
     throw new Error("Invalid request: assessment start time has not been published yet.");
   }
 
   const now = new Date();
-  if (context.opensAt.getTime() > now.getTime()) {
+  if (context.opensAt && context.opensAt.getTime() > now.getTime()) {
     throw new Error("Invalid request: assessment is not open yet.");
   }
 
