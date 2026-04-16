@@ -11,6 +11,7 @@ import {
   type CandidateCurriculumAssessmentContext,
   getCandidateCurriculaForBatchService,
   resolveCandidateAssessmentWindow,
+  selectRelevantLinkedAssessmentEvent,
 } from "@/services/curriculum-service";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
 import { listScheduleEventsService } from "@/services/schedule-service";
@@ -25,16 +26,17 @@ function selectLinkedAssessmentEvent(
   schedule: Awaited<ReturnType<typeof listScheduleEventsService>>["items"],
   assessmentPoolId: string,
 ) {
-  return (
+  const relevantEvent = selectRelevantLinkedAssessmentEvent(
     schedule
       .filter((event) => event.linkedAssessmentPoolId === assessmentPoolId && event.status !== "CANCELLED")
-      .sort((left, right) => {
-        const leftTime = new Date(left.startsAt).getTime();
-        const rightTime = new Date(right.startsAt).getTime();
-
-        return leftTime - rightTime;
-      })[0] ?? null
+      .map((event) => ({
+        event,
+        startsAt: new Date(event.startsAt),
+        endsAt: event.endsAt ? new Date(event.endsAt) : null,
+      })),
   );
+
+  return relevantEvent?.event ?? null;
 }
 
 function serializeCurriculumAssessmentContext(context: CandidateCurriculumAssessmentContext) {

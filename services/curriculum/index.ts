@@ -32,6 +32,7 @@ export {
 export {
 	buildCandidateCurriculumAssessmentContextMap,
 	resolveCandidateAssessmentWindow,
+	selectRelevantLinkedAssessmentEvent,
 } from "@/services/curriculum/assessment-context";
 export type {
 	CandidateAssessmentDeadlineSource,

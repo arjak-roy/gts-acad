@@ -40,6 +40,11 @@ export type ResolvedCandidateAssessmentWindow = {
   deadlineSource: CandidateAssessmentDeadlineSource;
 };
 
+type LinkedAssessmentEventLike = {
+  startsAt: Date;
+  endsAt: Date | null;
+};
+
 function toTimestamp(value: Date | null | undefined) {
   return value ? value.getTime() : Number.NaN;
 }
@@ -62,6 +67,30 @@ function resolveMinDate(values: Array<Date | null | undefined>) {
   }
 
   return new Date(Math.min(...validValues.map((value) => value.getTime())));
+}
+
+function getLinkedAssessmentEventEndTime(event: LinkedAssessmentEventLike) {
+  return (event.endsAt ?? event.startsAt).getTime();
+}
+
+export function selectRelevantLinkedAssessmentEvent<T extends LinkedAssessmentEventLike>(
+  events: T[],
+  now = new Date(),
+) {
+  if (events.length === 0) {
+    return null;
+  }
+
+  const nowTime = now.getTime();
+  const orderedEvents = [...events].sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+
+  const activeEvent = orderedEvents.find((event) => event.startsAt.getTime() <= nowTime && getLinkedAssessmentEventEndTime(event) >= nowTime);
+
+  if (activeEvent) {
+    return activeEvent;
+  }
+
+  return orderedEvents.find((event) => event.startsAt.getTime() >= nowTime) ?? null;
 }
 
 function shouldPreferCandidateContext(

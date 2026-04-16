@@ -16,6 +16,7 @@ import {
   markCurriculumAssessmentCompletedForLearnerService,
   markCurriculumAssessmentInProgressForLearnerService,
   resolveCandidateAssessmentWindow,
+  selectRelevantLinkedAssessmentEvent,
   type CandidateAssessmentDeadlineSource,
   type CandidateCurriculumAssessmentContext,
 } from "@/services/curriculum-service";
@@ -334,7 +335,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     throw new Error("Assessment not found.");
   }
 
-  const [mapping, courseLink, linkedEvent, curriculumWorkspace] = await Promise.all([
+  const [mapping, courseLink, linkedEvents, curriculumWorkspace] = await Promise.all([
     prisma.batchAssessmentMapping.findUnique({
       where: {
         batchId_assessmentPoolId: {
@@ -426,7 +427,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
         },
       },
     }),
-    prisma.batchScheduleEvent.findFirst({
+    prisma.batchScheduleEvent.findMany({
       where: {
         batchId,
         linkedAssessmentPoolId: assessmentPoolId,
@@ -464,6 +465,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
   }
 
   const curriculumContext = buildCandidateCurriculumAssessmentContextMap(curriculumWorkspace).get(assessmentPoolId) ?? null;
+  const linkedEvent = selectRelevantLinkedAssessmentEvent(linkedEvents);
   const resolvedWindow = resolveCandidateAssessmentWindow({
     mappedOpensAt: mapping?.scheduledAt,
     linkedOpensAt: linkedEvent?.startsAt,
