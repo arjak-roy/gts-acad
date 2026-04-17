@@ -2,7 +2,16 @@ import { AttendanceWorkspace } from "@/components/modules/attendance/attendance-
 import { listBatchesService } from "@/services/batches-service";
 import type { AttendanceWorkspaceBatchOption } from "@/services/attendance/types";
 
-export default async function AttendancePage() {
+type AttendancePageProps = {
+  searchParams?: {
+    batchCode?: string;
+    sessionDate?: string;
+    sessionSourceType?: "MANUAL" | "SCHEDULE_EVENT";
+    scheduleEventId?: string;
+  };
+};
+
+export default async function AttendancePage({ searchParams }: AttendancePageProps) {
   const batches = await listBatchesService();
 
   const initialBatches: AttendanceWorkspaceBatchOption[] = batches.map((batch) => ({
@@ -14,5 +23,15 @@ export default async function AttendancePage() {
     status: batch.status,
   }));
 
-  return <AttendanceWorkspace initialBatches={initialBatches} />;
+  return (
+    <AttendanceWorkspace
+      initialBatches={initialBatches}
+      initialSelection={{
+        batchCode: searchParams?.batchCode,
+        sessionDate: searchParams?.sessionDate,
+        sessionSourceType: searchParams?.sessionSourceType,
+        scheduleEventId: searchParams?.scheduleEventId,
+      }}
+    />
+  );
 }
