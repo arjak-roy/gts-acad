@@ -442,7 +442,7 @@ export function AttendanceWorkspace({ initialBatches }: AttendanceWorkspaceProps
     try {
       const result = await attendanceMutation.mutateAsync({
         batchCode: selectedBatchCode,
-        sessionDate: new Date(sessionDate),
+        sessionDate,
         sessionSourceType,
         scheduleEventId: selectedScheduleEventId || undefined,
         records: markedRows.map((row) => ({

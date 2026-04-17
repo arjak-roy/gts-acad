@@ -44,7 +44,7 @@ export function AttendanceBulkForm() {
 
     await mutation.mutateAsync({
       batchCode: values.batchCode,
-      sessionDate: new Date(values.sessionDate),
+      sessionDate: values.sessionDate,
       records,
     });
     form.reset({ ...values, rows: values.rows });
