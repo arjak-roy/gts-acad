@@ -296,7 +296,7 @@ function buildInsightSearchResult(stats: DashboardStats, query: string): Dashboa
     { id: "total-courses", title: "Courses", description: `${stats.totalCourses.toLocaleString("en-IN")} | Total courses in the current scope` },
     { id: "published-courses", title: "Published Courses", description: `${stats.publishedCourses.toLocaleString("en-IN")} | Approved and live for delivery` },
     { id: "pending-course-approvals", title: "Approvals Queue", description: `${stats.pendingCourseApprovals.toLocaleString("en-IN")} | Courses waiting for review` },
-    { id: "overdue-assignments", title: "Overdue Assignments", description: `${stats.overdueAssignments.toLocaleString("en-IN")} | Scheduled quizzes that crossed their planned start time` },
+    { id: "overdue-assignments", title: "Overdue Assignments", description: `${stats.overdueAssignments.toLocaleString("en-IN")} | Scheduled assessments that crossed their planned start time` },
     { id: "active-learners", title: "Active Learners", description: `${stats.activeLearners.toLocaleString("en-IN")} | Learners actively participating in scoped batches` },
     { id: "total-trainers", title: "Trainers", description: `${stats.totalTrainers.toLocaleString("en-IN")} | Trainers represented in the current scope` },
     { id: "quiz-pools", title: "Quiz Pools", description: `${stats.totalQuizzes.toLocaleString("en-IN")} | Reusable assessments available in scope` },
@@ -753,7 +753,7 @@ export function DashboardOverview({
       {
         href: "/schedule",
         title: "Adjust Schedule",
-        description: "Investigate overdue quiz schedules and rebalance delivery activity.",
+        description: "Investigate overdue assessment schedules and rebalance delivery activity.",
         icon: CalendarCheck2,
       },
     ],
@@ -908,7 +908,7 @@ export function DashboardOverview({
     {
       id: "pending-actions",
       title: "Pending Actions",
-      description: "Focus the team on approval bottlenecks, overdue quiz schedules, and curriculum gaps.",
+      description: "Focus the team on approval bottlenecks, overdue assessment schedules, and curriculum gaps.",
       defaultSize: "md",
       allowedSizes: [...DASHBOARD_WIDGET_SIZES],
       content: statsState.pendingActions.length > 0 ? (

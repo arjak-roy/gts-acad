@@ -172,8 +172,6 @@ enum AssessmentMode {
 enum ScheduleEventType {
   CLASS   @map("class")
   TEST    @map("test")
-  QUIZ    @map("quiz")
-  CONTEST @map("contest")
 
   @@map("schedule_event_type")
 }

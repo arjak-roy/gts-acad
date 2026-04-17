@@ -10,7 +10,10 @@ export async function GET(request: NextRequest) {
     await requirePermission(request, "schedule.view");
     const { searchParams } = new URL(request.url);
     const query = listScheduleEventsQuerySchema.parse({
+      contextType: searchParams.get("contextType") ?? undefined,
       batchId: searchParams.get("batchId") ?? undefined,
+      learnerId: searchParams.get("learnerId") ?? undefined,
+      trainerId: searchParams.get("trainerId") ?? undefined,
       from: searchParams.get("from") ?? undefined,
       to: searchParams.get("to") ?? undefined,
       type: searchParams.get("type") ?? undefined,

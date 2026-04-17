@@ -73,14 +73,11 @@ function normalizeWeekdays(values: number[]) {
 }
 
 export function shouldLinkAssessment(type: ScheduleEventType) {
-  return type === "TEST" || type === "QUIZ";
+  return type === "TEST";
 }
 
 function resolveAssessmentType(type: ScheduleEventType) {
-  if (type === "QUIZ") {
-    return AssessmentType.DIAGNOSTIC;
-  }
-
+  void type;
   return AssessmentType.MODULE;
 }
 

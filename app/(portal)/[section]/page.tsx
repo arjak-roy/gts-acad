@@ -86,8 +86,8 @@ const sectionConfig = {
     secondaryAction: "View Details",
   },
   schedule: {
-    title: "Batch Schedule",
-    description: "Calendar-driven planning for classes, tests, quizzes, and contests across all batches.",
+    title: "Schedule",
+    description: "Calendar-driven planning for classes and assessments across batch, learner, and trainer views.",
     accent: "Calendar operations",
     summary: "Plan and track recurring and one-time academic events.",
     metrics: [],

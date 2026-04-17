@@ -89,7 +89,7 @@ type CandidateAssessmentContext = {
   };
   questions: QuestionDetail[];
   linkedAssessmentId: string | null;
-  linkedEventType: "TEST" | "QUIZ" | null;
+  linkedEventType: "TEST" | null;
   linkedClassMode: "ONLINE" | "OFFLINE" | null;
   fallbackAssessmentId: string | null;
   attemptRecord: ResolvedAttemptRecord | null;
@@ -719,7 +719,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     },
     questions: pool.questions as QuestionDetail[],
     linkedAssessmentId: linkedEvent?.linkedAssessmentId ?? null,
-    linkedEventType: linkedEvent?.type === "TEST" || linkedEvent?.type === "QUIZ" ? linkedEvent.type : null,
+    linkedEventType: linkedEvent?.type === "TEST" ? linkedEvent.type : null,
     linkedClassMode: linkedEvent?.classMode ?? null,
     fallbackAssessmentId: fallbackAssessment?.id ?? null,
     attemptRecord,
@@ -874,11 +874,8 @@ export async function getCandidateAssessmentDetailService(options: {
   };
 }
 
-function resolveAssessmentTypeFromEventType(eventType: "TEST" | "QUIZ" | null) {
-  if (eventType === "QUIZ") {
-    return AssessmentType.DIAGNOSTIC;
-  }
-
+function resolveAssessmentTypeFromEventType(eventType: "TEST" | null) {
+  void eventType;
   return AssessmentType.MODULE;
 }
 

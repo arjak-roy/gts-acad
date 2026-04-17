@@ -572,10 +572,10 @@ function buildPendingActions(options: {
     },
     {
       id: "overdue-quiz-schedules",
-      title: "Overdue quiz schedules",
+      title: "Overdue assessment schedules",
       detail: options.overdueAssignments > 0
-        ? `${options.overdueAssignments} scheduled quiz${options.overdueAssignments === 1 ? " has" : "zes have"} crossed its planned start time.`
-        : "No scheduled quizzes are overdue in the current scope.",
+        ? `${options.overdueAssignments} scheduled assessment${options.overdueAssignments === 1 ? " has" : "s have"} crossed its planned start time.`
+        : "No scheduled assessments are overdue in the current scope.",
       count: options.overdueAssignments,
       tone: options.overdueAssignments > 0 ? "danger" : "info",
       href: "/schedule",
@@ -730,9 +730,7 @@ export async function getDashboardStatsService(filtersInput: DashboardStatsFilte
           linkedAssessmentPoolId: {
             not: null,
           },
-          type: {
-            in: ["QUIZ", "TEST"],
-          },
+          type: "TEST",
           status: {
             in: ["SCHEDULED", "IN_PROGRESS"],
           },
@@ -1079,10 +1077,10 @@ export async function getDashboardStatsService(filtersInput: DashboardStatsFilte
         },
         {
           id: "schedule-health",
-          title: "Quiz Scheduling",
+          title: "Assessment Scheduling",
           message: overdueAssignments > 0
-            ? `${overdueAssignments} quiz schedule${overdueAssignments === 1 ? " has" : "s have"} crossed its planned start time.`
-            : "No scheduled quizzes are overdue in the current scope.",
+            ? `${overdueAssignments} assessment schedule${overdueAssignments === 1 ? " has" : "s have"} crossed its planned start time.`
+            : "No scheduled assessments are overdue in the current scope.",
           tone: overdueAssignments > 0 ? "danger" : "info",
         },
         {

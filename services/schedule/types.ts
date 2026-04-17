@@ -1,8 +1,15 @@
 import { BatchMode, EvaluationStatus, Prisma } from "@prisma/client";
 
-export type ScheduleEventType = "CLASS" | "TEST" | "QUIZ" | "CONTEST";
+export type ScheduleEventType = "CLASS" | "TEST";
+export type ScheduleContextType = "batch" | "learner" | "trainer";
 
 export type BatchScheduleEventWhereInput = Record<string, unknown>;
+
+export type ScheduleContextOption = {
+  id: string;
+  label: string;
+  meta: string | null;
+};
 
 export type EventRecord = {
   id: string;

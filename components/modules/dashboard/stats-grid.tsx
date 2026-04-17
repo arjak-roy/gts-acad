@@ -69,7 +69,7 @@ const summaryCards = (stats: DashboardStats) => [
   {
     label: "Overdue Assignments",
     value: stats.overdueAssignments.toLocaleString("en-IN"),
-    helper: stats.overdueAssignments > 0 ? "Scheduled quizzes that crossed their planned start time" : "No overdue quiz schedules in scope",
+    helper: stats.overdueAssignments > 0 ? "Scheduled assessments that crossed their planned start time" : "No overdue assessment schedules in scope",
   },
 ];
 

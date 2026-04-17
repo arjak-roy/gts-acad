@@ -85,7 +85,7 @@ export const DEFAULT_DASHBOARD_STATS: DashboardStats = {
   ],
   pendingActions: [
     { id: "pending-review", title: "Course approvals", detail: "Courses waiting for approval before publishing.", count: 1, tone: "warning", href: "/courses" },
-    { id: "pending-overdue", title: "Overdue quiz schedules", detail: "Scheduled quizzes that have crossed their planned start time.", count: 2, tone: "danger", href: "/schedule" },
+    { id: "pending-overdue", title: "Overdue assessment schedules", detail: "Scheduled assessments that have crossed their planned start time.", count: 2, tone: "danger", href: "/schedule" },
     { id: "pending-drafts", title: "Draft courses", detail: "Course shells that still need content, curriculum, or publishing review.", count: 1, tone: "info", href: "/courses" },
   ],
   readinessFunnel: [
@@ -104,7 +104,7 @@ export const DEFAULT_DASHBOARD_STATS: DashboardStats = {
     {
       id: "overdue-schedules",
       title: "Scheduling Risk",
-      message: "2 scheduled quizzes have crossed their planned start time.",
+      message: "2 scheduled assessments have crossed their planned start time.",
       tone: "danger",
     },
     {

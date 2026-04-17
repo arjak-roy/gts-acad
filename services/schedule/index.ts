@@ -1,6 +1,11 @@
 import "server-only";
 
-export { getScheduleEventByIdService, listScheduleEventsService } from "@/services/schedule/queries";
+export {
+	getScheduleEventByIdService,
+	listScheduleEventsService,
+	listScheduleLearnerOptionsService,
+	listScheduleTrainerOptionsService,
+} from "@/services/schedule/queries";
 export { cancelScheduleEventService, createScheduleEventService, updateScheduleEventService } from "@/services/schedule/commands";
 
-export type { ScheduleEventListItem, ScheduleEventListResponse } from "@/services/schedule/types";
+export type { ScheduleContextOption, ScheduleEventListItem, ScheduleEventListResponse } from "@/services/schedule/types";

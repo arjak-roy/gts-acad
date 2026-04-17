@@ -18,10 +18,11 @@ import { cn } from "@/lib/utils";
 import { useRbac } from "@/lib/rbac-context";
 
 type ViewMode = "month" | "week" | "day" | "list";
-type EventType = "CLASS" | "TEST" | "QUIZ" | "CONTEST";
+type EventType = "CLASS" | "TEST";
 type EventStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "RESCHEDULED";
 type ClassMode = "ONLINE" | "OFFLINE";
 type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY";
+type ScheduleContextType = "batch" | "learner" | "trainer";
 
 type ScheduleEvent = {
   id: string;
@@ -113,6 +114,16 @@ type ScheduleResponse = {
 
 type BatchesResponse = {
   data: BatchOption[];
+};
+
+type ScheduleContextOption = {
+  id: string;
+  label: string;
+  meta: string | null;
+};
+
+type ScheduleContextOptionsResponse = {
+  data: ScheduleContextOption[];
 };
 
 type EventFormState = {
@@ -293,7 +304,11 @@ function buildEventPayload(form: EventFormState) {
 }
 
 function eventTypeSupportsCourseBuilderAssessment(type: EventType) {
-  return type === "TEST" || type === "QUIZ";
+  return type === "TEST";
+}
+
+function getEventTypeLabel(type: EventType) {
+  return type === "TEST" ? "Assessment" : "Class";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -314,8 +329,6 @@ function getEventTypeStyle(type: EventType) {
   const styles = {
     CLASS:   { bg: "bg-blue-50",    text: "text-blue-700",   border: "border-blue-200",   dot: "bg-blue-500"    },
     TEST:    { bg: "bg-amber-50",   text: "text-amber-700",  border: "border-amber-200",  dot: "bg-amber-500"   },
-    QUIZ:    { bg: "bg-violet-50",  text: "text-violet-700", border: "border-violet-200", dot: "bg-violet-500"  },
-    CONTEST: { bg: "bg-emerald-50", text: "text-emerald-700",border: "border-emerald-200",dot: "bg-emerald-500" },
   } satisfies Record<EventType, { bg: string; text: string; border: string; dot: string }>;
   return styles[type] ?? styles.CLASS;
 }
@@ -335,9 +348,7 @@ function getStatusBadgeVariant(status: EventStatus) {
 function CalendarLegend() {
   const entries = [
     { type: "CLASS"   as EventType, label: "Class"   },
-    { type: "TEST"    as EventType, label: "Test"    },
-    { type: "QUIZ"    as EventType, label: "Quiz"    },
-    { type: "CONTEST" as EventType, label: "Contest" },
+    { type: "TEST"    as EventType, label: "Assessment" },
   ];
   return (
     <div className="flex flex-wrap items-center gap-4">
@@ -722,7 +733,7 @@ function DayCalendarView({
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", style.bg, style.text)}>
-                            {event.type}
+                            {getEventTypeLabel(event.type)}
                           </span>
                           <span className="text-[10px] font-medium text-slate-400">
                             {event.status.replace("_", " ")}
@@ -747,11 +758,18 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   const canEdit   = can("schedule.edit");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [baseDate, setBaseDate] = useState(new Date());
+  const [scheduleContext, setScheduleContext] = useState<ScheduleContextType>("batch");
   const [batchFilter, setBatchFilter] = useState<string>("");
+  const [learnerFilter, setLearnerFilter] = useState<string>("");
+  const [trainerFilter, setTrainerFilter] = useState<string>("");
   const [batches, setBatches] = useState<BatchOption[]>([]);
+  const [learnerOptions, setLearnerOptions] = useState<ScheduleContextOption[]>([]);
+  const [trainerOptions, setTrainerOptions] = useState<ScheduleContextOption[]>([]);
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contextOptionsLoading, setContextOptionsLoading] = useState(false);
+  const [contextOptionsError, setContextOptionsError] = useState<string | null>(null);
   const [listSortState, setListSortState] = useState<{ column: ScheduleListSortKey; direction: ActiveSortDirection }>({
     column: "startsAt",
     direction: "asc",
@@ -773,6 +791,9 @@ export function ScheduleSection({ title, description }: { title: string; descrip
   const rangeFromTime = range.from.getTime();
   const rangeToTime = range.to.getTime();
   const supportsAssessmentPool = eventTypeSupportsCourseBuilderAssessment(form.type);
+  const selectedContextId = scheduleContext === "batch" ? batchFilter : scheduleContext === "learner" ? learnerFilter : trainerFilter;
+  const contextSelectionRequired = scheduleContext !== "batch" && !selectedContextId;
+  const canCreateInCurrentView = canCreate && scheduleContext === "batch";
   const sortedEvents = useMemo(
     () => sortByAccessor(events, listSortState.direction, scheduleListSortAccessors[listSortState.column]),
     [events, listSortState],
@@ -797,20 +818,82 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     }
   };
 
+  const loadContextOptions = useCallback(async () => {
+    setContextOptionsLoading(true);
+    setContextOptionsError(null);
+
+    const fetchOptions = async (url: string, errorMessage: string) => {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(errorMessage);
+      }
+
+      const payload = (await response.json()) as ScheduleContextOptionsResponse;
+      return payload.data ?? [];
+    };
+
+    const [learnerResult, trainerResult] = await Promise.allSettled([
+      fetchOptions("/api/schedule/learners", "Failed to load learners."),
+      fetchOptions("/api/schedule/trainers", "Failed to load trainers."),
+    ]);
+
+    const nextErrors: string[] = [];
+
+    if (learnerResult.status === "fulfilled") {
+      setLearnerOptions(learnerResult.value);
+    } else {
+      setLearnerOptions([]);
+      nextErrors.push(learnerResult.reason instanceof Error ? learnerResult.reason.message : "Failed to load learners.");
+    }
+
+    if (trainerResult.status === "fulfilled") {
+      setTrainerOptions(trainerResult.value);
+    } else {
+      setTrainerOptions([]);
+      nextErrors.push(trainerResult.reason instanceof Error ? trainerResult.reason.message : "Failed to load trainers.");
+    }
+
+    setContextOptionsError(nextErrors[0] ?? null);
+    setContextOptionsLoading(false);
+  }, []);
+
   const loadEvents = useCallback(async () => {
+    if (scheduleContext === "learner" && !learnerFilter) {
+      setEvents([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    if (scheduleContext === "trainer" && !trainerFilter) {
+      setEvents([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const params = new URLSearchParams({
+        contextType: scheduleContext,
         from: range.from.toISOString(),
         to: range.to.toISOString(),
         page: "1",
         pageSize: "300",
       });
 
-      if (batchFilter) {
+      if (scheduleContext === "batch" && batchFilter) {
         params.set("batchId", batchFilter);
+      }
+
+      if (scheduleContext === "learner") {
+        params.set("learnerId", learnerFilter);
+      }
+
+      if (scheduleContext === "trainer") {
+        params.set("trainerId", trainerFilter);
       }
 
       const response = await fetch(`/api/schedule?${params.toString()}`, { cache: "no-store" });
@@ -827,7 +910,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     } finally {
       setLoading(false);
     }
-  }, [batchFilter, range.from, range.to]);
+  }, [batchFilter, learnerFilter, range.from, range.to, scheduleContext, trainerFilter]);
 
   const loadAssessmentOptions = async (batchId: string) => {
     if (!batchId) {
@@ -902,7 +985,8 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
   useEffect(() => {
     void loadBatches();
-  }, []);
+    void loadContextOptions();
+  }, [loadContextOptions]);
 
   useEffect(() => {
     void loadEvents();
@@ -926,7 +1010,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
 
     setForm({
       ...DEFAULT_FORM,
-      batchId: batchFilter,
+      batchId: scheduleContext === "batch" ? batchFilter : "",
       startsAt: toLocalDateTimeInput(nextStart),
       endsAt: toLocalDateTimeInput(nextEnd),
     });
@@ -1061,7 +1145,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
           <Badge variant="accent">{range.label}</Badge>
 
           <CanAccess permission="schedule.create">
-            <Button type="button" onClick={() => openCreate()}>
+            <Button type="button" onClick={() => openCreate()} disabled={!canCreateInCurrentView}>
               <Plus className="mr-1 h-4 w-4" />
               Create Event
             </Button>
@@ -1075,31 +1159,104 @@ export function ScheduleSection({ title, description }: { title: string; descrip
             <CalendarDays className="h-5 w-5" />
             Schedule Calendar
           </CardTitle>
-          <CardDescription>Manage classes, tests, quizzes, and contests with recurring support.</CardDescription>
+          <CardDescription>Manage classes and assessments with batch, learner, and trainer schedule views.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Batch</label>
-              <select
-                value={batchFilter}
-                onChange={(event) => setBatchFilter(event.target.value)}
-                className="h-9 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
-              >
-                <option value="">All Batches</option>
-                {batches.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
-                    {batch.code} – {batch.name}
-                  </option>
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">View</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {([
+                  { id: "batch", label: "Batch" },
+                  { id: "learner", label: "Learner" },
+                  { id: "trainer", label: "Trainer" },
+                ] as Array<{ id: ScheduleContextType; label: string }>).map((contextOption) => (
+                  <Button
+                    key={contextOption.id}
+                    type="button"
+                    variant={scheduleContext === contextOption.id ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setScheduleContext(contextOption.id)}
+                  >
+                    {contextOption.label}
+                  </Button>
                 ))}
-              </select>
+              </div>
+
+              {scheduleContext === "batch" ? (
+                <>
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Batch</label>
+                  <select
+                    value={batchFilter}
+                    onChange={(event) => setBatchFilter(event.target.value)}
+                    className="h-9 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+                  >
+                    <option value="">All Batches</option>
+                    {batches.map((batch) => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.code} – {batch.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+
+              {scheduleContext === "learner" ? (
+                <>
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Learner</label>
+                  <select
+                    value={learnerFilter}
+                    onChange={(event) => setLearnerFilter(event.target.value)}
+                    className="h-9 min-w-[280px] rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+                    disabled={contextOptionsLoading}
+                  >
+                    <option value="">Select learner</option>
+                    {learnerOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.meta ? `${option.label} - ${option.meta}` : option.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+
+              {scheduleContext === "trainer" ? (
+                <>
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Trainer</label>
+                  <select
+                    value={trainerFilter}
+                    onChange={(event) => setTrainerFilter(event.target.value)}
+                    className="h-9 min-w-[280px] rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+                    disabled={contextOptionsLoading}
+                  >
+                    <option value="">Select trainer</option>
+                    {trainerOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.meta ? `${option.label} - ${option.meta}` : option.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </div>
             {viewMode !== "list" && <CalendarLegend />}
           </div>
 
           {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
+          {contextOptionsError ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">{contextOptionsError}</p> : null}
 
-          {loading ? (
+          {contextSelectionRequired ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+              <p className="text-sm font-semibold text-slate-700">
+                {scheduleContext === "learner"
+                  ? "Select a learner to load events from every assigned batch."
+                  : "Select a trainer to load events from every assigned batch."}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Aggregated schedule views keep the underlying batch events intact and bring them together in one calendar.
+              </p>
+            </div>
+          ) : loading ? (
             <div className="flex items-center justify-center py-16">
               <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#0d3b84]" />
@@ -1111,21 +1268,21 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               events={events}
               baseDate={baseDate}
               onEventClick={canEdit ? openEdit : undefined}
-              onDayClick={canCreate ? (date) => openCreate(date) : undefined}
+              onDayClick={canCreateInCurrentView ? (date) => openCreate(date) : undefined}
             />
           ) : viewMode === "week" ? (
             <WeekCalendarView
               events={events}
               baseDate={baseDate}
               onEventClick={canEdit ? openEdit : undefined}
-              onDayClick={canCreate ? (date) => openCreate(date) : undefined}
+              onDayClick={canCreateInCurrentView ? (date) => openCreate(date) : undefined}
             />
           ) : viewMode === "day" ? (
             <DayCalendarView
               events={events}
               baseDate={baseDate}
               onEventClick={canEdit ? openEdit : undefined}
-              onCreateAtTime={canCreate ? (date, hour) => openCreate(date, hour) : undefined}
+              onCreateAtTime={canCreateInCurrentView ? (date, hour) => openCreate(date, hour) : undefined}
             />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -1168,7 +1325,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                               )}
                             >
                               <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
-                              {event.type}
+                              {getEventTypeLabel(event.type)}
                             </span>
                           </TableCell>
                           <TableCell className="text-xs text-slate-500">{event.classMode ?? "—"}</TableCell>
@@ -1229,7 +1386,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
         <SheetContent>
           <SheetHeader>
             <SheetTitle>{editingEvent ? "Edit Schedule Event" : "Create Schedule Event"}</SheetTitle>
-            <SheetDescription>Configure calendar events for classes, tests, quizzes, and contests.</SheetDescription>
+            <SheetDescription>Configure calendar events for classes and assessments.</SheetDescription>
           </SheetHeader>
 
           <div className="space-y-4 p-6">
@@ -1272,9 +1429,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                   className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
                 >
                   <option value="CLASS">CLASS</option>
-                  <option value="TEST">TEST</option>
-                  <option value="QUIZ">QUIZ</option>
-                  <option value="CONTEST">CONTEST</option>
+                  <option value="TEST">ASSESSMENT</option>
                 </select>
               </div>
 

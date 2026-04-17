@@ -125,7 +125,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       getCandidateCurriculaForBatchService({ batchId, learnerId: profile.id }),
       listBatchAssessmentsService(batchId, { publishedOnly: true }),
       listBatchContentService(batchId, { publishedOnly: true, includeAssignedResources: true }),
-      listScheduleEventsService({ batchId, page: 1, pageSize: 100 }),
+      listScheduleEventsService({ contextType: "batch", batchId, page: 1, pageSize: 100 }),
       resolveBuddyPersonaForBatchService(batchId),
     ]);
 

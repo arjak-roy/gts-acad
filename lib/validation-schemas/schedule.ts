@@ -1,10 +1,11 @@
 import { z } from "zod";
 
-const scheduleEventTypeSchema = z.enum(["CLASS", "TEST", "QUIZ", "CONTEST"]);
+const scheduleEventTypeSchema = z.enum(["CLASS", "TEST"]);
 const scheduleEventStatusSchema = z.enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "RESCHEDULED"]);
 const classModeSchema = z.enum(["ONLINE", "OFFLINE"]);
 const recurrenceFrequencySchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 const scheduleUpdateScopeSchema = z.enum(["SINGLE", "THIS_AND_FUTURE", "SERIES"]);
+const scheduleContextTypeSchema = z.enum(["batch", "learner", "trainer"]);
 
 const recurrenceRuleSchema = z
   .object({
@@ -77,7 +78,10 @@ export const updateScheduleEventSchema = z
 
 export const listScheduleEventsQuerySchema = z
   .object({
+    contextType: scheduleContextTypeSchema.optional().default("batch"),
     batchId: z.string().trim().min(1).optional(),
+    learnerId: z.string().trim().min(1).optional(),
+    trainerId: z.string().trim().min(1).optional(),
     from: z.string().trim().datetime().optional(),
     to: z.string().trim().datetime().optional(),
     type: scheduleEventTypeSchema.optional(),
@@ -95,6 +99,20 @@ export const listScheduleEventsQuerySchema = z
   }, {
     message: "Query range end must be after start.",
     path: ["to"],
+  })
+  .refine((value) => {
+    if (value.contextType === "learner") {
+      return Boolean(value.learnerId);
+    }
+
+    if (value.contextType === "trainer") {
+      return Boolean(value.trainerId);
+    }
+
+    return true;
+  }, {
+    message: "A learner or trainer selection is required for this schedule view.",
+    path: ["contextType"],
   });
 
 export const cancelScheduleEventSchema = z.object({
@@ -106,3 +124,4 @@ export type CreateScheduleEventInput = z.infer<typeof createScheduleEventSchema>
 export type UpdateScheduleEventInput = z.infer<typeof updateScheduleEventSchema>;
 export type ListScheduleEventsQueryInput = z.infer<typeof listScheduleEventsQuerySchema>;
 export type CancelScheduleEventInput = z.infer<typeof cancelScheduleEventSchema>;
+export type ScheduleContextTypeInput = z.infer<typeof scheduleContextTypeSchema>;
