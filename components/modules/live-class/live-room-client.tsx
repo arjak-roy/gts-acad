@@ -12,12 +12,9 @@ import {
 import {
   selectIsConnectedToRoom,
   selectPeers,
-  selectIsLocalAudioEnabled,
-  selectIsLocalVideoEnabled,
   selectLocalPeer,
-  selectRoomState,
 } from "@100mslive/hms-video-store";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Users, Monitor } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Users } from "lucide-react";
 
 export function LiveRoomClient() {
   return (
@@ -34,7 +31,6 @@ function LiveRoomInner() {
   const roomId = searchParams.get("roomId");
   const hmsActions = useHMSActions();
   const isConnected = useHMSStore(selectIsConnectedToRoom);
-  const roomState = useHMSStore(selectRoomState);
   const peers = useHMSStore(selectPeers);
   const localPeer = useHMSStore(selectLocalPeer);
   const [ending, setEnding] = useState(false);
