@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireServerPermission } from "@/lib/auth/server-page-guards";
 import { markAttendanceSchema } from "@/lib/validation-schemas/attendance";
 import { markAttendanceService } from "@/services/attendance-service";
 
@@ -11,8 +12,9 @@ import { markAttendanceService } from "@/services/attendance-service";
  * Revalidates dependent pages so attendance-driven widgets update immediately.
  */
 export async function markAttendance(input: unknown) {
+  const session = await requireServerPermission("attendance.manage");
   const parsed = markAttendanceSchema.parse(input);
-  const result = await markAttendanceService(parsed);
+  const result = await markAttendanceService(parsed, { actorUserId: session.userId });
 
   revalidatePath("/learners");
   revalidatePath("/attendance");

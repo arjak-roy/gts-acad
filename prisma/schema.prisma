@@ -104,6 +104,13 @@ enum AttendanceStatus {
   @@map("attendance_status")
 }
 
+enum AttendanceSessionSource {
+  MANUAL         @map("manual")
+  SCHEDULE_EVENT @map("schedule_event")
+
+  @@map("attendance_session_source")
+}
+
 enum ExamType {
   IELTS      @map("IELTS")
   OET        @map("OET")
@@ -262,6 +269,7 @@ enum PushDeliveryStatus {
 
 enum AuditEntityType {
   BATCH           @map("batch")
+  ATTENDANCE_SESSION @map("attendance_session")
   CANDIDATE       @map("candidate")
   COURSE          @map("course")
   COURSE_CONTENT  @map("course_content")
@@ -278,6 +286,7 @@ enum AuditEntityType {
 
 enum AuditActionType {
   CREATED      @map("created")
+  MARKED       @map("marked")
   UPDATED      @map("updated")
   ENROLLED     @map("enrolled")
   MAIL_SENT    @map("mail_sent")
@@ -522,6 +531,7 @@ model User {
   trainerProfile    TrainerProfile?
   learnerAccount    Learner?           @relation("LearnerUser")
   markedAttendance  AttendanceRecord[] @relation("AttendanceMarkedBy")
+  createdAttendanceSessions AttendanceSession[] @relation("AttendanceSessionCreatedBy")
   recruiterSyncLogs RecruiterSyncLog[] @relation("SyncTriggeredBy")
   interviews        Interview[]        @relation("InterviewedBy")
   createdScheduleEvents BatchScheduleEvent[] @relation("ScheduleEventCreatedBy")
@@ -1141,6 +1151,7 @@ model Batch {
   program            Program            @relation(fields: [programId], references: [id], onDelete: Restrict)
   centre             TrainingCentre?    @relation(fields: [centreId], references: [id], onDelete: SetNull)
   enrollments        BatchEnrollment[]
+  attendanceSessions AttendanceSession[]
   scheduleEvents     BatchScheduleEvent[]
   assessments        Assessment[]
   assessmentAttempts AssessmentAttempt[]
@@ -1248,9 +1259,33 @@ model BatchEnrollment {
   @@map("candidate_batch_enrollments")
 }
 
+model AttendanceSession {
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("attendance_session_id")
+  batchId             String                  @db.Uuid @map("batch_id")
+  sourceType          AttendanceSessionSource @map("source_type")
+  sessionKey          String                  @db.VarChar(160) @map("session_key")
+  sessionDate         DateTime                @map("session_date") @db.Date
+  title               String?                 @db.VarChar(255) @map("session_title")
+  linkedScheduleEventId String?               @unique @db.Uuid @map("linked_schedule_event_id")
+  createdById         String?                 @db.Uuid @map("created_by_user_id")
+  createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  batch               Batch                   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  linkedScheduleEvent BatchScheduleEvent?     @relation("ScheduleEventAttendanceSession", fields: [linkedScheduleEventId], references: [id], onDelete: SetNull)
+  createdBy           User?                   @relation("AttendanceSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  attendanceRecords   AttendanceRecord[]
+
+  @@unique([batchId, sessionKey], map: "attendance_sessions_batch_id_session_key_key")
+  @@index([batchId, sessionDate], map: "idx_attendance_sessions_batch_date")
+  @@index([sourceType, sessionDate], map: "idx_attendance_sessions_source_date")
+  @@index([createdById], map: "idx_attendance_sessions_created_by")
+  @@map("attendance_sessions")
+}
+
 model AttendanceRecord {
   id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   enrollmentId String           @db.Uuid @map("enrollment_id")
+  attendanceSessionId String    @db.Uuid @map("attendance_session_id")
   sessionDate  DateTime         @map("session_date") @db.Date
   status       AttendanceStatus
   notes        String?          @map("remarks")
@@ -1258,9 +1293,11 @@ model AttendanceRecord {
   createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   enrollment   BatchEnrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  attendanceSession AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
   markedBy     User?            @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
 
-  @@unique([enrollmentId, sessionDate])
+  @@unique([enrollmentId, attendanceSessionId], map: "attendance_tracker_enrollment_id_attendance_session_id_key")
+  @@index([attendanceSessionId], map: "idx_attendance_session")
   @@index([sessionDate, status], map: "idx_attendance_date_status")
   @@index([markedById], map: "idx_attendance_marker")
   @@map("attendance_tracker")
@@ -1310,6 +1347,7 @@ model BatchScheduleEvent {
   batch              Batch            @relation(fields: [batchId], references: [id], onDelete: Cascade)
   linkedAssessment   Assessment?      @relation("ScheduleEventAssessment", fields: [linkedAssessmentId], references: [id], onDelete: SetNull)
   linkedAssessmentPool AssessmentPool? @relation("ScheduleEventAssessmentPool", fields: [linkedAssessmentPoolId], references: [id], onDelete: SetNull)
+  attendanceSession  AttendanceSession? @relation("ScheduleEventAttendanceSession")
   createdBy          User?            @relation("ScheduleEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([batchId, startsAt], map: "idx_batch_schedule_events_batch_starts_at")

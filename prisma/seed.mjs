@@ -1,6 +1,7 @@
 import {
   AssessmentMode,
   AssessmentType,
+  AttendanceSessionSource,
   AttendanceStatus,
   BatchMode,
   BatchStatus,
@@ -979,17 +980,40 @@ async function seed() {
     learnerRecords.push(learner);
 
     const batch = batchRecords[i % batchRecords.length];
+    const attendanceSessionDate = new Date("2026-03-28");
+    const attendanceSessionKey = `manual:${attendanceSessionDate.toISOString().slice(0, 10)}`;
     const enrollment = await prisma.batchEnrollment.upsert({
       where: { learnerId_batchId: { learnerId: learner.id, batchId: batch.id } },
       update: { status: EnrollmentStatus.ACTIVE },
       create: { learnerId: learner.id, batchId: batch.id, status: EnrollmentStatus.ACTIVE },
     });
 
+    const attendanceSession = await prisma.attendanceSession.upsert({
+      where: {
+        batchId_sessionKey: {
+          batchId: batch.id,
+          sessionKey: attendanceSessionKey,
+        },
+      },
+      update: {
+        title: "Seeded manual attendance",
+        createdById: adminUser.id,
+      },
+      create: {
+        batchId: batch.id,
+        sourceType: AttendanceSessionSource.MANUAL,
+        sessionKey: attendanceSessionKey,
+        sessionDate: attendanceSessionDate,
+        title: "Seeded manual attendance",
+        createdById: adminUser.id,
+      },
+    });
+
     await prisma.attendanceRecord.upsert({
       where: {
-        enrollmentId_sessionDate: {
+        enrollmentId_attendanceSessionId: {
           enrollmentId: enrollment.id,
-          sessionDate: new Date("2026-03-28"),
+          attendanceSessionId: attendanceSession.id,
         },
       },
       update: {
@@ -999,7 +1023,8 @@ async function seed() {
       },
       create: {
         enrollmentId: enrollment.id,
-        sessionDate: new Date("2026-03-28"),
+        attendanceSessionId: attendanceSession.id,
+        sessionDate: attendanceSessionDate,
         status: i % 7 === 0 ? AttendanceStatus.LATE : i % 11 === 0 ? AttendanceStatus.ABSENT : AttendanceStatus.PRESENT,
         markedById: adminUser.id,
         notes: "Seeded attendance record",

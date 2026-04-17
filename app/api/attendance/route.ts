@@ -8,10 +8,10 @@ import { markAttendanceService } from "@/services/attendance-service";
 
 export async function POST(request: NextRequest) {
   try {
-    await requirePermission(request, "attendance.manage");
+    const session = await requirePermission(request, "attendance.manage");
     const body = await request.json();
     const input = markAttendanceSchema.parse(body);
-    const result = await markAttendanceService(input);
+    const result = await markAttendanceService(input, { actorUserId: session.userId });
 
     revalidatePath("/learners");
     revalidatePath("/attendance");
