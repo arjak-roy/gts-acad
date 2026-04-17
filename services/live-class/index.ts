@@ -131,7 +131,7 @@ export async function endLiveClass(eventId: string, _actorUserId: string): Promi
 
   // Auto-sync attendance: mark all enrolled learners as PRESENT for this live class.
   try {
-    const enrollments = await prisma.enrollment.findMany({
+    const enrollments = await prisma.batchEnrollment.findMany({
       where: { batchId: event.batch.id },
       include: { learner: { select: { learnerCode: true } } },
     });
