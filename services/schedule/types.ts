@@ -1,6 +1,7 @@
-import { BatchMode, EvaluationStatus, Prisma } from "@prisma/client";
+import { BatchMode, EvaluationStatus, LiveClassProvider, Prisma } from "@prisma/client";
 
 export type ScheduleEventType = "CLASS" | "TEST";
+export type LiveClassProviderType = "MANUAL" | "HMS";
 export type ScheduleContextType = "batch" | "learner" | "trainer";
 
 export type BatchScheduleEventWhereInput = Record<string, unknown>;
@@ -27,6 +28,11 @@ export type EventRecord = {
   endsAt: Date | null;
   location: string | null;
   meetingUrl: string | null;
+  liveProvider: LiveClassProvider;
+  liveRoomId: string | null;
+  liveRoomCode: string | null;
+  liveStartedAt: Date | null;
+  liveEndedAt: Date | null;
   recurrenceRule: Prisma.JsonValue;
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +52,11 @@ export type ScheduleEventListItem = {
   endsAt: string | null;
   location: string | null;
   meetingUrl: string | null;
+  liveProvider: LiveClassProviderType;
+  liveRoomId: string | null;
+  liveRoomCode: string | null;
+  liveStartedAt: string | null;
+  liveEndedAt: string | null;
   linkedAssessmentId: string | null;
   linkedAssessmentPoolId: string | null;
   linkedAssessmentPoolCode: string | null;

@@ -21,6 +21,7 @@ type ViewMode = "month" | "week" | "day" | "list";
 type EventType = "CLASS" | "TEST";
 type EventStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "RESCHEDULED";
 type ClassMode = "ONLINE" | "OFFLINE";
+type LiveClassProvider = "MANUAL" | "HMS";
 type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY";
 type ScheduleContextType = "batch" | "learner" | "trainer";
 
@@ -38,6 +39,11 @@ type ScheduleEvent = {
   endsAt: string | null;
   location: string | null;
   meetingUrl: string | null;
+  liveProvider: LiveClassProvider;
+  liveRoomId: string | null;
+  liveRoomCode: string | null;
+  liveStartedAt: string | null;
+  liveEndedAt: string | null;
   linkedAssessmentId: string | null;
   linkedAssessmentPoolId: string | null;
   linkedAssessmentPoolCode: string | null;
@@ -137,6 +143,7 @@ type EventFormState = {
   endsAt: string;
   location: string;
   meetingUrl: string;
+  liveProvider: LiveClassProvider;
   linkedAssessmentPoolId: string;
   isRecurring: boolean;
   frequency: RecurrenceFrequency;
@@ -157,6 +164,7 @@ const DEFAULT_FORM: EventFormState = {
   endsAt: "",
   location: "",
   meetingUrl: "",
+  liveProvider: "MANUAL" as LiveClassProvider,
   linkedAssessmentPoolId: "",
   isRecurring: false,
   frequency: "WEEKLY",
@@ -283,6 +291,7 @@ function buildEventPayload(form: EventFormState) {
     endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : undefined,
     location: form.location,
     meetingUrl: form.meetingUrl,
+    liveProvider: form.type === "CLASS" && form.classMode === "ONLINE" ? form.liveProvider : "MANUAL",
     linkedAssessmentPoolId: eventTypeSupportsCourseBuilderAssessment(form.type) ? form.linkedAssessmentPoolId || null : null,
   };
 
@@ -723,6 +732,12 @@ function DayCalendarView({
                                 Online
                               </span>
                             )}
+                            {event.liveProvider === "HMS" && (
+                              <span className="flex items-center gap-1">
+                                <Video className="h-3 w-3" />
+                                {event.status === "IN_PROGRESS" ? "Live Now" : "100ms"}
+                              </span>
+                            )}
                             {event.linkedAssessmentPoolCode || event.linkedAssessmentPoolTitle ? (
                               <span className="flex items-center gap-1">
                                 <ClipboardList className="h-3 w-3" />
@@ -1032,6 +1047,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       endsAt: event.endsAt ? toLocalDateTimeInput(new Date(event.endsAt)) : "",
       location: event.location ?? "",
       meetingUrl: event.meetingUrl ?? "",
+      liveProvider: event.liveProvider ?? "MANUAL",
       linkedAssessmentPoolId: event.linkedAssessmentPoolId ?? "",
       isRecurring: false,
       frequency: "WEEKLY",
@@ -1088,6 +1104,77 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       toast.error(message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStartLiveClass = async (event: ScheduleEvent) => {
+    try {
+      const response = await fetch("/api/live-class", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, action: "start" }),
+      });
+
+      if (!response.ok) {
+        const payloadError = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payloadError?.error ?? "Failed to start live class.");
+      }
+
+      const result = (await response.json()) as { data: { roomId: string; authToken: string } };
+      await loadEvents();
+      toast.success("Live class started.");
+
+      window.open(`/live-room?eventId=${event.id}&token=${encodeURIComponent(result.data.authToken)}&roomId=${result.data.roomId}`, "_blank");
+    } catch (startError) {
+      const message = startError instanceof Error ? startError.message : "Failed to start live class.";
+      toast.error(message);
+    }
+  };
+
+  const handleJoinLiveClass = async (event: ScheduleEvent) => {
+    try {
+      const response = await fetch("/api/live-class", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, action: "get-token" }),
+      });
+
+      if (!response.ok) {
+        const payloadError = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payloadError?.error ?? "Failed to join live class.");
+      }
+
+      const result = (await response.json()) as { data: { roomId: string; authToken: string } };
+      window.open(`/live-room?eventId=${event.id}&token=${encodeURIComponent(result.data.authToken)}&roomId=${result.data.roomId}`, "_blank");
+    } catch (joinError) {
+      const message = joinError instanceof Error ? joinError.message : "Failed to join live class.";
+      toast.error(message);
+    }
+  };
+
+  const handleEndLiveClass = async (event: ScheduleEvent) => {
+    const shouldEnd = window.confirm(`End live class "${event.title}"? This will disconnect all participants.`);
+    if (!shouldEnd) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/live-class", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, action: "end" }),
+      });
+
+      if (!response.ok) {
+        const payloadError = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payloadError?.error ?? "Failed to end live class.");
+      }
+
+      await loadEvents();
+      toast.success("Live class ended.");
+    } catch (endError) {
+      const message = endError instanceof Error ? endError.message : "Failed to end live class.";
+      toast.error(message);
     }
   };
 
@@ -1348,6 +1435,17 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                                   <CanAccess permission="schedule.edit">
                                     <DropdownMenuItem onSelect={() => openEdit(event)}>Edit</DropdownMenuItem>
                                   </CanAccess>
+                                  {event.liveProvider === "HMS" && event.status === "SCHEDULED" ? (
+                                    <CanAccess permission="schedule.edit">
+                                      <DropdownMenuItem onSelect={() => void handleStartLiveClass(event)}>Start Live Class</DropdownMenuItem>
+                                    </CanAccess>
+                                  ) : null}
+                                  {event.liveProvider === "HMS" && event.status === "IN_PROGRESS" ? (
+                                    <CanAccess permission="schedule.edit">
+                                      <DropdownMenuItem onSelect={() => void handleJoinLiveClass(event)}>Join as Host</DropdownMenuItem>
+                                      <DropdownMenuItem onSelect={() => void handleEndLiveClass(event)}>End Live Class</DropdownMenuItem>
+                                    </CanAccess>
+                                  ) : null}
                                   {event.status !== "CANCELLED" ? (
                                     <CanAccess permission="schedule.delete">
                                       <DropdownMenuItem onSelect={() => void cancelEvent(event)}>Cancel</DropdownMenuItem>
@@ -1515,10 +1613,30 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               <Input value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Meeting URL</label>
-              <Input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} />
-            </div>
+            {form.type === "CLASS" && form.classMode === "ONLINE" ? (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Live Class Provider</label>
+                <select
+                  value={form.liveProvider}
+                  onChange={(event) => setForm((current) => ({ ...current, liveProvider: event.target.value as LiveClassProvider }))}
+                  className="w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                >
+                  <option value="MANUAL">Manual Meeting URL</option>
+                  <option value="HMS">100ms Live Class</option>
+                </select>
+              </div>
+            ) : null}
+
+            {form.liveProvider === "MANUAL" || form.type !== "CLASS" || form.classMode !== "ONLINE" ? (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Meeting URL</label>
+                <Input value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                A 100ms live room will be created automatically when the host starts this class.
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</label>

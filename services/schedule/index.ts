@@ -8,4 +8,4 @@ export {
 } from "@/services/schedule/queries";
 export { cancelScheduleEventService, createScheduleEventService, updateScheduleEventService } from "@/services/schedule/commands";
 
-export type { ScheduleContextOption, ScheduleEventListItem, ScheduleEventListResponse } from "@/services/schedule/types";
+export type { LiveClassProviderType, ScheduleContextOption, ScheduleEventListItem, ScheduleEventListResponse } from "@/services/schedule/types";

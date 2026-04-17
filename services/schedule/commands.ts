@@ -101,6 +101,7 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
   const description = toNullableText(input.description);
   const location = toNullableText(input.location);
   const meetingUrl = toNullableText(input.meetingUrl);
+  const liveProvider = input.type === "CLASS" && classMode === "ONLINE" ? (input.liveProvider ?? "MANUAL") : "MANUAL";
   const status = input.status;
   const occurrences = buildOccurrenceDates(input);
 
@@ -148,6 +149,7 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
           endsAt: occurrence.endsAt,
           location,
           meetingUrl,
+          liveProvider,
           recurrenceRule: occurrence.recurrenceRule,
           createdById: actorUserId ?? null,
         },
@@ -187,6 +189,7 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
       endsAt: event.endsAt,
       location: event.location,
       meetingUrl: event.meetingUrl,
+      liveProvider: event.liveProvider,
       linkedAssessmentPoolId: event.linkedAssessmentPoolId,
     }));
 
@@ -308,6 +311,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
       const nextDescription = input.description === undefined ? event.description : toNullableText(input.description);
       const nextLocation = input.location === undefined ? event.location : toNullableText(input.location);
       const nextMeetingUrl = input.meetingUrl === undefined ? event.meetingUrl : toNullableText(input.meetingUrl ?? "");
+      const nextLiveProvider = input.liveProvider ?? event.liveProvider;
       const nextStatus = input.status ?? event.status;
       const nextLinkedAssessmentPoolId = shouldLinkAssessment(nextType)
         ? await syncLinkedAssessmentPoolForBatch(tx, {
@@ -341,6 +345,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
           endsAt: nextEndsAt,
           location: nextLocation,
           meetingUrl: nextMeetingUrl,
+          liveProvider: nextLiveProvider,
           linkedAssessmentId,
           linkedAssessmentPoolId: nextLinkedAssessmentPoolId,
         },

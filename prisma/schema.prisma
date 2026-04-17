@@ -183,6 +183,13 @@ enum ScheduleEventType {
   @@map("schedule_event_type")
 }
 
+enum LiveClassProvider {
+  MANUAL @map("manual")
+  HMS    @map("hms")
+
+  @@map("live_class_provider")
+}
+
 enum CertificateStatus {
   ISSUED  @map("issued")
   REVOKED @map("revoked")
@@ -1340,6 +1347,11 @@ model BatchScheduleEvent {
   endsAt             DateTime?        @map("ends_at") @db.Timestamptz(6)
   location           String?          @db.VarChar(255)
   meetingUrl         String?          @map("meeting_url")
+  liveProvider       LiveClassProvider @default(MANUAL) @map("live_provider")
+  liveRoomId         String?          @db.VarChar(255) @map("live_room_id")
+  liveRoomCode       String?          @db.VarChar(255) @map("live_room_code")
+  liveStartedAt      DateTime?        @map("live_started_at") @db.Timestamptz(6)
+  liveEndedAt        DateTime?        @map("live_ended_at") @db.Timestamptz(6)
   recurrenceRule     Json             @default("{}") @map("recurrence_rule")
   createdById        String?          @db.Uuid @map("created_by_user_id")
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)

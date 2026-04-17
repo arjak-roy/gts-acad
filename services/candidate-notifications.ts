@@ -26,6 +26,7 @@ type BatchEventNotificationInput = {
     endsAt: Date | null;
     location: string | null;
     meetingUrl: string | null;
+    liveProvider?: string | null;
   }>;
 };
 
@@ -611,7 +612,9 @@ export async function sendCandidateBatchEventNotifications(input: BatchEventNoti
               startsAt: formatDateTime(event.startsAt, portalContext.timeZone),
               endsAt: formatDateTime(event.endsAt, portalContext.timeZone),
               location: fallbackText(event.location, "To be announced"),
-              meetingUrl: fallbackText(event.meetingUrl, "Not provided"),
+              meetingUrl: event.liveProvider === "HMS"
+                ? "Join from your candidate portal — open My Programs → Live Classes"
+                : fallbackText(event.meetingUrl, "Not provided"),
             },
             metadata: {
               batchId: input.batchId,

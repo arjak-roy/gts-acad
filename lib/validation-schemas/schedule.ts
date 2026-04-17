@@ -3,6 +3,7 @@ import { z } from "zod";
 const scheduleEventTypeSchema = z.enum(["CLASS", "TEST"]);
 const scheduleEventStatusSchema = z.enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "RESCHEDULED"]);
 const classModeSchema = z.enum(["ONLINE", "OFFLINE"]);
+const liveClassProviderSchema = z.enum(["MANUAL", "HMS"]);
 const recurrenceFrequencySchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 const scheduleUpdateScopeSchema = z.enum(["SINGLE", "THIS_AND_FUTURE", "SERIES"]);
 const scheduleContextTypeSchema = z.enum(["batch", "learner", "trainer"]);
@@ -32,6 +33,7 @@ export const createScheduleEventSchema = z
     endsAt: z.string().trim().datetime().optional(),
     location: z.string().trim().max(255).optional().default(""),
     meetingUrl: z.string().trim().url().max(1000).optional().or(z.literal("")).default(""),
+    liveProvider: liveClassProviderSchema.optional().default("MANUAL"),
     linkedAssessmentPoolId: z.string().trim().min(1).optional().nullable(),
     recurrence: recurrenceRuleSchema.optional(),
   })
@@ -62,6 +64,7 @@ export const updateScheduleEventSchema = z
     endsAt: z.string().trim().datetime().nullable().optional(),
     location: z.string().trim().max(255).optional(),
     meetingUrl: z.string().trim().url().max(1000).or(z.literal("")).nullable().optional(),
+    liveProvider: liveClassProviderSchema.optional(),
     linkedAssessmentPoolId: z.string().trim().min(1).nullable().optional(),
     scope: scheduleUpdateScopeSchema.optional().default("SINGLE"),
   })
