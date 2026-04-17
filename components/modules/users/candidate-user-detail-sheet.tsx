@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CanAccess } from "@/components/ui/can-access";
+import { useRbac } from "@/lib/rbac-context";
 import type { CandidateUserDetail } from "@/types";
 
 type RoleOption = {
@@ -61,6 +62,26 @@ type SessionHistoryResponse = {
   pageCount: number;
 };
 
+type CandidatePushReadinessSummary = {
+  userId: string;
+  activeDeviceCount: number;
+  latestRegisteredAt: string | null;
+  preferences: {
+    pushNotificationsEnabled: boolean;
+    batchAnnouncementsEnabled: boolean;
+    assessmentAlertsEnabled: boolean;
+  };
+};
+
+type PushDispatchSummary = {
+  dispatchId: string;
+  attemptedCount: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  failureMessages: string[];
+};
+
 type Props = {
   userId: string | null;
   open: boolean;
@@ -96,6 +117,13 @@ const ACTIVITY_LABELS: Record<string, string> = {
   ACCOUNT_DEACTIVATED: "Account Deactivated",
 };
 
+const candidatePushDestinations = [
+  { value: "NOTIFICATION_CENTER", label: "Notification Center" },
+  { value: "DASHBOARD", label: "Dashboard" },
+  { value: "ASSESSMENTS", label: "Assessments" },
+  { value: "SUPPORT", label: "Support" },
+] as const;
+
 function getActivityLabel(type: string) {
   return ACTIVITY_LABELS[type] ?? type.replace(/_/g, " ");
 }
@@ -109,18 +137,26 @@ function getActivityBadgeVariant(type: string): "success" | "danger" | "warning"
 }
 
 export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated }: Props) {
+  const { can } = useRbac();
+  const canViewPushReadiness = can("notifications.view") || can("notifications.send");
+  const canSendPush = can("notifications.send");
   const [user, setUser] = useState<CandidateUserDetail | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [mailForm, setMailForm] = useState({ subject: "", body: "" });
+  const [pushForm, setPushForm] = useState({ title: "", body: "", destination: "NOTIFICATION_CENTER" as (typeof candidatePushDestinations)[number]["value"] });
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isSendingMail, setIsSendingMail] = useState(false);
+  const [isPushLoading, setIsPushLoading] = useState(false);
+  const [isSendingPush, setIsSendingPush] = useState(false);
   const [showMailForm, setShowMailForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pushReadiness, setPushReadiness] = useState<CandidatePushReadinessSummary | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
 
   const [activityExpanded, setActivityExpanded] = useState(false);
   const [activityData, setActivityData] = useState<ActivityResponse | null>(null);
@@ -182,7 +218,10 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
       setIsEditing(false);
       setShowMailForm(false);
       setMailForm({ subject: "", body: "" });
+      setPushForm({ title: "", body: "", destination: "NOTIFICATION_CENTER" });
       setError(null);
+      setPushError(null);
+      setPushReadiness(null);
       setActivityExpanded(false);
       setActivityData(null);
       setActivityPage(1);
@@ -191,6 +230,49 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
       setSessionsPage(1);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !userId || !canViewPushReadiness) {
+      setPushReadiness(null);
+      setPushError(null);
+      setIsPushLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPushReadiness() {
+      setIsPushLoading(true);
+      setPushError(null);
+
+      try {
+        const response = await fetch(`/api/users/candidates/${userId}/push`, { cache: "no-store" });
+        const payload = (await response.json().catch(() => null)) as { data?: CandidatePushReadinessSummary; error?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load push readiness.");
+        }
+
+        if (!cancelled) {
+          setPushReadiness(payload?.data ?? null);
+        }
+      } catch (readinessError) {
+        if (!cancelled) {
+          setPushError(readinessError instanceof Error ? readinessError.message : "Unable to load push readiness.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPushLoading(false);
+        }
+      }
+    }
+
+    void loadPushReadiness();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewPushReadiness, open, userId]);
 
   const loadActivity = useCallback(async (targetUserId: string, page: number) => {
     setActivityLoading(true);
@@ -356,6 +438,50 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
     }
   }
 
+  async function handleSendPush() {
+    if (!user) return;
+
+    setIsSendingPush(true);
+    setPushError(null);
+
+    try {
+      const response = await fetch(`/api/users/candidates/${user.id}/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pushForm),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: PushDispatchSummary; error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || "Unable to send the push notification.");
+
+      const summary = payload?.data;
+      setPushForm({ title: "", body: "", destination: "NOTIFICATION_CENTER" });
+
+      if (canViewPushReadiness) {
+        const readinessResponse = await fetch(`/api/users/candidates/${user.id}/push`, { cache: "no-store" });
+        const readinessPayload = (await readinessResponse.json().catch(() => null)) as { data?: CandidatePushReadinessSummary } | null;
+
+        if (readinessResponse.ok) {
+          setPushReadiness(readinessPayload?.data ?? null);
+        }
+      }
+
+      if ((summary?.sentCount ?? 0) > 0) {
+        toast.success("Push notification sent successfully.");
+      } else if ((summary?.skippedCount ?? 0) > 0 && (summary?.failedCount ?? 0) === 0) {
+        toast.success("Notification saved to the candidate inbox. No active push device was available.");
+      } else {
+        toast.success("Push notification dispatched.");
+      }
+    } catch (sendError) {
+      const message = sendError instanceof Error ? sendError.message : "Unable to send the push notification.";
+      setPushError(message);
+      toast.error(message);
+    } finally {
+      setIsSendingPush(false);
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full max-w-xl flex-col gap-0 p-0 sm:max-w-xl">
@@ -515,6 +641,105 @@ export function CandidateUserDetailSheet({ userId, open, onOpenChange, onUpdated
                   </div>
                 ) : null}
               </CanAccess>
+
+              {canViewPushReadiness ? (
+                <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center gap-2">
+                    <Send className="h-4 w-4 text-slate-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">Push Notifications</h3>
+                  </div>
+
+                  {pushError ? <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm font-medium text-amber-700">{pushError}</div> : null}
+
+                  {isPushLoading ? (
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <Skeleton key={index} className="h-20 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Active Devices</p>
+                          <p className="mt-2 text-lg font-semibold text-slate-900">{pushReadiness?.activeDeviceCount ?? 0}</p>
+                          <p className="mt-1 text-xs text-slate-500">Messages still create inbox history even when no active device is registered.</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Push State</p>
+                          <p className="mt-2 text-lg font-semibold text-slate-900">{pushReadiness?.preferences.pushNotificationsEnabled ? "Enabled" : "Muted"}</p>
+                          <p className="mt-1 text-xs text-slate-500">Assessment alerts: {pushReadiness?.preferences.assessmentAlertsEnabled ? "on" : "off"}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Last Registration</p>
+                          <p className="mt-2 text-sm font-semibold text-slate-900">{formatDate(pushReadiness?.latestRegisteredAt ?? null)}</p>
+                          <p className="mt-1 text-xs text-slate-500">Latest successful mobile token registration for this candidate.</p>
+                        </div>
+                      </div>
+
+                      {canSendPush ? (
+                        <div className="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4">
+                          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-slate-500">Title</label>
+                              <Input
+                                value={pushForm.title}
+                                onChange={(event) => setPushForm((current) => ({ ...current, title: event.target.value }))}
+                                placeholder="Notification title..."
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-slate-500">Destination</label>
+                              <select
+                                value={pushForm.destination}
+                                onChange={(event) => setPushForm((current) => ({ ...current, destination: event.target.value as (typeof candidatePushDestinations)[number]["value"] }))}
+                                className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]"
+                              >
+                                {candidatePushDestinations.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-500">Message</label>
+                            <textarea
+                              className="min-h-[120px] w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                              value={pushForm.body}
+                              onChange={(event) => setPushForm((current) => ({ ...current, body: event.target.value }))}
+                              placeholder="Write the push notification message..."
+                            />
+                          </div>
+
+                          <p className="text-xs leading-5 text-slate-500">
+                            {pushReadiness?.activeDeviceCount
+                              ? "If the candidate has an active Expo token, the message will be sent as a push and stored in the in-app notification center."
+                              : "This candidate has no active device token right now. The message will still be stored in the in-app notification center for the next sign-in."}
+                          </p>
+
+                          <div className="flex justify-end">
+                            <Button
+                              onClick={handleSendPush}
+                              disabled={
+                                isSendingPush ||
+                                !user.isActive ||
+                                !pushForm.title.trim() ||
+                                pushForm.body.trim().length < 4
+                              }
+                            >
+                              {isSendingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              Send Push
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500">You can review device readiness here, but only notification senders can dispatch manual push messages.</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : null}
 
               {/* Activity Log Section */}
               <div className="rounded-2xl border border-slate-200">

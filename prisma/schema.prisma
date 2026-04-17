@@ -220,6 +220,48 @@ enum EmailLogCategory {
   @@map("email_log_category")
 }
 
+enum PushProvider {
+  EXPO @map("expo")
+
+  @@map("push_provider")
+}
+
+enum PushDevicePlatform {
+  ANDROID @map("android")
+  IOS     @map("ios")
+  WEB     @map("web")
+  UNKNOWN @map("unknown")
+
+  @@map("push_device_platform")
+}
+
+enum PushDispatchTargetType {
+  CANDIDATE @map("candidate")
+  BATCH     @map("batch")
+
+  @@map("push_dispatch_target_type")
+}
+
+enum CandidateNotificationDestination {
+  DASHBOARD           @map("dashboard")
+  PROGRAM_DETAIL      @map("program_detail")
+  ASSESSMENTS         @map("assessments")
+  SUPPORT             @map("support")
+  NOTIFICATION_CENTER @map("notification_center")
+
+  @@map("candidate_notification_destination")
+}
+
+enum PushDeliveryStatus {
+  PENDING        @map("pending")
+  SENT           @map("sent")
+  FAILED         @map("failed")
+  DEVICE_INVALID @map("device_invalid")
+  SKIPPED        @map("skipped")
+
+  @@map("push_delivery_status")
+}
+
 enum AuditEntityType {
   BATCH           @map("batch")
   CANDIDATE       @map("candidate")
@@ -488,6 +530,9 @@ model User {
   auditLogs         AuditLog[]         @relation("AuditActor")
   settingsAuditLogs SettingsAuditLog[] @relation("SettingsAuditActor")
   triggeredEmailLogs EmailLog[]        @relation("EmailTriggeredBy")
+  pushDevices            UserPushDevice[]
+  pushNotifications      CandidateNotification[] @relation("NotificationRecipient")
+  createdPushDispatches  PushDispatch[]          @relation("PushDispatchCreatedBy")
   createdCourseContents    CourseContent[]          @relation("ContentCreatedBy")
   createdCourseContentFolders CourseContentFolder[] @relation("ContentFolderCreatedBy")
   createdAssessmentPools   AssessmentPool[]         @relation("AssessmentPoolCreatedBy")
@@ -698,6 +743,112 @@ model EmailLog {
   @@index([toEmail], map: "idx_email_logs_to_email")
   @@index([triggeredById], map: "idx_email_logs_triggered_by")
   @@map("email_logs")
+}
+
+model UserPushDevice {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("push_device_id")
+  userId             String             @db.Uuid @map("user_id")
+  provider           PushProvider       @default(EXPO)
+  platform           PushDevicePlatform @default(UNKNOWN)
+  deviceIdentifier   String?            @map("device_identifier") @db.VarChar(120)
+  expoPushToken      String             @unique @map("expo_push_token") @db.VarChar(255)
+  deviceName         String?            @map("device_name") @db.VarChar(120)
+  appVersion         String?            @map("app_version") @db.VarChar(50)
+  projectId          String?            @map("project_id") @db.VarChar(120)
+  permissionsGranted Boolean            @default(false) @map("permissions_granted")
+  lastRegisteredAt   DateTime           @default(now()) @map("last_registered_at") @db.Timestamptz(6)
+  lastSeenAt         DateTime?          @map("last_seen_at") @db.Timestamptz(6)
+  lastSuccessAt      DateTime?          @map("last_success_at") @db.Timestamptz(6)
+  invalidatedAt      DateTime?          @map("invalidated_at") @db.Timestamptz(6)
+  revokedAt          DateTime?          @map("revoked_at") @db.Timestamptz(6)
+  invalidationReason String?            @map("invalidation_reason") @db.VarChar(255)
+  metadata           Json               @default("{}")
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries         CandidateNotificationDelivery[]
+
+  @@index([userId, revokedAt, invalidatedAt], map: "idx_push_devices_user_state")
+  @@index([deviceIdentifier], map: "idx_push_devices_identifier")
+  @@index([lastRegisteredAt], map: "idx_push_devices_last_registered")
+  @@map("user_push_devices")
+}
+
+model PushDispatch {
+  id                    String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("push_dispatch_id")
+  createdById           String?                          @db.Uuid @map("created_by_user_id")
+  targetType            PushDispatchTargetType           @map("target_type")
+  targetId              String?                          @map("target_id") @db.VarChar(120)
+  title                 String                           @db.VarChar(255)
+  body                  String                           @db.VarChar(2000)
+  destination           CandidateNotificationDestination
+  ctaLabel              String?                          @map("cta_label") @db.VarChar(120)
+  batchId               String?                          @db.Uuid @map("batch_id")
+  assessmentPoolId      String?                          @db.Uuid @map("assessment_pool_id")
+  requestedRecipientCount Int                            @default(0) @map("requested_recipient_count")
+  sentRecipientCount    Int                              @default(0) @map("sent_recipient_count")
+  failedRecipientCount  Int                              @default(0) @map("failed_recipient_count")
+  skippedRecipientCount Int                              @default(0) @map("skipped_recipient_count")
+  metadata              Json                             @default("{}")
+  createdAt             DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy             User?                            @relation("PushDispatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  notifications         CandidateNotification[]
+  deliveries            CandidateNotificationDelivery[]
+
+  @@index([targetType, targetId, createdAt], map: "idx_push_dispatch_target_created")
+  @@index([createdById], map: "idx_push_dispatch_created_by")
+  @@index([createdAt], map: "idx_push_dispatch_created")
+  @@map("push_dispatches")
+}
+
+model CandidateNotification {
+  id               String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("notification_id")
+  dispatchId       String?                          @db.Uuid @map("push_dispatch_id")
+  userId           String                           @db.Uuid @map("user_id")
+  title            String                           @db.VarChar(255)
+  body             String                           @db.VarChar(2000)
+  destination      CandidateNotificationDestination
+  ctaLabel         String?                          @map("cta_label") @db.VarChar(120)
+  batchId          String?                          @db.Uuid @map("batch_id")
+  assessmentPoolId String?                          @db.Uuid @map("assessment_pool_id")
+  readAt           DateTime?                        @map("read_at") @db.Timestamptz(6)
+  metadata         Json                             @default("{}")
+  createdAt        DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dispatch         PushDispatch?                    @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+  user             User                             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  deliveries       CandidateNotificationDelivery[]
+
+  @@index([userId, readAt, createdAt], map: "idx_candidate_notifications_user_read")
+  @@index([dispatchId], map: "idx_candidate_notifications_dispatch")
+  @@index([batchId], map: "idx_candidate_notifications_batch")
+  @@map("candidate_notifications")
+}
+
+model CandidateNotificationDelivery {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("notification_delivery_id")
+  dispatchId       String?                @db.Uuid @map("push_dispatch_id")
+  notificationId   String                 @db.Uuid @map("notification_id")
+  deviceId         String                 @db.Uuid @map("push_device_id")
+  provider         PushProvider           @default(EXPO)
+  status           PushDeliveryStatus     @default(PENDING)
+  expoTicketId     String?                @map("expo_ticket_id") @db.VarChar(255)
+  expoReceiptId    String?                @map("expo_receipt_id") @db.VarChar(255)
+  errorCode        String?                @map("error_code") @db.VarChar(120)
+  errorMessage     String?                @map("error_message") @db.VarChar(1000)
+  response         Json                   @default("{}")
+  attemptedAt      DateTime               @default(now()) @map("attempted_at") @db.Timestamptz(6)
+  updatedAt        DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dispatch         PushDispatch?          @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+  notification     CandidateNotification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  device           UserPushDevice         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([dispatchId], map: "idx_notification_deliveries_dispatch")
+  @@index([notificationId], map: "idx_notification_deliveries_notification")
+  @@index([deviceId, attemptedAt], map: "idx_notification_deliveries_device_attempted")
+  @@index([status, attemptedAt], map: "idx_notification_deliveries_status_attempted")
+  @@map("candidate_notification_deliveries")
 }
 
 model SettingsCategory {

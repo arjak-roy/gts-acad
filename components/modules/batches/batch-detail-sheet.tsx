@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Calendar, ClipboardList, ExternalLink, Layers3, MapPin, Plus, Users } from "lucide-react";
+import { BookOpen, Calendar, ClipboardList, ExternalLink, Layers3, MapPin, Plus, Send, Users } from "lucide-react";
+import { toast } from "sonner";
 
 import { CurriculumHierarchyView } from "@/components/modules/curriculum-builder/curriculum-hierarchy-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SheetLoadingSkeleton } from "@/components/ui/sheet-skeleton-variants";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -190,6 +192,25 @@ type AvailableBatchAssessment = {
   courseName: string | null;
 };
 
+type BatchPushReadinessSummary = {
+  batchId: string;
+  batchCode: string;
+  batchName: string;
+  candidateUserCount: number;
+  pushEnabledCandidateCount: number;
+  registeredCandidateCount: number;
+  activeDeviceCount: number;
+};
+
+type PushDispatchSummary = {
+  dispatchId: string;
+  attemptedCount: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  failureMessages: string[];
+};
+
 type ApiEnvelope<T> = {
   data?: T;
   error?: string;
@@ -222,6 +243,14 @@ const assignmentSourceLabels: Record<BatchAssignedAssessment["assignmentSource"]
   COURSE_AND_BATCH: "Inherited + batch mapping",
 };
 
+const batchPushDestinations = [
+  { value: "NOTIFICATION_CENTER", label: "Notification Center" },
+  { value: "PROGRAM_DETAIL", label: "Program Detail" },
+  { value: "ASSESSMENTS", label: "Assessments" },
+  { value: "DASHBOARD", label: "Dashboard" },
+  { value: "SUPPORT", label: "Support" },
+] as const;
+
 function formatDate(iso?: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -252,6 +281,8 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
   const canViewBatchAssessments = can("batch_content.view");
   const canAssignBatchAssessments = can("batch_content.assign");
   const canRemoveBatchAssessments = can("batch_content.remove");
+  const canViewPushReadiness = can("notifications.view") || can("notifications.send");
+  const canSendBatchPush = can("notifications.send");
 
   const [batch, setBatch] = useState<BatchDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -269,6 +300,15 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
   const [selectedAssessmentPoolId, setSelectedAssessmentPoolId] = useState("");
   const [isUpdatingAssessments, setIsUpdatingAssessments] = useState(false);
+  const [pushReadiness, setPushReadiness] = useState<BatchPushReadinessSummary | null>(null);
+  const [isPushLoading, setIsPushLoading] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [isSendingPush, setIsSendingPush] = useState(false);
+  const [pushForm, setPushForm] = useState({
+    title: "",
+    body: "",
+    destination: "NOTIFICATION_CENTER" as (typeof batchPushDestinations)[number]["value"],
+  });
 
   const assignedCount = curriculumWorkspace?.assignedCurricula.length ?? 0;
   const availableCount = curriculumWorkspace?.availableCurricula.length ?? 0;
@@ -391,6 +431,42 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
   }, [batchId, canViewBatchAssessments, open]);
 
   useEffect(() => {
+    if (!open || !batchId || !canViewPushReadiness) {
+      setPushReadiness(null);
+      setPushError(null);
+      setIsPushLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    setIsPushLoading(true);
+    setPushError(null);
+
+    fetch(`/api/batches/${batchId}/push`, { cache: "no-store" })
+      .then((response) => readApiData<BatchPushReadinessSummary>(response, "Failed to load push readiness."))
+      .then((payload) => {
+        if (active) {
+          setPushReadiness(payload);
+        }
+      })
+      .catch((fetchError) => {
+        if (active) {
+          setPushError(fetchError instanceof Error ? fetchError.message : "Failed to load push readiness.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsPushLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [batchId, canViewPushReadiness, open]);
+
+  useEffect(() => {
     if (!open || !batchId) {
       return;
     }
@@ -440,6 +516,10 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
       setAssessmentError(null);
       setSelectedAssessmentPoolId("");
       setIsUpdatingAssessments(false);
+      setPushReadiness(null);
+      setPushError(null);
+      setPushForm({ title: "", body: "", destination: "NOTIFICATION_CENTER" });
+      setIsSendingPush(false);
     }
   };
 
@@ -614,6 +694,55 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
       setAssessmentError(removeError instanceof Error ? removeError.message : "Failed to remove assessment from batch.");
     } finally {
       setIsUpdatingAssessments(false);
+    }
+  }
+
+  async function handleSendBatchPush() {
+    if (!batchId) {
+      return;
+    }
+
+    setIsSendingPush(true);
+    setPushError(null);
+
+    try {
+      const response = await fetch(`/api/batches/${batchId}/push`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...pushForm,
+          batchId,
+        }),
+      });
+
+      const payload = await readApiData<PushDispatchSummary>(response, "Failed to send batch announcement.");
+      setPushForm({ title: "", body: "", destination: "NOTIFICATION_CENTER" });
+
+      if (canViewPushReadiness) {
+        const readinessResponse = await fetch(`/api/batches/${batchId}/push`, { cache: "no-store" });
+        const readinessPayload = await readApiData<BatchPushReadinessSummary>(readinessResponse, "Failed to refresh push readiness.");
+        setPushReadiness(readinessPayload);
+      }
+
+      if (payload.sentCount > 0) {
+        setPushError(null);
+      }
+
+      const statusMessage = payload.sentCount > 0
+        ? `Announcement sent to ${payload.sentCount} candidate${payload.sentCount === 1 ? "" : "s"}.`
+        : payload.skippedCount > 0 && payload.failedCount === 0
+          ? "Announcement saved to candidate inboxes. No active push device was available for delivery."
+          : "Announcement dispatched.";
+
+      toast.success(statusMessage);
+    } catch (sendError) {
+      const message = sendError instanceof Error ? sendError.message : "Failed to send batch announcement.";
+      setPushError(message);
+      toast.error(message);
+    } finally {
+      setIsSendingPush(false);
     }
   }
 
@@ -810,6 +939,113 @@ export function BatchDetailSheet({ batchId, open, onOpenChange, onEdit }: BatchD
                         </div>
                       ) : null}
                     </div>
+
+                    {canViewPushReadiness ? (
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_340px]">
+                        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Batch Announcement Composer</p>
+                              <p className="mt-2 text-lg font-semibold text-slate-950">Send a manual push to this batch</p>
+                              <p className="mt-2 text-sm leading-6 text-slate-600">
+                                Use this for cohort-level announcements, release nudges, or urgent schedule changes. Every send also creates inbox history for the candidate app.
+                              </p>
+                            </div>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-primary">
+                              <Send className="h-5 w-5" />
+                            </div>
+                          </div>
+
+                          {pushError ? (
+                            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{pushError}</div>
+                          ) : null}
+
+                          <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-slate-500">Title</label>
+                              <Input
+                                value={pushForm.title}
+                                onChange={(event) => setPushForm((current) => ({ ...current, title: event.target.value }))}
+                                placeholder="Announcement title..."
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-slate-500">Destination</label>
+                              <select
+                                value={pushForm.destination}
+                                onChange={(event) => setPushForm((current) => ({ ...current, destination: event.target.value as (typeof batchPushDestinations)[number]["value"] }))}
+                                className="block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]"
+                              >
+                                {batchPushDestinations.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <label className="mb-1 block text-xs font-medium text-slate-500">Message</label>
+                            <textarea
+                              className="min-h-[132px] w-full rounded-xl border border-[#dde1e6] px-3 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                              value={pushForm.body}
+                              onChange={(event) => setPushForm((current) => ({ ...current, body: event.target.value }))}
+                              placeholder="Write the batch announcement..."
+                            />
+                          </div>
+
+                          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <p className="text-xs leading-5 text-slate-500">
+                              {pushReadiness?.registeredCandidateCount
+                                ? `Registered devices were found for ${pushReadiness.registeredCandidateCount} candidate${pushReadiness.registeredCandidateCount === 1 ? "" : "s"}. Everyone targeted still gets inbox history.`
+                                : "No active device tokens are registered for this batch yet. Sending now will still populate the candidate inbox history."}
+                            </p>
+
+                            {canSendBatchPush ? (
+                              <Button
+                                type="button"
+                                disabled={isSendingPush || !pushForm.title.trim() || pushForm.body.trim().length < 4}
+                                onClick={() => void handleSendBatchPush()}
+                              >
+                                <Send className="h-4 w-4" />
+                                {isSendingPush ? "Sending..." : "Send Batch Push"}
+                              </Button>
+                            ) : (
+                              <p className="text-sm text-slate-500">You can review delivery reach here, but you do not have permission to send announcements.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Reach Snapshot</p>
+                          {isPushLoading ? (
+                            <div className="mt-4 space-y-3">
+                              {Array.from({ length: 4 }).map((_, index) => (
+                                <Skeleton key={index} className="h-16 w-full rounded-2xl" />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Candidate Users</p>
+                                <p className="mt-1 text-lg font-semibold text-slate-900">{pushReadiness?.candidateUserCount ?? 0}</p>
+                              </div>
+                              <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Push Enabled</p>
+                                <p className="mt-1 text-lg font-semibold text-slate-900">{pushReadiness?.pushEnabledCandidateCount ?? 0}</p>
+                              </div>
+                              <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Registered Candidates</p>
+                                <p className="mt-1 text-lg font-semibold text-slate-900">{pushReadiness?.registeredCandidateCount ?? 0}</p>
+                              </div>
+                              <div className="rounded-2xl border border-[#e2e8f0] bg-slate-50/80 px-4 py-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Active Devices</p>
+                                <p className="mt-1 text-lg font-semibold text-slate-900">{pushReadiness?.activeDeviceCount ?? 0}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {batch.schedule && batch.schedule.length > 0 ? (
                       <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
