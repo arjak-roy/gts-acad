@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { authoredContentDocumentSchema, authoredContentAnyDocumentSchema } from "@/lib/authored-content";
+import { authoredContentAnyDocumentSchema } from "@/lib/authored-content";
 
 export const contentTypeEnum = z.enum(["ARTICLE", "PDF", "DOCUMENT", "VIDEO", "SCORM", "LINK", "OTHER"]);
 export const contentStatusEnum = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);

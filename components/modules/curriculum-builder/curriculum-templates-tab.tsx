@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, Copy, Eye, LayoutTemplate, Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
-import Link from "next/link";
+import { Copy, Eye, LayoutTemplate, Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CurriculumHealthBadge, CurriculumHealthReport } from "@/components/modules/curriculum-builder/curriculum-health-badge";
