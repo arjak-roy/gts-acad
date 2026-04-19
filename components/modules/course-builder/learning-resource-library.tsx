@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Eye, History, MoreHorizontal, PencilLine, Plus, RotateCcw, Search, Trash2, Waypoints } from "lucide-react";
+import { Eye, History, MoreHorizontal, PencilLine, Plus, Search, Trash2, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 
 import {

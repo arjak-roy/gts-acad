@@ -4,7 +4,7 @@ import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState
 import { AlertCircle, CheckCircle2, FileText, Link2, Loader2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml, type AuthoredContentDocumentV2 } from "@/lib/authored-content";
+import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
 import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
 import { Badge } from "@/components/ui/badge";

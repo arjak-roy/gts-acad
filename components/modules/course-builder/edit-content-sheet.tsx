@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml, isV2Document, parseAuthoredContentAnyDocument, type AuthoredContentDocumentV2 } from "@/lib/authored-content";
+import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml, isV2Document, parseAuthoredContentAnyDocument } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
 import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
 import { Badge } from "@/components/ui/badge";
