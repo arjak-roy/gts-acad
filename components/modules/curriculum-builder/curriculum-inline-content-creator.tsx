@@ -39,7 +39,6 @@ export function CurriculumInlineContentCreator({
   onOpenChange,
   courseId,
   folders,
-  stageId,
   onComplete,
   onRefresh,
   disabled,
@@ -124,7 +123,7 @@ export function CurriculumInlineContentCreator({
 
   // Step 2: Save editor HTML → update content → add as stage item
   const handleEditorSave = useCallback(
-    async (html: string, _plainText: string) => {
+    async (html: string) => {
       if (!contentId) return;
 
       setStep("saving");

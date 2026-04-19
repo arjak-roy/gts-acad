@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { RotateCcw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   formatDateTime,
-  formatFileSize,
-  getLearningResourceCategoryLabel,
   parseApiResponse,
   type LearningResourceListItem,
   type LearningResourceListPage,
