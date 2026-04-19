@@ -238,6 +238,7 @@ export function BatchEnrollmentSheet({ open, batch, onOpenChange, onDataChange }
       loadPrograms(""),
       loadCandidates("", "", ""),
     ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, batch]);
 
   const handleFindCandidates = async (event: FormEvent<HTMLFormElement>) => {

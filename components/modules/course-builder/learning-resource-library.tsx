@@ -158,6 +158,7 @@ export function LearningResourceLibrary({
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, externalRefreshToken, filters.categoryId, filters.status, filters.visibility, page, pageSize, refreshToken]);
 
   useEffect(() => {

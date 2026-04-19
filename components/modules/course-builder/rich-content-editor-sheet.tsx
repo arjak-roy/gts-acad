@@ -85,7 +85,6 @@ export function RichContentEditorSheet({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-  const [linkTitle, setLinkTitle] = useState("");
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -157,8 +156,8 @@ export function RichContentEditorSheet({
     }
     setLinkDialogOpen(false);
     setLinkUrl("");
-    setLinkTitle("");
-  }, [editor, linkUrl, linkTitle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, linkUrl]);
 
   const insertImage = useCallback(async () => {
     if (!editor) return;

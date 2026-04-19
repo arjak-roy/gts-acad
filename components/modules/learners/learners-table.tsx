@@ -209,6 +209,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
         },
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeDirection, activeSort, filters.batchCode, filters.placementStatus, filters.search, filters.sortBy, filters.sortDirection, response.page, response.pageSize, viewMode, layoutPreset],
   );
 

@@ -120,6 +120,7 @@ export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
       targetLanguage: learner?.targetLanguage ?? "",
       targetExam: learner?.targetExam ?? "",
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learner?.learnerCode]);
 
   const selectedBatch = batches.find((batch) => batch.code === batchCode) ?? null;
