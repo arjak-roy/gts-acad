@@ -182,7 +182,7 @@ export function CertificateCanvasEditor({ template, onSave, isSaving }: Props) {
   );
 
   const handleDragStop = useCallback(
-    (_id: string) => {
+    () => {
       setActiveGuides([]);
       dragUndoPushedRef.current = null;
     },
