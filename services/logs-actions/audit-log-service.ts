@@ -62,7 +62,7 @@ export async function listAuditLogsService(input: ListAuditLogsInput): Promise<A
   const normalizedEntityId = input.entityId?.trim();
   const normalizedSearch = input.search?.trim();
 
-  const where: Prisma.AuditLogWhereInput = {
+  const where = {
     ...(input.entityType && input.entityType !== "ALL" ? { entityType: input.entityType } : {}),
     ...(input.level && input.level !== "ALL" ? { level: input.level } : {}),
     ...(input.action && input.action !== "ALL" ? { action: input.action } : {}),

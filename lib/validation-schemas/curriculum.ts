@@ -71,10 +71,15 @@ export const updateCurriculumSchema = z.object({
   status: curriculumStatusEnum.optional(),
 });
 
+export const curriculumCompletionRuleEnum = z.enum(["ALL_REQUIRED", "ALL_ITEMS", "PERCENTAGE", "MIN_ITEMS"]);
+
 export const createCurriculumModuleSchema = z.object({
   curriculumId: z.string().trim().min(1, "Curriculum ID is required."),
   title: z.string().trim().min(2, "Module title must be at least 2 characters.").max(255),
   description: z.string().trim().max(2000).optional().default(""),
+  completionRule: curriculumCompletionRuleEnum.optional(),
+  completionThreshold: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+  prerequisiteModuleId: z.string().trim().min(1).optional().nullable(),
 });
 
 export const moduleIdSchema = z.object({
@@ -85,6 +90,9 @@ export const updateCurriculumModuleSchema = z.object({
   moduleId: z.string().trim().min(1),
   title: z.string().trim().min(2).max(255).optional(),
   description: z.string().trim().max(2000).optional(),
+  completionRule: curriculumCompletionRuleEnum.optional(),
+  completionThreshold: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+  prerequisiteModuleId: z.string().trim().min(1).optional().nullable(),
 });
 
 export const reorderCurriculumModulesSchema = z.object({
@@ -96,6 +104,9 @@ export const createCurriculumStageSchema = z.object({
   moduleId: z.string().trim().min(1, "Module ID is required."),
   title: z.string().trim().min(2, "Stage title must be at least 2 characters.").max(255),
   description: z.string().trim().max(2000).optional().default(""),
+  completionRule: curriculumCompletionRuleEnum.optional(),
+  completionThreshold: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+  prerequisiteStageId: z.string().trim().min(1).optional().nullable(),
 });
 
 export const stageIdSchema = z.object({
@@ -106,6 +117,9 @@ export const updateCurriculumStageSchema = z.object({
   stageId: z.string().trim().min(1),
   title: z.string().trim().min(2).max(255).optional(),
   description: z.string().trim().max(2000).optional(),
+  completionRule: curriculumCompletionRuleEnum.optional(),
+  completionThreshold: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+  prerequisiteStageId: z.string().trim().min(1).optional().nullable(),
 });
 
 export const reorderCurriculumStagesSchema = z.object({
@@ -252,3 +266,23 @@ export type AssignCurriculumToBatchInput = z.infer<typeof assignCurriculumToBatc
 export type RemoveCurriculumFromBatchInput = z.infer<typeof removeCurriculumFromBatchSchema>;
 export type ReleaseCurriculumStageItemForBatchInput = z.infer<typeof releaseCurriculumStageItemForBatchSchema>;
 export type RevokeCurriculumStageItemReleaseForBatchInput = z.infer<typeof revokeCurriculumStageItemReleaseForBatchSchema>;
+
+export const cloneCurriculumSchema = z.object({
+  sourceCurriculumId: z.string().trim().min(1, "Source curriculum ID is required."),
+  targetCourseId: z.string().trim().min(1, "Target course ID is required."),
+  title: z.string().trim().min(2, "Title must be at least 2 characters.").max(255),
+});
+
+export const saveCurriculumAsTemplateSchema = z.object({
+  curriculumId: z.string().trim().min(1, "Curriculum ID is required."),
+});
+
+export const createCurriculumFromTemplateSchema = z.object({
+  templateCurriculumId: z.string().trim().min(1, "Template curriculum ID is required."),
+  targetCourseId: z.string().trim().min(1, "Target course ID is required."),
+  title: z.string().trim().min(2, "Title must be at least 2 characters.").max(255),
+});
+
+export type CloneCurriculumInput = z.infer<typeof cloneCurriculumSchema>;
+export type SaveCurriculumAsTemplateInput = z.infer<typeof saveCurriculumAsTemplateSchema>;
+export type CreateCurriculumFromTemplateInput = z.infer<typeof createCurriculumFromTemplateSchema>;

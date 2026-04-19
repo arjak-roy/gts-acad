@@ -10,6 +10,7 @@ import type {
   LearningResourceCategorySummary,
   LearningResourceDetail,
   LearningResourceListItem,
+  LearningResourceListPage,
   LearningResourceLookupOption,
   LearningResourceLookups,
   LearningResourceTagSummary,
@@ -128,13 +129,34 @@ function mapTags(tags: Array<{ id: string; name: string; slug: string }>): Learn
   return tags.map((tag) => ({ id: tag.id, name: tag.name, slug: tag.slug }));
 }
 
-export async function listLearningResourcesService(filters: ListLearningResourcesQueryInput = {}): Promise<LearningResourceListItem[]> {
+export async function listLearningResourcesService(
+  filters: ListLearningResourcesQueryInput = {
+    page: 1,
+    pageSize: 25,
+    sortBy: "updatedAt",
+    sortDir: "desc",
+    showDeleted: false,
+  },
+): Promise<LearningResourceListPage> {
   if (!isDatabaseConfigured) {
-    return [];
+    return {
+      items: [],
+      total: 0,
+      page: filters.page ?? 1,
+      pageSize: filters.pageSize ?? 25,
+      totalPages: 0,
+    };
   }
 
   const search = filters.search?.trim();
-  const whereClauses: Prisma.LearningResourceWhereInput[] = [];
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 25;
+  const skip = (page - 1) * pageSize;
+  const sortBy = filters.sortBy ?? "updatedAt";
+  const sortDir = filters.sortDir ?? "desc";
+  const showDeleted = filters.showDeleted ?? false;
+
+  const whereClauses: Prisma.LearningResourceWhereInput[] = showDeleted ? [{ deletedAt: { not: null } }] : [{ deletedAt: null }];
 
   if (filters.status) {
     whereClauses.push({ status: filters.status });
@@ -146,6 +168,10 @@ export async function listLearningResourcesService(filters: ListLearningResource
 
   if (filters.contentType) {
     whereClauses.push({ contentType: filters.contentType });
+  }
+
+  if (filters.createdById) {
+    whereClauses.push({ createdById: filters.createdById });
   }
 
   if (filters.categoryId) {
@@ -184,36 +210,42 @@ export async function listLearningResourcesService(filters: ListLearningResource
     ? { AND: whereClauses }
     : undefined;
 
-  const resources = await prisma.learningResource.findMany({
-    where,
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-    select: {
-      id: true,
-      sourceContentId: true,
-      title: true,
-      description: true,
-      excerpt: true,
-      contentType: true,
-      status: true,
-      visibility: true,
-      estimatedReadingMinutes: true,
-      fileUrl: true,
-      fileName: true,
-      fileSize: true,
-      mimeType: true,
-      currentVersionNumber: true,
-      publishedAt: true,
-      createdAt: true,
-      updatedAt: true,
-      category: { select: { name: true } },
-      subcategory: { select: { name: true } },
-      tags: { select: { tag: { select: { name: true } } } },
-      assignments: { select: { id: true } },
-      usages: { select: { eventType: true } },
-    },
-  });
+  const [total, resources] = await Promise.all([
+    prisma.learningResource.count({ where }),
+    prisma.learningResource.findMany({
+      where,
+      orderBy: [{ [sortBy]: sortDir }, { updatedAt: "desc" }, { createdAt: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        sourceContentId: true,
+        title: true,
+        description: true,
+        excerpt: true,
+        contentType: true,
+        status: true,
+        visibility: true,
+        estimatedReadingMinutes: true,
+        fileUrl: true,
+        fileName: true,
+        fileSize: true,
+        mimeType: true,
+        currentVersionNumber: true,
+        publishedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+        category: { select: { name: true } },
+        subcategory: { select: { name: true } },
+        tags: { select: { tag: { select: { name: true } } } },
+        assignments: { select: { id: true } },
+        usages: { select: { eventType: true } },
+      },
+    }),
+  ]);
 
-  return resources.map((resource) => {
+  const items: LearningResourceListItem[] = resources.map((resource) => {
     const usage = countUsage(resource.usages);
 
     return {
@@ -237,11 +269,20 @@ export async function listLearningResourcesService(filters: ListLearningResource
       publishedAt: resource.publishedAt,
       createdAt: resource.createdAt,
       updatedAt: resource.updatedAt,
+      deletedAt: resource.deletedAt,
       assignmentCount: resource.assignments.length,
       previewCount: usage.previews,
       downloadCount: usage.downloads,
     };
   });
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  };
 }
 
 export async function getLearningResourceByIdService(resourceId: string): Promise<LearningResourceDetail | null> {
@@ -249,8 +290,8 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
     return null;
   }
 
-  const resource = await prisma.learningResource.findUnique({
-    where: { id: resourceId },
+  const resource = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: {
       id: true,
       sourceContentId: true,
@@ -275,6 +316,7 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
       publishedAt: true,
       createdAt: true,
       updatedAt: true,
+      deletedAt: true,
       category: { select: { name: true } },
       subcategory: { select: { name: true } },
       createdBy: { select: { name: true } },
@@ -353,6 +395,7 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
     publishedAt: resource.publishedAt,
     createdAt: resource.createdAt,
     updatedAt: resource.updatedAt,
+    deletedAt: resource.deletedAt,
     assignmentCount: assignments.length,
     previewCount: usage.previews,
     downloadCount: usage.downloads,
@@ -382,6 +425,15 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
 
 export async function listLearningResourceVersionsService(resourceId: string): Promise<LearningResourceVersionDetail[]> {
   if (!isDatabaseConfigured) {
+    return [];
+  }
+
+  const resourceExists = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
+    select: { id: true },
+  });
+
+  if (!resourceExists) {
     return [];
   }
 

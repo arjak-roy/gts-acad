@@ -2,6 +2,8 @@ import "server-only";
 
 export {
 	assignCurriculumToBatchService,
+	cloneCurriculumService,
+	createCurriculumFromTemplateService,
 	createCurriculumModuleService,
 	createCurriculumService,
 	createCurriculumStageItemService,
@@ -17,6 +19,7 @@ export {
 	reorderCurriculumStageItemsService,
 	reorderCurriculumStagesService,
 	revokeCurriculumStageItemReleaseForBatchService,
+	saveCurriculumAsTemplateService,
 	updateCurriculumModuleService,
 	updateCurriculumService,
 	updateCurriculumStageItemService,
@@ -25,9 +28,11 @@ export {
 export {
 	getCandidateCurriculaForBatchService,
 	getCurriculaForBatchService,
+	getCurriculumHealthReportService,
 	getCurriculumBatchMappingsService,
 	getCurriculumByIdService,
 	listCurriculaByCourseService,
+	listCurriculumTemplatesService,
 } from "@/services/curriculum/queries";
 export {
 	buildCandidateCurriculumAssessmentContextMap,

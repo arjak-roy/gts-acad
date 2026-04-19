@@ -1,6 +1,7 @@
 import {
   ContentStatus,
   ContentType,
+  CurriculumCompletionRule,
   CurriculumItemReleaseType,
   CurriculumItemType,
   CurriculumProgressStatus,
@@ -19,6 +20,8 @@ export type CurriculumStageItemAvailabilityReasonType =
   | "UNLOCKS_AFTER_BATCH_OFFSET"
   | "WAITING_FOR_PREVIOUS_ITEM"
   | "WAITING_FOR_PASSING_SCORE"
+  | "WAITING_FOR_PREREQUISITE_STAGE"
+  | "WAITING_FOR_PREREQUISITE_MODULE"
   | "MANUAL_RELEASE_REQUIRED"
   | "MANUALLY_RELEASED";
 
@@ -27,6 +30,8 @@ export type CurriculumStageItemAvailabilityReason = {
   message: string;
   unlocksAt: Date | null;
   prerequisiteStageItemId: string | null;
+  prerequisiteStageId: string | null;
+  prerequisiteModuleId: string | null;
   prerequisiteTitle: string | null;
   requiredScorePercent: number | null;
   batchOffsetDays: number | null;
@@ -84,6 +89,9 @@ export type CurriculumStageSummary = {
   title: string;
   description: string | null;
   sortOrder: number;
+  completionRule: CurriculumCompletionRule;
+  completionThreshold: number | null;
+  prerequisiteStageId: string | null;
   itemCount: number;
   items: CurriculumStageItemDetail[];
 };
@@ -93,6 +101,9 @@ export type CurriculumModuleSummary = {
   title: string;
   description: string | null;
   sortOrder: number;
+  completionRule: CurriculumCompletionRule;
+  completionThreshold: number | null;
+  prerequisiteModuleId: string | null;
   stageCount: number;
   itemCount: number;
   stages: CurriculumStageSummary[];
@@ -106,6 +117,7 @@ export type CurriculumSummary = {
   title: string;
   description: string | null;
   status: CurriculumStatus;
+  isTemplate: boolean;
   moduleCount: number;
   stageCount: number;
   itemCount: number;
@@ -193,4 +205,39 @@ export type BatchCurriculumWorkspace = {
   courseName: string | null;
   assignedCurricula: BatchAssignedCurriculumDetail[];
   availableCurricula: CurriculumSummary[];
+};
+
+export type CurriculumHealthIssueSeverity = "high" | "medium" | "low";
+
+export type CurriculumHealthIssue = {
+  code:
+    | "NO_MODULES"
+    | "NO_STAGES"
+    | "NO_ITEMS"
+    | "DRAFT_REFERENCE"
+    | "BROKEN_REFERENCE"
+    | "MISSING_RELEASE_CONFIG"
+    | "UNPUBLISHED_CURRICULUM";
+  severity: CurriculumHealthIssueSeverity;
+  message: string;
+  moduleId?: string;
+  moduleTitle?: string;
+  stageId?: string;
+  stageTitle?: string;
+  itemId?: string;
+  itemTitle?: string;
+};
+
+export type CurriculumHealthReport = {
+  curriculumId: string;
+  curriculumTitle: string;
+  status: CurriculumStatus;
+  summary: {
+    moduleCount: number;
+    stageCount: number;
+    itemCount: number;
+    issueCount: number;
+    highSeverityCount: number;
+  };
+  issues: CurriculumHealthIssue[];
 };

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { authoredContentDocumentSchema } from "@/lib/authored-content";
+import { authoredContentDocumentSchema, authoredContentAnyDocumentSchema } from "@/lib/authored-content";
 
 export const contentTypeEnum = z.enum(["ARTICLE", "PDF", "DOCUMENT", "VIDEO", "SCORM", "LINK", "OTHER"]);
 export const contentStatusEnum = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
@@ -20,14 +20,14 @@ export const createContentSchema = z.object({
   storageProvider: uploadStorageProviderEnum.optional(),
   excerpt: z.string().trim().max(500).optional().default(""),
   estimatedReadingMinutes: z.coerce.number().int().positive().max(600).optional(),
-  bodyJson: authoredContentDocumentSchema.optional().nullable(),
+  bodyJson: authoredContentAnyDocumentSchema.optional().nullable(),
   status: contentStatusEnum.optional().default("DRAFT"),
   isScorm: z.coerce.boolean().optional().default(false),
 }).superRefine((value, ctx) => {
   if (value.contentType === "ARTICLE" && !value.bodyJson) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Authored content requires body blocks.",
+      message: "Authored content requires body content.",
       path: ["bodyJson"],
     });
   }
@@ -56,7 +56,7 @@ export const updateContentSchema = z.object({
   fileUrl: z.string().trim().max(2000).optional(),
   excerpt: z.string().trim().max(500).optional(),
   estimatedReadingMinutes: z.coerce.number().int().positive().max(600).optional(),
-  bodyJson: authoredContentDocumentSchema.optional().nullable(),
+  bodyJson: authoredContentAnyDocumentSchema.optional().nullable(),
   status: contentStatusEnum.optional(),
   sortOrder: z.coerce.number().int().nonnegative().optional(),
 });

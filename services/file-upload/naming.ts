@@ -61,6 +61,10 @@ export function buildLocalEmailTemplateStoragePath(fileName: string) {
   return buildLocalScopedStoragePath(path.posix.join("email-templates", "inline-images"), fileName);
 }
 
+export function buildLocalCertificationBrandingStoragePath(fileName: string) {
+  return buildLocalScopedStoragePath("certifications", fileName);
+}
+
 function buildS3ScopedStoragePath(prefix: string, fileName: string, namingStrategy: string) {
   const extension = sanitizeExtension(fileName);
   const baseName = sanitizeBaseName(fileName);
@@ -89,4 +93,8 @@ export function buildS3LearningResourceStoragePath(fileName: string, namingStrat
 
 export function buildS3EmailTemplateStoragePath(fileName: string, namingStrategy: string) {
   return buildS3ScopedStoragePath(path.posix.join("email-templates", "inline-images"), fileName, namingStrategy);
+}
+
+export function buildS3CertificationBrandingStoragePath(fileName: string, namingStrategy: string) {
+  return buildS3ScopedStoragePath("certifications", fileName, namingStrategy);
 }

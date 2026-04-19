@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const DEFAULT_WARNING_SECONDS = 5 * 60;
 const AUTH_ROUTES = new Set(["/login", "/forgot-password", "/reset-password", "/activate-account"]);
+
+export const SESSION_EXPIRY_QUERY_KEY = ["auth", "me", "session-expiry"] as const;
 
 class SessionExpiredError extends Error {
   constructor() {
@@ -62,7 +64,9 @@ export function SessionExpiryWarning() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const redirectingRef = useRef(false);
+  const refetchingExpiredRef = useRef(false);
   const [now, setNow] = useState(() => Date.now());
 
   const isEnabled = Boolean(pathname) && !AUTH_ROUTES.has(pathname) && !pathname.startsWith("/api/");
@@ -70,7 +74,7 @@ export function SessionExpiryWarning() {
   const currentPath = pathname ? `${pathname}${search ? `?${search}` : ""}` : "/dashboard";
 
   const sessionQuery = useQuery({
-    queryKey: ["auth", "me", "session-expiry"],
+    queryKey: SESSION_EXPIRY_QUERY_KEY,
     queryFn: fetchSessionInfo,
     enabled: isEnabled,
     staleTime: 30_000,
@@ -92,6 +96,7 @@ export function SessionExpiryWarning() {
     };
   }, [isEnabled, sessionQuery.data?.expiresAt]);
 
+  // Handle confirmed 401 from /api/auth/me — session is truly gone.
   useEffect(() => {
     if (redirectingRef.current) {
       return;
@@ -107,15 +112,32 @@ export function SessionExpiryWarning() {
   const expiresAtMs = sessionQuery.data?.expiresAt ? Date.parse(sessionQuery.data.expiresAt) : NaN;
   const remainingMs = Number.isFinite(expiresAtMs) ? expiresAtMs - now : Number.NaN;
 
+  // When cached expiresAt says expired, refetch to confirm with server
+  // before redirecting. This prevents a redirect loop when the user just
+  // re-authenticated and the stale cache still holds the old expiresAt.
   useEffect(() => {
     if (!isEnabled || redirectingRef.current || !Number.isFinite(remainingMs) || remainingMs > 0) {
+      refetchingExpiredRef.current = false;
       return;
     }
 
-    redirectingRef.current = true;
-    router.replace(`/login?reason=session-expired&next=${encodeURIComponent(sanitizeNextPath(currentPath))}`);
-    router.refresh();
-  }, [currentPath, isEnabled, remainingMs, router]);
+    if (refetchingExpiredRef.current) {
+      // Already triggered a refetch — if we're still here with remainingMs <= 0
+      // after the refetch resolved, the session is genuinely expired.
+      // But only redirect if the query isn't currently fetching (i.e. refetch completed).
+      if (!sessionQuery.isFetching) {
+        redirectingRef.current = true;
+        router.replace(`/login?reason=session-expired&next=${encodeURIComponent(sanitizeNextPath(currentPath))}`);
+        router.refresh();
+      }
+      return;
+    }
+
+    // First time hitting expired on cached data — invalidate and refetch
+    // to pick up any new session cookie from a recent re-login.
+    refetchingExpiredRef.current = true;
+    void queryClient.invalidateQueries({ queryKey: [...SESSION_EXPIRY_QUERY_KEY] });
+  }, [currentPath, isEnabled, remainingMs, router, sessionQuery.isFetching, queryClient]);
 
   if (!isEnabled || !Number.isFinite(remainingMs) || remainingMs <= 0) {
     return null;

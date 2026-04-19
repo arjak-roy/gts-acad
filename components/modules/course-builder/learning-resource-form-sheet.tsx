@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "re
 import { Loader2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { emptyAuthoredContentDocument, type AuthoredContentDocument } from "@/lib/authored-content";
+import { emptyAuthoredContentDocument, isV2Document, type AuthoredContentDocument } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
 import {
   buildLearningResourceAssetDraftFromUpload,
@@ -98,7 +98,7 @@ function buildFormFromDetail(detail: LearningResourceDetail): FormState {
     tagsInput: detail.tagNames.join(", "),
     estimatedReadingMinutes: detail.estimatedReadingMinutes ? String(detail.estimatedReadingMinutes) : "",
     sourceUrl: detail.storagePath ? "" : (detail.fileUrl ?? ""),
-    bodyJson: detail.bodyJson ?? emptyAuthoredContentDocument(),
+    bodyJson: (detail.bodyJson && !isV2Document(detail.bodyJson)) ? detail.bodyJson : emptyAuthoredContentDocument(),
     changeSummary: "",
   };
 }

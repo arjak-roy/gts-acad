@@ -15,10 +15,12 @@ import { isStoredSettingsAsset } from "@/lib/settings/validation";
 import { getBrandingAssetSlot, getBrandingCanonicalStoragePath, getFileUploadServiceConfig } from "@/services/file-upload/config";
 import {
   buildCourseContentStorageScope,
+  buildLocalCertificationBrandingStoragePath,
   buildLocalCourseContentStoragePath,
   buildLocalEmailTemplateStoragePath,
   buildLocalLearningResourceStoragePath,
   buildLocalSettingsStoragePath,
+  buildS3CertificationBrandingStoragePath,
   buildS3CourseContentStoragePath,
   buildS3EmailTemplateStoragePath,
   buildS3LearningResourceStoragePath,
@@ -39,7 +41,7 @@ type StoredUploadAsset = {
   uploadedAt: string;
 };
 
-const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/", "email-templates/", "learning-resources/"];
+const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/", "email-templates/", "learning-resources/", "certifications/"];
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 function getPublicUploadDirectory() {
@@ -259,6 +261,13 @@ export async function storeUploadedEmailTemplateAsset(file: File): Promise<Store
   return storeUploadedFile(file, {
     buildLocalStoragePath: () => buildLocalEmailTemplateStoragePath(file.name),
     buildS3StoragePath: (config) => buildS3EmailTemplateStoragePath(file.name, config.s3.namingStrategy),
+  });
+}
+
+export async function storeUploadedCertificationBrandingAsset(file: File): Promise<StoredUploadAsset> {
+  return storeUploadedFile(file, {
+    buildLocalStoragePath: () => buildLocalCertificationBrandingStoragePath(file.name),
+    buildS3StoragePath: (config) => buildS3CertificationBrandingStoragePath(file.name, config.s3.namingStrategy),
   });
 }
 

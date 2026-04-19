@@ -4,8 +4,9 @@ import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState
 import { AlertCircle, CheckCircle2, FileText, Link2, Loader2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { type AuthoredContentDocument, emptyAuthoredContentDocument } from "@/lib/authored-content";
+import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml, type AuthoredContentDocumentV2 } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
+import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ type AddContentForm = {
   contentType: string;
   fileUrl: string;
   bodyJson: AuthoredContentDocument;
+  bodyHtml: string;
   estimatedReadingMinutes: string;
   status: string;
   uploadMode: UploadMode;
@@ -92,6 +94,7 @@ function createInitialForm(): AddContentForm {
     contentType: "PDF",
     fileUrl: "",
     bodyJson: emptyAuthoredContentDocument(),
+    bodyHtml: "",
     estimatedReadingMinutes: "",
     status: "DRAFT",
     uploadMode: "FILES",
@@ -349,6 +352,7 @@ export function AddContentSheet({
   const [isDragging, setIsDragging] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [suggestedContentType, setSuggestedContentType] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -588,7 +592,7 @@ export function AddContentSheet({
         title: form.title,
         description: form.description,
         contentType: form.contentType,
-        bodyJson: form.bodyJson,
+        bodyJson: form.bodyHtml ? { version: 2, html: form.bodyHtml } : form.bodyJson,
         estimatedReadingMinutes: form.estimatedReadingMinutes.trim().length > 0 ? Number(form.estimatedReadingMinutes) : undefined,
         status: form.status,
         isScorm: false,
@@ -906,9 +910,45 @@ export function AddContentSheet({
                 </div>
               </div>
 
-              <AuthoredContentEditor
-                value={form.bodyJson}
-                onChange={(nextBodyJson) => setForm((prev) => ({ ...prev, bodyJson: nextBodyJson }))}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Content Body</label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 rounded-lg"
+                    onClick={() => setRichEditorOpen(true)}
+                    disabled={isSubmitting}
+                  >
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                    Open Rich Editor
+                  </Button>
+                </div>
+                {form.bodyHtml ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div
+                      className="prose prose-sm max-w-none text-slate-700"
+                      dangerouslySetInnerHTML={{ __html: form.bodyHtml }}
+                    />
+                  </div>
+                ) : (
+                  <AuthoredContentEditor
+                    value={form.bodyJson}
+                    onChange={(nextBodyJson) => setForm((prev) => ({ ...prev, bodyJson: nextBodyJson }))}
+                    disabled={isSubmitting}
+                  />
+                )}
+              </div>
+              <RichContentEditorSheet
+                open={richEditorOpen}
+                onOpenChange={setRichEditorOpen}
+                initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
+                courseId={courseId}
+                onSave={(html) => {
+                  setForm((prev) => ({ ...prev, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with rich editor." }] } as AuthoredContentDocument }));
+                  setRichEditorOpen(false);
+                }}
                 disabled={isSubmitting}
               />
             </>

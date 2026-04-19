@@ -761,7 +761,9 @@
           { "label": "PNG", "value": "png" },
           { "label": "MP4", "value": "mp4" },
           { "label": "CSV", "value": "csv" },
-          { "label": "XLSX", "value": "xlsx" }
+          { "label": "XLSX", "value": "xlsx" },
+          { "label": "PPT", "value": "ppt" },
+          { "label": "PPTX", "value": "pptx" }
         ]
       },
       {

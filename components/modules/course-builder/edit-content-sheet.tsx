@@ -1,10 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { type AuthoredContentDocument, emptyAuthoredContentDocument } from "@/lib/authored-content";
+import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml, isV2Document, parseAuthoredContentAnyDocument, type AuthoredContentDocumentV2 } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
+import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +52,7 @@ type EditContentForm = {
   folderId: string;
   contentType: string;
   bodyJson: AuthoredContentDocument;
+  bodyHtml: string;
   estimatedReadingMinutes: string;
   fileUrl: string;
   status: string;
@@ -57,6 +60,52 @@ type EditContentForm = {
 };
 
 const statusOptions = ["DRAFT", "PUBLISHED", "ARCHIVED"];
+
+function ContentExportBar({ contentId }: { contentId: string }) {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const download = useCallback(async (format: "docx" | "html") => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/course-content/${contentId}/export?format=${format}`, { cache: "no-store" });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Export failed.");
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] ? decodeURIComponent(match[1]) : `content.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [contentId, isExporting]);
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+      <Download className="h-3.5 w-3.5 text-slate-400" />
+      <span className="mr-auto text-xs font-medium text-slate-500">Download</span>
+      <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5 rounded-lg px-2.5 text-xs" disabled={isExporting} onClick={() => download("docx")}>
+        {isExporting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+        DOCX
+      </Button>
+      <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5 rounded-lg px-2.5 text-xs" disabled={isExporting} onClick={() => download("html")}>
+        HTML
+      </Button>
+    </div>
+  );
+}
 
 const contentTypeLabels: Record<string, string> = {
   ARTICLE: "Authored Lesson",
@@ -78,12 +127,16 @@ function isValidUrl(value: string) {
 }
 
 function buildForm(detail: ContentDetail): EditContentForm {
+  const parsedAny = detail.bodyJson ? parseAuthoredContentAnyDocument(detail.bodyJson) : null;
+  const existingHtml = parsedAny && isV2Document(parsedAny) ? parsedAny.html : "";
+  const existingBlocks = parsedAny && !isV2Document(parsedAny) ? parsedAny : emptyAuthoredContentDocument();
   return {
     title: detail.title,
     description: detail.description ?? "",
     folderId: detail.folderId ?? "",
     contentType: detail.contentType,
-    bodyJson: detail.bodyJson ?? emptyAuthoredContentDocument(),
+    bodyJson: existingBlocks,
+    bodyHtml: existingHtml,
     estimatedReadingMinutes: detail.estimatedReadingMinutes ? String(detail.estimatedReadingMinutes) : "",
     fileUrl: detail.fileUrl ?? "",
     status: detail.status,
@@ -108,6 +161,7 @@ export function EditContentSheet({
   const [form, setForm] = useState<EditContentForm | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -249,7 +303,7 @@ export function EditContentSheet({
           contentType: form.contentType,
           ...(form.contentType === "ARTICLE"
             ? {
-              bodyJson: form.bodyJson,
+              bodyJson: form.bodyHtml ? { version: 2, html: form.bodyHtml } : form.bodyJson,
               estimatedReadingMinutes: parsedEstimatedMinutes,
             }
             : isStoredUpload
@@ -286,6 +340,10 @@ export function EditContentSheet({
             Update the discoverability and delivery metadata without replacing the underlying asset.
           </SheetDescription>
         </SheetHeader>
+
+        {detail?.contentType === "ARTICLE" && contentId && (
+          <ContentExportBar contentId={contentId} />
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5 px-1 py-4">
           {isLoading ? (
@@ -412,9 +470,44 @@ export function EditContentSheet({
                     />
                   </div>
 
-                  <AuthoredContentEditor
-                    value={form.bodyJson}
-                    onChange={(nextBodyJson) => setForm((current) => current ? { ...current, bodyJson: nextBodyJson } : current)}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Content Body</label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 rounded-lg"
+                        onClick={() => setRichEditorOpen(true)}
+                        disabled={isSubmitting}
+                      >
+                        Open Rich Editor
+                      </Button>
+                    </div>
+                    {form.bodyHtml ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div
+                          className="prose prose-sm max-w-none text-slate-700"
+                          dangerouslySetInnerHTML={{ __html: form.bodyHtml }}
+                        />
+                      </div>
+                    ) : (
+                      <AuthoredContentEditor
+                        value={form.bodyJson}
+                        onChange={(nextBodyJson) => setForm((current) => current ? { ...current, bodyJson: nextBodyJson } : current)}
+                        disabled={isSubmitting}
+                      />
+                    )}
+                  </div>
+                  <RichContentEditorSheet
+                    open={richEditorOpen}
+                    onOpenChange={setRichEditorOpen}
+                    initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
+                    courseId={detail?.courseId}
+                    onSave={(html) => {
+                      setForm((current) => current ? { ...current, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with rich editor." }] } as AuthoredContentDocument } : current);
+                      setRichEditorOpen(false);
+                    }}
                     disabled={isSubmitting}
                   />
                 </div>

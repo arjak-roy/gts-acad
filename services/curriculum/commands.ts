@@ -5,6 +5,8 @@ import { Prisma } from "@prisma/client";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
   AssignCurriculumToBatchInput,
+  CloneCurriculumInput,
+  CreateCurriculumFromTemplateInput,
   CreateCurriculumInput,
   CreateCurriculumModuleInput,
   CreateCurriculumStageInput,
@@ -16,6 +18,7 @@ import type {
   ReorderCurriculumStagesInput,
   ReleaseCurriculumStageItemForBatchInput,
   RevokeCurriculumStageItemReleaseForBatchInput,
+  SaveCurriculumAsTemplateInput,
   UpdateCurriculumInput,
   UpdateCurriculumModuleInput,
   UpdateCurriculumStageInput,
@@ -294,6 +297,121 @@ async function validateStageItemReleasePrerequisite(options: {
   }
 }
 
+function ensureNoPrerequisiteCycle(options: {
+  nodeId: string;
+  prerequisiteId: string | null;
+  prerequisiteById: Map<string, string | null>;
+  entityLabel: string;
+}) {
+  let currentId = options.prerequisiteId;
+  const visited = new Set<string>();
+
+  while (currentId) {
+    if (currentId === options.nodeId) {
+      throw new Error(`${options.entityLabel} prerequisites cannot form a cycle.`);
+    }
+
+    if (visited.has(currentId)) {
+      break;
+    }
+
+    visited.add(currentId);
+    currentId = options.prerequisiteById.get(currentId) ?? null;
+  }
+}
+
+async function validateModulePrerequisite(options: {
+  tx: DbClient;
+  curriculumId: string;
+  moduleId?: string;
+  prerequisiteModuleId: string | null | undefined;
+}) {
+  if (!options.prerequisiteModuleId) {
+    return;
+  }
+
+  if (options.moduleId && options.prerequisiteModuleId === options.moduleId) {
+    throw new Error("A module cannot depend on itself.");
+  }
+
+  const prerequisiteModule = await options.tx.curriculumModule.findUnique({
+    where: { id: options.prerequisiteModuleId },
+    select: { id: true, curriculumId: true },
+  });
+
+  if (!prerequisiteModule) {
+    throw new Error("Prerequisite module not found.");
+  }
+
+  if (prerequisiteModule.curriculumId !== options.curriculumId) {
+    throw new Error("Module prerequisites must belong to the same curriculum.");
+  }
+
+  if (!options.moduleId) {
+    return;
+  }
+
+  const modules = await options.tx.curriculumModule.findMany({
+    where: { curriculumId: options.curriculumId },
+    select: { id: true, prerequisiteModuleId: true },
+  });
+  const prerequisiteById = new Map(modules.map((moduleRecord) => [moduleRecord.id, moduleRecord.prerequisiteModuleId]));
+  prerequisiteById.set(options.moduleId, options.prerequisiteModuleId);
+
+  ensureNoPrerequisiteCycle({
+    nodeId: options.moduleId,
+    prerequisiteId: options.prerequisiteModuleId,
+    prerequisiteById,
+    entityLabel: "Module",
+  });
+}
+
+async function validateStagePrerequisite(options: {
+  tx: DbClient;
+  moduleId: string;
+  stageId?: string;
+  prerequisiteStageId: string | null | undefined;
+}) {
+  if (!options.prerequisiteStageId) {
+    return;
+  }
+
+  if (options.stageId && options.prerequisiteStageId === options.stageId) {
+    throw new Error("A stage cannot depend on itself.");
+  }
+
+  const prerequisiteStage = await options.tx.curriculumStage.findUnique({
+    where: { id: options.prerequisiteStageId },
+    select: { id: true, moduleId: true },
+  });
+
+  if (!prerequisiteStage) {
+    throw new Error("Prerequisite stage not found.");
+  }
+
+  if (prerequisiteStage.moduleId !== options.moduleId) {
+    throw new Error("Stage prerequisites must belong to the same module.");
+  }
+
+  if (!options.stageId) {
+    return;
+  }
+
+  const stages = await options.tx.curriculumStage.findMany({
+    where: { moduleId: options.moduleId },
+    select: { id: true, prerequisiteStageId: true },
+  });
+  const prerequisiteById = new Map(stages.map((stageRecord) => [stageRecord.id, stageRecord.prerequisiteStageId]));
+  prerequisiteById.set(options.stageId, options.prerequisiteStageId);
+
+  ensureNoPrerequisiteCycle({
+    nodeId: options.stageId,
+    prerequisiteId: options.prerequisiteStageId,
+    prerequisiteById,
+    entityLabel: "Stage",
+  });
+}
+
 async function upsertStageItemReleaseConfig(options: {
   tx: DbClient;
   stageItemId: string;
@@ -542,6 +660,11 @@ export async function createCurriculumModuleService(
   const moduleRecord = await prisma.$transaction(async (tx) => {
     await ensureCurriculumExists(tx, input.curriculumId);
     await ensureUniqueModuleTitle(tx, input.curriculumId, input.title);
+    await validateModulePrerequisite({
+      tx,
+      curriculumId: input.curriculumId,
+      prerequisiteModuleId: input.prerequisiteModuleId,
+    });
 
     const sortOrder = await getNextModuleSortOrder(tx, input.curriculumId);
 
@@ -551,6 +674,9 @@ export async function createCurriculumModuleService(
         title: input.title.trim(),
         description: input.description?.trim() || null,
         sortOrder,
+        completionRule: input.completionRule ?? "ALL_REQUIRED",
+        completionThreshold: input.completionThreshold ?? null,
+        prerequisiteModuleId: input.prerequisiteModuleId ?? null,
       },
       select: {
         id: true,
@@ -588,11 +714,23 @@ export async function updateCurriculumModuleService(
       await ensureUniqueModuleTitle(tx, existing.curriculumId, input.title, input.moduleId);
     }
 
+    if (input.prerequisiteModuleId !== undefined) {
+      await validateModulePrerequisite({
+        tx,
+        curriculumId: existing.curriculumId,
+        moduleId: input.moduleId,
+        prerequisiteModuleId: input.prerequisiteModuleId,
+      });
+    }
+
     return tx.curriculumModule.update({
       where: { id: input.moduleId },
       data: {
         ...(input.title !== undefined && { title: input.title.trim() }),
         ...(input.description !== undefined && { description: input.description.trim() || null }),
+        ...(input.completionRule !== undefined && { completionRule: input.completionRule }),
+        ...(input.completionThreshold !== undefined && { completionThreshold: input.completionThreshold }),
+        ...(input.prerequisiteModuleId !== undefined && { prerequisiteModuleId: input.prerequisiteModuleId }),
       },
       select: {
         id: true,
@@ -681,6 +819,11 @@ export async function createCurriculumStageService(
   const stage = await prisma.$transaction(async (tx) => {
     await ensureModuleExists(tx, input.moduleId);
     await ensureUniqueStageTitle(tx, input.moduleId, input.title);
+    await validateStagePrerequisite({
+      tx,
+      moduleId: input.moduleId,
+      prerequisiteStageId: input.prerequisiteStageId,
+    });
 
     const sortOrder = await getNextStageSortOrder(tx, input.moduleId);
 
@@ -690,6 +833,9 @@ export async function createCurriculumStageService(
         title: input.title.trim(),
         description: input.description?.trim() || null,
         sortOrder,
+        completionRule: input.completionRule ?? "ALL_REQUIRED",
+        completionThreshold: input.completionThreshold ?? null,
+        prerequisiteStageId: input.prerequisiteStageId ?? null,
       },
       select: {
         id: true,
@@ -727,11 +873,23 @@ export async function updateCurriculumStageService(
       await ensureUniqueStageTitle(tx, existing.moduleId, input.title, input.stageId);
     }
 
+    if (input.prerequisiteStageId !== undefined) {
+      await validateStagePrerequisite({
+        tx,
+        moduleId: existing.moduleId,
+        stageId: input.stageId,
+        prerequisiteStageId: input.prerequisiteStageId,
+      });
+    }
+
     return tx.curriculumStage.update({
       where: { id: input.stageId },
       data: {
         ...(input.title !== undefined && { title: input.title.trim() }),
         ...(input.description !== undefined && { description: input.description.trim() || null }),
+        ...(input.completionRule !== undefined && { completionRule: input.completionRule }),
+        ...(input.completionThreshold !== undefined && { completionThreshold: input.completionThreshold }),
+        ...(input.prerequisiteStageId !== undefined && { prerequisiteStageId: input.prerequisiteStageId }),
       },
       select: {
         id: true,
@@ -1224,4 +1382,330 @@ async function ensureUniqueCurriculumTitle(tx: DbClient, courseId: string, title
   if (duplicate) {
     throw new Error("A curriculum with this title already exists for the selected course.");
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Deep-clone a curriculum (Gap 1: Curriculum Cloning)                */
+/* ------------------------------------------------------------------ */
+
+async function deepCloneCurriculum(
+  tx: DbClient,
+  options: {
+    sourceCurriculumId: string;
+    targetCourseId: string;
+    title: string;
+    isTemplate: boolean;
+    actorUserId?: string;
+  },
+): Promise<CurriculumCreateResult> {
+  const source = await tx.curriculum.findUnique({
+    where: { id: options.sourceCurriculumId },
+    select: {
+      id: true,
+      courseId: true,
+      description: true,
+      modules: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          sortOrder: true,
+          completionRule: true,
+          completionThreshold: true,
+          prerequisiteModuleId: true,
+          stages: {
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              sortOrder: true,
+              completionRule: true,
+              completionThreshold: true,
+              prerequisiteStageId: true,
+              items: {
+                orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+                select: {
+                  id: true,
+                  itemType: true,
+                  contentId: true,
+                  assessmentPoolId: true,
+                  sortOrder: true,
+                  isRequired: true,
+                  releaseConfig: {
+                    select: {
+                      releaseType: true,
+                      releaseAt: true,
+                      releaseOffsetDays: true,
+                      minimumScorePercent: true,
+                      estimatedDurationMinutes: true,
+                      dueAt: true,
+                      dueOffsetDays: true,
+                      prerequisiteStageItemId: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!source) {
+    throw new Error("Source curriculum not found.");
+  }
+
+  const isCrossCourse = source.courseId !== options.targetCourseId;
+
+  const created = await tx.curriculum.create({
+    data: {
+      courseId: options.targetCourseId,
+      title: options.title.trim(),
+      description: source.description,
+      status: "DRAFT",
+      isTemplate: options.isTemplate,
+      sourceCurriculumId: options.sourceCurriculumId,
+      createdById: options.actorUserId ?? null,
+    },
+    select: { id: true, courseId: true, title: true, status: true },
+  });
+
+  // Build ID maps for prerequisite rewiring
+  const oldModuleIdToNew = new Map<string, string>();
+  const oldStageIdToNew = new Map<string, string>();
+  const oldItemIdToNew = new Map<string, string>();
+
+  for (const srcModule of source.modules) {
+    const newModule = await tx.curriculumModule.create({
+      data: {
+        curriculumId: created.id,
+        title: srcModule.title,
+        description: srcModule.description,
+        sortOrder: srcModule.sortOrder,
+        completionRule: srcModule.completionRule,
+        completionThreshold: srcModule.completionThreshold,
+      },
+      select: { id: true },
+    });
+    oldModuleIdToNew.set(srcModule.id, newModule.id);
+
+    for (const srcStage of srcModule.stages) {
+      const newStage = await tx.curriculumStage.create({
+        data: {
+          moduleId: newModule.id,
+          title: srcStage.title,
+          description: srcStage.description,
+          sortOrder: srcStage.sortOrder,
+          completionRule: srcStage.completionRule,
+          completionThreshold: srcStage.completionThreshold,
+        },
+        select: { id: true },
+      });
+      oldStageIdToNew.set(srcStage.id, newStage.id);
+
+      for (const srcItem of srcStage.items) {
+        // For cross-course clones, skip content items (they belong to source course)
+        // Assessments are course-agnostic so they can be referenced
+        if (isCrossCourse && srcItem.itemType === "CONTENT" && srcItem.contentId) {
+          continue;
+        }
+
+        const newItem = await tx.curriculumStageItem.create({
+          data: {
+            stageId: newStage.id,
+            itemType: srcItem.itemType,
+            contentId: srcItem.contentId,
+            assessmentPoolId: srcItem.assessmentPoolId,
+            sortOrder: srcItem.sortOrder,
+            isRequired: srcItem.isRequired,
+          },
+          select: { id: true },
+        });
+        oldItemIdToNew.set(srcItem.id, newItem.id);
+
+        if (srcItem.releaseConfig) {
+          const rc = srcItem.releaseConfig;
+          const newPrereqId = rc.prerequisiteStageItemId
+            ? oldItemIdToNew.get(rc.prerequisiteStageItemId) ?? null
+            : null;
+
+          // Skip prerequisite-based release types if the prerequisite item wasn't cloned
+          const releaseType =
+            (rc.releaseType === "PREVIOUS_ITEM_COMPLETION" || rc.releaseType === "PREVIOUS_ITEM_SCORE") && !newPrereqId
+              ? "IMMEDIATE"
+              : rc.releaseType;
+
+          await tx.curriculumStageItemRelease.create({
+            data: {
+              stageItemId: newItem.id,
+              releaseType,
+              releaseAt: rc.releaseAt,
+              releaseOffsetDays: rc.releaseOffsetDays,
+              prerequisiteStageItemId: newPrereqId,
+              minimumScorePercent: releaseType === "PREVIOUS_ITEM_SCORE" ? rc.minimumScorePercent : null,
+              estimatedDurationMinutes: rc.estimatedDurationMinutes,
+              dueAt: rc.dueAt,
+              dueOffsetDays: rc.dueOffsetDays,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // Wire module prerequisites
+  for (const srcModule of source.modules) {
+    const newModuleId = oldModuleIdToNew.get(srcModule.id);
+
+    if (!newModuleId) {
+      continue;
+    }
+
+    if (srcModule.prerequisiteModuleId) {
+      const newPrerequisiteModuleId = oldModuleIdToNew.get(srcModule.prerequisiteModuleId) ?? null;
+
+      if (newPrerequisiteModuleId) {
+        await tx.curriculumModule.update({
+          where: { id: newModuleId },
+          data: { prerequisiteModuleId: newPrerequisiteModuleId },
+        });
+      }
+    }
+
+    for (const srcStage of srcModule.stages) {
+      const newStageId = oldStageIdToNew.get(srcStage.id);
+
+      if (!newStageId || !srcStage.prerequisiteStageId) {
+        continue;
+      }
+
+      const newPrerequisiteStageId = oldStageIdToNew.get(srcStage.prerequisiteStageId) ?? null;
+
+      if (newPrerequisiteStageId) {
+        await tx.curriculumStage.update({
+          where: { id: newStageId },
+          data: { prerequisiteStageId: newPrerequisiteStageId },
+        });
+      }
+    }
+  }
+
+  return created;
+}
+
+export async function cloneCurriculumService(
+  input: CloneCurriculumInput,
+  options?: { actorUserId?: string },
+): Promise<CurriculumCreateResult> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    await ensureUniqueCurriculumTitle(tx, input.targetCourseId, input.title);
+    return deepCloneCurriculum(tx, {
+      sourceCurriculumId: input.sourceCurriculumId,
+      targetCourseId: input.targetCourseId,
+      title: input.title,
+      isTemplate: false,
+      actorUserId: options?.actorUserId,
+    });
+  }, { timeout: 30_000 });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
+    entityId: created.id,
+    action: AUDIT_ACTION_TYPE.CREATED,
+    message: `Curriculum "${created.title}" cloned from source.`,
+    actorUserId: options?.actorUserId,
+    metadata: { sourceCurriculumId: input.sourceCurriculumId },
+  });
+
+  return created;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Save curriculum as template (Gap 2: Templates)                     */
+/* ------------------------------------------------------------------ */
+
+export async function saveCurriculumAsTemplateService(
+  input: SaveCurriculumAsTemplateInput,
+  options?: { actorUserId?: string },
+): Promise<CurriculumCreateResult> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const source = await ensureCurriculumExists(tx, input.curriculumId);
+    const templateTitle = `[Template] ${source.title}`;
+    await ensureUniqueCurriculumTitle(tx, source.courseId, templateTitle);
+
+    return deepCloneCurriculum(tx, {
+      sourceCurriculumId: input.curriculumId,
+      targetCourseId: source.courseId,
+      title: templateTitle,
+      isTemplate: true,
+      actorUserId: options?.actorUserId,
+    });
+  }, { timeout: 30_000 });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
+    entityId: created.id,
+    action: AUDIT_ACTION_TYPE.CREATED,
+    message: `Curriculum template "${created.title}" created.`,
+    actorUserId: options?.actorUserId,
+    metadata: { sourceCurriculumId: input.curriculumId },
+  });
+
+  return created;
+}
+
+export async function createCurriculumFromTemplateService(
+  input: CreateCurriculumFromTemplateInput,
+  options?: { actorUserId?: string },
+): Promise<CurriculumCreateResult> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const template = await tx.curriculum.findUnique({
+      where: { id: input.templateCurriculumId },
+      select: { id: true, isTemplate: true },
+    });
+
+    if (!template) {
+      throw new Error("Template not found.");
+    }
+
+    if (!template.isTemplate) {
+      throw new Error("The selected curriculum is not a template.");
+    }
+
+    await ensureUniqueCurriculumTitle(tx, input.targetCourseId, input.title);
+
+    return deepCloneCurriculum(tx, {
+      sourceCurriculumId: input.templateCurriculumId,
+      targetCourseId: input.targetCourseId,
+      title: input.title,
+      isTemplate: false,
+      actorUserId: options?.actorUserId,
+    });
+  }, { timeout: 30_000 });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
+    entityId: created.id,
+    action: AUDIT_ACTION_TYPE.CREATED,
+    message: `Curriculum "${created.title}" created from template.`,
+    actorUserId: options?.actorUserId,
+    metadata: { templateCurriculumId: input.templateCurriculumId },
+  });
+
+  return created;
 }

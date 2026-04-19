@@ -186,6 +186,7 @@ enum ScheduleEventType {
 enum LiveClassProvider {
   MANUAL @map("manual")
   HMS    @map("hms")
+  WEBRTC @map("webrtc")
 
   @@map("live_class_provider")
 }
@@ -196,6 +197,36 @@ enum CertificateStatus {
   EXPIRED @map("expired")
 
   @@map("certificate_status")
+}
+
+enum CertificateAutoIssueTrigger {
+  CURRICULUM_COMPLETION @map("curriculum_completion")
+  ENROLLMENT_COMPLETION @map("enrollment_completion")
+
+  @@map("certificate_auto_issue_trigger")
+}
+
+enum CertificateAutoIssueAttemptStatus {
+  ISSUED  @map("issued")
+  SKIPPED @map("skipped")
+  FAILED  @map("failed")
+
+  @@map("certificate_auto_issue_attempt_status")
+}
+
+enum CertificateOrientation {
+  LANDSCAPE @map("landscape")
+  PORTRAIT  @map("portrait")
+
+  @@map("certificate_orientation")
+}
+
+enum CertificatePaperSize {
+  A4     @map("a4")
+  LETTER @map("letter")
+  CUSTOM @map("custom")
+
+  @@map("certificate_paper_size")
 }
 
 enum PlacementStatus {
@@ -416,6 +447,15 @@ enum CurriculumItemReleaseType {
   @@map("curriculum_item_release_type")
 }
 
+enum CurriculumCompletionRule {
+  ALL_REQUIRED        @map("all_required")
+  ALL_ITEMS           @map("all_items")
+  PERCENTAGE          @map("percentage")
+  MIN_ITEMS           @map("min_items")
+
+  @@map("curriculum_completion_rule")
+}
+
 enum QuestionType {
   MCQ                   @map("mcq")
   TRUE_FALSE            @map("true_false")
@@ -556,6 +596,7 @@ model User {
   createdCurricula         Curriculum[]             @relation("CurriculumCreatedBy")
   createdLearningResources LearningResource[]       @relation("LearningResourceCreatedBy")
   updatedLearningResources LearningResource[]       @relation("LearningResourceUpdatedBy")
+  deletedLearningResources LearningResource[]       @relation("LearningResourceDeletedBy")
   assignedLearningResources LearningResourceAssignment[] @relation("LearningResourceAssignedBy")
   learningResourceVersions LearningResourceVersion[] @relation("LearningResourceVersionUpdatedBy")
   learningResourceUsages   LearningResourceUsage[]  @relation("LearningResourceUsageActor")
@@ -569,6 +610,9 @@ model User {
   emailTemplateVersions    EmailTemplateVersion[]   @relation("EmailTemplateVersionUpdatedBy")
   activityLogs             UserActivityLog[]        @relation("UserActivityLogs")
   createdPromptVersions    BuddyPromptVersion[]     @relation("promptVersionCreator")
+  createdCertificateTemplates CertificateTemplate[] @relation("CertificateTemplateCreatedBy")
+  issuedCertificates       Certificate[]            @relation("CertificateIssuedBy")
+  revokedCertificates      Certificate[]            @relation("CertificateRevokedBy")
 
   @@map("users")
 }
@@ -1015,6 +1059,8 @@ model Course {
   trainerAssignments    TrainerCourseAssignment[]
   buddyPersonaAssignments BuddyPersonaCourseAssignment[]
   curricula             Curriculum[]
+  certificateTemplates  CertificateTemplate[]
+  certificates          Certificate[]
 
   @@index([isActive], map: "idx_courses_active")
   @@index([status], map: "idx_courses_status")
@@ -1171,6 +1217,8 @@ model Batch {
   batchCurriculumMappings BatchCurriculumMapping[]
   curriculumItemReleases  BatchCurriculumStageItemRelease[]
   curriculumItemProgress  LearnerCurriculumItemProgress[]
+  certificates            Certificate[]
+  autoIssueAttempts       CertificateAutoIssueAttempt[]
 
   @@index([programId, status], map: "idx_batches_program_status")
   @@index([trainerId], map: "idx_batches_trainer")
@@ -1218,6 +1266,7 @@ model Learner {
   interviews                 Interview[]
   assessmentAttempts         AssessmentAttempt[]
   curriculumItemProgress     LearnerCurriculumItemProgress[]
+  autoIssueAttempts          CertificateAutoIssueAttempt[]
 
   @@index([userId], map: "idx_candidates_user")
   @@index([placementStatus, recruiterSyncStatus], map: "idx_candidates_status")
@@ -1454,17 +1503,117 @@ model ReadinessSnapshot {
 }
 
 model Certificate {
-  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("certificate_id")
-  learnerId        String            @db.Uuid @map("candidate_id")
-  programId        String            @db.Uuid @map("program_id")
-  status           CertificateStatus @default(ISSUED)
-  issuedAt         DateTime          @default(now()) @map("issued_at") @db.Timestamptz(6)
-  verificationCode String            @unique @map("verification_code") @db.VarChar(100)
-  learner          Learner           @relation(fields: [learnerId], references: [id], onDelete: Cascade)
-  program          Program           @relation(fields: [programId], references: [id], onDelete: Restrict)
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("certificate_id")
+  learnerId         String              @db.Uuid @map("candidate_id")
+  programId         String              @db.Uuid @map("program_id")
+  courseId           String?             @db.Uuid @map("course_id")
+  batchId           String?             @db.Uuid @map("batch_id")
+  templateId        String?             @db.Uuid @map("template_id")
+  status            CertificateStatus   @default(ISSUED)
+  certificateNumber String?             @unique @map("certificate_number") @db.VarChar(60)
+  issuedAt          DateTime            @default(now()) @map("issued_at") @db.Timestamptz(6)
+  issuedById        String?             @db.Uuid @map("issued_by_user_id")
+  verificationCode  String              @unique @map("verification_code") @db.VarChar(100)
+  renderedDataJson  Json?               @map("rendered_data_json")
+  expiresAt         DateTime?           @map("expires_at") @db.Timestamptz(6)
+  revokedAt         DateTime?           @map("revoked_at") @db.Timestamptz(6)
+  revokedById       String?             @db.Uuid @map("revoked_by_user_id")
+  revocationReason  String?             @map("revocation_reason")
+  learner           Learner             @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  program           Program             @relation(fields: [programId], references: [id], onDelete: Restrict)
+  course            Course?             @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  batch             Batch?              @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  template          CertificateTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  issuedBy          User?               @relation("CertificateIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  revokedBy         User?               @relation("CertificateRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  autoIssueAttempts CertificateAutoIssueAttempt[]
 
   @@index([issuedAt, status], map: "idx_certificates_issued")
+  @@index([courseId, status], map: "idx_certificates_course_status")
+  @@index([learnerId, courseId], map: "idx_certificates_learner_course")
   @@map("candidate_certificates")
+}
+
+model CertificateTemplate {
+  id                      String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("template_id")
+  courseId                 String?                 @db.Uuid @map("course_id")
+  title                   String                  @db.VarChar(255)
+  description             String?
+  layoutJson              Json                    @default("[]") @map("layout_json")
+  orientation             CertificateOrientation  @default(LANDSCAPE)
+  paperSize               CertificatePaperSize    @default(A4) @map("paper_size")
+  backgroundColor         String?                 @map("background_color") @db.VarChar(30)
+  backgroundImageUrl      String?                 @map("background_image_url")
+  logoUrl                 String?                 @map("logo_url")
+  signatory1Name          String?                 @map("signatory_1_name") @db.VarChar(255)
+  signatory1Title         String?                 @map("signatory_1_title") @db.VarChar(255)
+  signatory1SignatureUrl   String?                 @map("signatory_1_signature_url")
+  signatory2Name          String?                 @map("signatory_2_name") @db.VarChar(255)
+  signatory2Title         String?                 @map("signatory_2_title") @db.VarChar(255)
+  signatory2SignatureUrl   String?                 @map("signatory_2_signature_url")
+  isActive                Boolean                 @default(true) @map("is_active")
+  isDefault               Boolean                 @default(false) @map("is_default")
+  createdById             String?                 @db.Uuid @map("created_by_user_id")
+  createdAt               DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  course                  Course?                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy               User?                   @relation("CertificateTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  certificates            Certificate[]
+  autoIssueRules          CertificateAutoIssueRule[]
+  autoIssueAttempts       CertificateAutoIssueAttempt[]
+
+  @@index([courseId, isActive], map: "idx_cert_templates_course_active")
+  @@index([courseId, isDefault], map: "idx_cert_templates_course_default")
+  @@map("certificate_templates")
+}
+
+model CertificateAutoIssueRule {
+  id            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("rule_id")
+  templateId    String                      @db.Uuid @map("template_id")
+  curriculumId  String?                     @db.Uuid @map("curriculum_id")
+  trigger       CertificateAutoIssueTrigger @map("trigger")
+  isActive      Boolean                     @default(true) @map("is_active")
+  createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+  template      CertificateTemplate         @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  curriculum    Curriculum?                 @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  attempts      CertificateAutoIssueAttempt[]
+
+  @@unique([templateId, curriculumId], map: "uq_auto_issue_rule")
+  @@index([trigger, isActive], map: "idx_auto_issue_rules_trigger")
+  @@map("certificate_auto_issue_rules")
+}
+
+model CertificateAutoIssueAttempt {
+  id                   String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("attempt_id")
+  learnerId            String                            @db.Uuid @map("candidate_id")
+  batchId              String                            @db.Uuid @map("batch_id")
+  ruleId               String?                           @db.Uuid @map("rule_id")
+  templateId           String?                           @db.Uuid @map("template_id")
+  curriculumId         String?                           @db.Uuid @map("curriculum_id")
+  trigger              CertificateAutoIssueTrigger       @map("trigger")
+  status               CertificateAutoIssueAttemptStatus @default(SKIPPED)
+  certificateId        String?                           @db.Uuid @map("certificate_id")
+  reason               String?                           @db.VarChar(1000)
+  metadata             Json                              @default("{}")
+  retriedFromAttemptId String?                           @db.Uuid @map("retried_from_attempt_id")
+  attemptedAt          DateTime                          @default(now()) @map("attempted_at") @db.Timestamptz(6)
+  learner              Learner                           @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  batch                Batch                             @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rule                 CertificateAutoIssueRule?         @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  template             CertificateTemplate?              @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  curriculum           Curriculum?                       @relation(fields: [curriculumId], references: [id], onDelete: SetNull)
+  certificate          Certificate?                      @relation(fields: [certificateId], references: [id], onDelete: SetNull)
+  retriedFromAttempt   CertificateAutoIssueAttempt?      @relation("CertificateAutoIssueAttemptRetry", fields: [retriedFromAttemptId], references: [id], onDelete: SetNull)
+  retriedAttempts      CertificateAutoIssueAttempt[]     @relation("CertificateAutoIssueAttemptRetry")
+
+  @@index([status, attemptedAt], map: "idx_cert_auto_issue_attempts_status_attempted")
+  @@index([learnerId, attemptedAt], map: "idx_cert_auto_issue_attempts_learner_attempted")
+  @@index([batchId, attemptedAt], map: "idx_cert_auto_issue_attempts_batch_attempted")
+  @@index([ruleId, attemptedAt], map: "idx_cert_auto_issue_attempts_rule_attempted")
+  @@index([retriedFromAttemptId], map: "idx_cert_auto_issue_attempts_retry_parent")
+  @@map("certificate_auto_issue_attempts")
 }
 
 model RecruiterSyncLog {
@@ -1640,12 +1789,15 @@ model CourseContent {
   scormMetadata        Json?                 @map("scorm_metadata")
   isAiGenerated        Boolean               @default(false) @map("is_ai_generated")
   aiGenerationMetadata Json?                 @map("ai_generation_metadata")
+  sourceContentId      String?               @db.Uuid @map("source_content_id")
   createdById          String?               @db.Uuid @map("created_by_user_id")
   createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   course               Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
   folder               CourseContentFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
   createdBy            User?                 @relation("ContentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  sourceContent        CourseContent?         @relation("ContentCloneSource", fields: [sourceContentId], references: [id], onDelete: SetNull)
+  clonedContents       CourseContent[]        @relation("ContentCloneSource")
   learningResource     LearningResource?     @relation("LearningResourceSourceContent")
   batchContentMappings BatchContentMapping[]
   curriculumStageItems CurriculumStageItem[] @relation("CurriculumContentItems")
@@ -1728,6 +1880,8 @@ model LearningResource {
   publishedAt           DateTime?                  @map("published_at") @db.Timestamptz(6)
   createdById           String?                    @db.Uuid @map("created_by_user_id")
   updatedById           String?                    @db.Uuid @map("updated_by_user_id")
+  deletedById           String?                    @db.Uuid @map("deleted_by_user_id")
+  deletedAt             DateTime?                  @map("deleted_at") @db.Timestamptz(6)
   createdAt             DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   sourceContent         CourseContent?             @relation("LearningResourceSourceContent", fields: [sourceContentId], references: [id], onDelete: Cascade)
@@ -1735,6 +1889,7 @@ model LearningResource {
   subcategory           LearningResourceCategory?  @relation("LearningResourceSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
   createdBy             User?                      @relation("LearningResourceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy             User?                      @relation("LearningResourceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  deletedBy             User?                      @relation("LearningResourceDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   tags                  LearningResourceTagMap[]
   attachments           LearningResourceAttachment[]
   assignments           LearningResourceAssignment[]
@@ -1742,6 +1897,7 @@ model LearningResource {
   usages                LearningResourceUsage[]
 
   @@index([status, visibility, updatedAt], map: "idx_learning_resources_status_visibility_updated")
+  @@index([deletedAt, updatedAt], map: "idx_learning_resources_active_updated")
   @@index([categoryId, subcategoryId], map: "idx_learning_resources_category")
   @@index([contentType, status], map: "idx_learning_resources_type_status")
   @@map("learning_resources")
@@ -1828,35 +1984,47 @@ model LearningResourceUsage {
 }
 
 model Curriculum {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("curriculum_id")
-  courseId    String           @db.Uuid @map("course_id")
-  title       String           @db.VarChar(255)
-  description String?
-  status      CurriculumStatus @default(DRAFT)
-  createdById String?          @db.Uuid @map("created_by_user_id")
-  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  createdBy   User?            @relation("CurriculumCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  modules     CurriculumModule[]
-  batchMappings BatchCurriculumMapping[]
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("curriculum_id")
+  courseId            String           @db.Uuid @map("course_id")
+  title               String           @db.VarChar(255)
+  description         String?
+  status              CurriculumStatus @default(DRAFT)
+  isTemplate          Boolean          @default(false) @map("is_template")
+  sourceCurriculumId  String?          @db.Uuid @map("source_curriculum_id")
+  createdById         String?          @db.Uuid @map("created_by_user_id")
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  course              Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy           User?            @relation("CurriculumCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  sourceCurriculum    Curriculum?      @relation("CurriculumCloneSource", fields: [sourceCurriculumId], references: [id], onDelete: SetNull)
+  clonedCurricula     Curriculum[]     @relation("CurriculumCloneSource")
+  modules             CurriculumModule[]
+  batchMappings       BatchCurriculumMapping[]
+  autoIssueRules      CertificateAutoIssueRule[]
+  autoIssueAttempts   CertificateAutoIssueAttempt[]
 
   @@unique([courseId, title])
   @@index([courseId, status], map: "idx_curricula_course_status")
   @@index([status], map: "idx_curricula_status")
+  @@index([isTemplate], map: "idx_curricula_is_template")
   @@map("curricula")
 }
 
 model CurriculumModule {
-  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("module_id")
-  curriculumId String            @db.Uuid @map("curriculum_id")
-  title        String            @db.VarChar(255)
-  description  String?
-  sortOrder    Int               @default(0) @map("sort_order")
-  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  curriculum   Curriculum        @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
-  stages       CurriculumStage[]
+  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("module_id")
+  curriculumId          String                    @db.Uuid @map("curriculum_id")
+  title                 String                    @db.VarChar(255)
+  description           String?
+  sortOrder             Int                       @default(0) @map("sort_order")
+  completionRule        CurriculumCompletionRule  @default(ALL_REQUIRED) @map("completion_rule")
+  completionThreshold   Int?                      @map("completion_threshold")
+  prerequisiteModuleId  String?                   @db.Uuid @map("prerequisite_module_id")
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  curriculum            Curriculum                @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  prerequisiteModule    CurriculumModule?         @relation("ModulePrerequisite", fields: [prerequisiteModuleId], references: [id], onDelete: SetNull)
+  dependentModules      CurriculumModule[]        @relation("ModulePrerequisite")
+  stages                CurriculumStage[]
 
   @@unique([curriculumId, title])
   @@index([curriculumId, sortOrder], map: "idx_curriculum_modules_curriculum_order")
@@ -1864,15 +2032,20 @@ model CurriculumModule {
 }
 
 model CurriculumStage {
-  id         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("stage_id")
-  moduleId   String                @db.Uuid @map("module_id")
-  title      String                @db.VarChar(255)
-  description String?
-  sortOrder  Int                   @default(0) @map("sort_order")
-  createdAt  DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  module     CurriculumModule      @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  items      CurriculumStageItem[]
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("stage_id")
+  moduleId             String                    @db.Uuid @map("module_id")
+  title                String                    @db.VarChar(255)
+  description          String?
+  sortOrder            Int                       @default(0) @map("sort_order")
+  completionRule       CurriculumCompletionRule  @default(ALL_REQUIRED) @map("completion_rule")
+  completionThreshold  Int?                      @map("completion_threshold")
+  prerequisiteStageId  String?                   @db.Uuid @map("prerequisite_stage_id")
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  module               CurriculumModule          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  prerequisiteStage    CurriculumStage?          @relation("StagePrerequisite", fields: [prerequisiteStageId], references: [id], onDelete: SetNull)
+  dependentStages      CurriculumStage[]         @relation("StagePrerequisite")
+  items                CurriculumStageItem[]
 
   @@unique([moduleId, title])
   @@index([moduleId, sortOrder], map: "idx_curriculum_stages_module_order")

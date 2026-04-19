@@ -3,10 +3,10 @@ import "server-only";
 import { Prisma, UploadStorageProvider } from "@prisma/client";
 
 import {
-  estimateReadingMinutesFromDocument,
-  extractAuthoredExcerpt,
-  parseAuthoredContentDocument,
-  renderAuthoredContentToHtml,
+  estimateAnyReadingMinutes,
+  extractAnyExcerpt,
+  parseAuthoredContentAnyDocument,
+  renderAnyDocumentToHtml,
 } from "@/lib/authored-content";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
@@ -151,11 +151,11 @@ function buildSnapshot(args: {
 
 function buildLinkedContentSnapshot(content: LinkedCourseContentRecord) {
   const authoredBodyJson = content.contentType === "ARTICLE"
-    ? parseAuthoredContentDocument(content.bodyJson)
+    ? parseAuthoredContentAnyDocument(content.bodyJson)
     : null;
 
   if (content.contentType === "ARTICLE" && !authoredBodyJson) {
-    throw new Error("Authored content requires body blocks before it can be synced into the repository.");
+    throw new Error("Authored content requires body content before it can be synced into the repository.");
   }
 
   return {
@@ -169,7 +169,7 @@ function buildLinkedContentSnapshot(content: LinkedCourseContentRecord) {
     bodyJson: authoredBodyJson,
     renderedHtml: content.renderedHtml ?? null,
     estimatedReadingMinutes: content.contentType === "ARTICLE"
-      ? content.estimatedReadingMinutes ?? estimateReadingMinutesFromDocument(authoredBodyJson)
+      ? content.estimatedReadingMinutes ?? estimateAnyReadingMinutes(authoredBodyJson)
       : null,
     fileUrl: content.contentType === "ARTICLE" ? null : normalizeOptionalText(content.fileUrl),
     fileName: content.contentType === "ARTICLE" ? null : normalizeOptionalText(content.fileName),
@@ -628,8 +628,8 @@ async function createVersionRecord(
 }
 
 async function getCurrentResourceSnapshotRecord(tx: TransactionClient, resourceId: string) {
-  return tx.learningResource.findUnique({
-    where: { id: resourceId },
+  return tx.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: {
       id: true,
       title: true,
@@ -686,7 +686,7 @@ function buildCurrentResourceSnapshot(
     categoryName: resource.category?.name ?? null,
     subcategoryName: resource.subcategory?.name ?? null,
     tags: resource.tags.map((tagLink) => tagLink.tag.name),
-    bodyJson: parseAuthoredContentDocument(resource.bodyJson),
+    bodyJson: parseAuthoredContentAnyDocument(resource.bodyJson),
     renderedHtml: resource.renderedHtml,
     estimatedReadingMinutes: resource.estimatedReadingMinutes,
     fileUrl: resource.fileUrl,
@@ -744,10 +744,10 @@ export async function createLearningResourceService(
   options?: { actorUserId?: string },
 ): Promise<LearningResourceCreateResult> {
   const isAuthoredContent = input.contentType === "ARTICLE";
-  const authoredBodyJson = isAuthoredContent ? parseAuthoredContentDocument(input.bodyJson) : null;
+  const authoredBodyJson = isAuthoredContent ? parseAuthoredContentAnyDocument(input.bodyJson) : null;
 
   if (isAuthoredContent && !authoredBodyJson) {
-    throw new Error("Authored resources require body blocks.");
+    throw new Error("Authored resources require body content.");
   }
 
   const normalizedFileUrl = isAuthoredContent ? null : normalizeOptionalText(input.fileUrl);
@@ -756,12 +756,12 @@ export async function createLearningResourceService(
   }
 
   const excerpt = isAuthoredContent
-    ? normalizeOptionalText(input.excerpt) ?? extractAuthoredExcerpt(authoredBodyJson)
+    ? normalizeOptionalText(input.excerpt) ?? extractAnyExcerpt(authoredBodyJson)
     : normalizeOptionalText(input.excerpt);
   const estimatedReadingMinutes = isAuthoredContent
-    ? input.estimatedReadingMinutes ?? estimateReadingMinutesFromDocument(authoredBodyJson)
+    ? input.estimatedReadingMinutes ?? estimateAnyReadingMinutes(authoredBodyJson)
     : null;
-  const renderedHtml = isAuthoredContent ? renderAuthoredContentToHtml(authoredBodyJson) : null;
+  const renderedHtml = isAuthoredContent ? renderAnyDocumentToHtml(authoredBodyJson) : null;
   const attachments = normalizeAttachments(input.attachments);
   const tagNames = normalizeTagNames(input.tags);
 
@@ -997,11 +997,11 @@ export async function importCourseContentToLearningResourceService(
   }
 
   const importedBodyJson = content.contentType === "ARTICLE"
-    ? parseAuthoredContentDocument(content.bodyJson)
+    ? parseAuthoredContentAnyDocument(content.bodyJson)
     : null;
 
   if (content.contentType === "ARTICLE" && !importedBodyJson) {
-    throw new Error("Authored course content cannot be imported without body blocks.");
+    throw new Error("Authored course content cannot be imported without body content.");
   }
 
   const importedResource = await createLearningResourceService({
@@ -1051,8 +1051,8 @@ export async function updateLearningResourceService(
     throw new Error("Database not configured.");
   }
 
-  const existing = await prisma.learningResource.findUnique({
-    where: { id: input.resourceId },
+  const existing = await prisma.learningResource.findFirst({
+    where: { id: input.resourceId, deletedAt: null },
     select: {
       id: true,
       sourceContentId: true,
@@ -1098,11 +1098,11 @@ export async function updateLearningResourceService(
   const nextContentType = input.contentType ?? existing.contentType;
   const isAuthoredContent = nextContentType === "ARTICLE";
   const nextBodyJson = isAuthoredContent
-    ? parseAuthoredContentDocument(input.bodyJson !== undefined ? input.bodyJson : existing.bodyJson)
+    ? parseAuthoredContentAnyDocument(input.bodyJson !== undefined ? input.bodyJson : existing.bodyJson)
     : null;
 
   if (isAuthoredContent && !nextBodyJson) {
-    throw new Error("Authored resources require body blocks.");
+    throw new Error("Authored resources require body content.");
   }
 
   const nextFileUrl = isAuthoredContent
@@ -1114,12 +1114,12 @@ export async function updateLearningResourceService(
   }
 
   const nextExcerpt = isAuthoredContent
-    ? normalizeOptionalText(input.excerpt !== undefined ? input.excerpt : existing.excerpt) ?? extractAuthoredExcerpt(nextBodyJson)
+    ? normalizeOptionalText(input.excerpt !== undefined ? input.excerpt : existing.excerpt) ?? extractAnyExcerpt(nextBodyJson)
     : normalizeOptionalText(input.excerpt !== undefined ? input.excerpt : existing.excerpt);
   const nextEstimatedReadingMinutes = isAuthoredContent
-    ? input.estimatedReadingMinutes ?? existing.estimatedReadingMinutes ?? estimateReadingMinutesFromDocument(nextBodyJson)
+    ? input.estimatedReadingMinutes ?? existing.estimatedReadingMinutes ?? estimateAnyReadingMinutes(nextBodyJson)
     : null;
-  const nextRenderedHtml = isAuthoredContent ? renderAuthoredContentToHtml(nextBodyJson) : null;
+  const nextRenderedHtml = isAuthoredContent ? renderAnyDocumentToHtml(nextBodyJson) : null;
   const nextTagNames = input.tags !== undefined
     ? normalizeTagNames(input.tags)
     : existing.tags.map((tagLink) => tagLink.tag.name);
@@ -1303,8 +1303,8 @@ export async function deleteLearningResourceService(
     throw new Error("Database not configured.");
   }
 
-  const existing = await prisma.learningResource.findUnique({
-    where: { id: resourceId },
+  const existing = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: {
       id: true,
       sourceContentId: true,
@@ -1332,8 +1332,13 @@ export async function deleteLearningResourceService(
     throw new Error("Linked repository items must be deleted from the repository explorer.");
   }
 
-  const deleted = await prisma.learningResource.delete({
+  const deleted = await prisma.learningResource.update({
     where: { id: resourceId },
+    data: {
+      deletedAt: new Date(),
+      deletedById: options?.actorUserId ?? null,
+      updatedById: options?.actorUserId ?? null,
+    },
     select: {
       id: true,
       title: true,
@@ -1344,26 +1349,14 @@ export async function deleteLearningResourceService(
     },
   });
 
-  const assets = [
-    { storagePath: existing.storagePath, storageProvider: existing.storageProvider },
-    ...existing.attachments,
-  ];
-
-  for (const asset of assets) {
-    await deleteStoredUploadAssetIfUnreferenced({
-      storagePath: asset.storagePath,
-      storageProvider: asset.storageProvider,
-    });
-  }
-
   await createAuditLogEntry({
     entityType: AUDIT_ENTITY_TYPE.LEARNING_RESOURCE,
     entityId: deleted.id,
-    action: AUDIT_ACTION_TYPE.UPDATED,
-    message: `Learning resource "${deleted.title}" deleted.`,
+    action: AUDIT_ACTION_TYPE.DELETED,
+    message: `Learning resource "${deleted.title}" moved to recycle bin.`,
     actorUserId: options?.actorUserId,
     metadata: {
-      deleted: true,
+      softDeleted: true,
       contentType: deleted.contentType,
       status: deleted.status,
       visibility: deleted.visibility,
@@ -1371,6 +1364,69 @@ export async function deleteLearningResourceService(
   });
 
   return deleted;
+}
+
+export async function restoreDeletedLearningResourceService(
+  resourceId: string,
+  options?: { actorUserId?: string },
+): Promise<LearningResourceCreateResult> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const existing = await prisma.learningResource.findFirst({
+    where: { id: resourceId },
+    select: {
+      id: true,
+      title: true,
+      contentType: true,
+      status: true,
+      visibility: true,
+      currentVersionNumber: true,
+      deletedAt: true,
+    },
+  });
+
+  if (!existing) {
+    throw new Error("Learning resource not found.");
+  }
+
+  if (!existing.deletedAt) {
+    throw new Error("Learning resource is already active.");
+  }
+
+  const restored = await prisma.learningResource.update({
+    where: { id: resourceId },
+    data: {
+      deletedAt: null,
+      deletedById: null,
+      updatedById: options?.actorUserId ?? null,
+    },
+    select: {
+      id: true,
+      title: true,
+      contentType: true,
+      status: true,
+      visibility: true,
+      currentVersionNumber: true,
+    },
+  });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.LEARNING_RESOURCE,
+    entityId: restored.id,
+    action: AUDIT_ACTION_TYPE.UPDATED,
+    message: `Learning resource "${restored.title}" restored from recycle bin.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      restoredFromRecycleBin: true,
+      contentType: restored.contentType,
+      status: restored.status,
+      visibility: restored.visibility,
+    },
+  });
+
+  return restored;
 }
 
 export async function assignLearningResourceService(
@@ -1382,8 +1438,8 @@ export async function assignLearningResourceService(
     return [];
   }
 
-  const resource = await prisma.learningResource.findUnique({
-    where: { id: resourceId },
+  const resource = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: { id: true, title: true },
   });
 
@@ -1521,8 +1577,8 @@ export async function restoreLearningResourceVersionService(
     throw new Error("Database not configured.");
   }
 
-  const resource = await prisma.learningResource.findUnique({
-    where: { id: resourceId },
+  const resource = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: {
       id: true,
       sourceContentId: true,
@@ -1697,8 +1753,8 @@ export async function recordLearningResourceUsageService(
     return null;
   }
 
-  const resource = await prisma.learningResource.findUnique({
-    where: { id: resourceId },
+  const resource = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: { id: true },
   });
 
@@ -1730,8 +1786,8 @@ export async function getLearningResourceAssetService(
     return null;
   }
 
-  const resource = await prisma.learningResource.findUnique({
-    where: { id: resourceId },
+  const resource = await prisma.learningResource.findFirst({
+    where: { id: resourceId, deletedAt: null },
     select: {
       id: true,
       title: true,

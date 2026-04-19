@@ -66,7 +66,7 @@ export const getBatchEnrollmentCandidatesSchema = z.object({
 
 export const getBatchEnrolledLearnersSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(200).default(100),
+  pageSize: z.coerce.number().int().min(1).max(500).default(100),
 });
 
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;

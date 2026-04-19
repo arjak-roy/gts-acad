@@ -25,6 +25,15 @@ import {
   Link as LinkIcon,
   Image as ImageIcon,
   Table as TableIcon,
+  TableProperties,
+  Columns,
+  Rows,
+  BetweenHorizontalStart,
+  BetweenHorizontalEnd,
+  BetweenVerticalStart,
+  BetweenVerticalEnd,
+  RemoveFormatting,
+  Trash2,
   Code,
   Undo,
   Redo,
@@ -475,6 +484,37 @@ export function TipTapEmailEditor({ value, onChange, placeholder, placeholderVar
         <ToolbarButton onClick={addTable} title="Insert table" disabled={toolbarDisabled}>
           <TableIcon className="h-4 w-4" />
         </ToolbarButton>
+        {editor.isActive("table") && (
+          <>
+            <ToolbarButton onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Above" disabled={toolbarDisabled}>
+              <BetweenHorizontalStart className="h-4 w-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row Below" disabled={toolbarDisabled}>
+              <BetweenHorizontalEnd className="h-4 w-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Left" disabled={toolbarDisabled}>
+              <BetweenVerticalStart className="h-4 w-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column Right" disabled={toolbarDisabled}>
+              <BetweenVerticalEnd className="h-4 w-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row" disabled={toolbarDisabled}>
+              <Rows className="h-4 w-4 text-red-500" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column" disabled={toolbarDisabled}>
+              <Columns className="h-4 w-4 text-red-500" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().mergeCells().run()} title="Merge Cells" disabled={toolbarDisabled}>
+              <TableProperties className="h-4 w-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().splitCell().run()} title="Split Cell" disabled={toolbarDisabled}>
+              <RemoveFormatting className="h-4 w-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().deleteTable().run()} title="Delete Table" disabled={toolbarDisabled}>
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </ToolbarButton>
+          </>
+        )}
         <ToolbarButton onClick={openButtonDialog} title="Insert CTA button" disabled={toolbarDisabled}>
           <span className="text-[11px] font-semibold">CTA</span>
         </ToolbarButton>

@@ -1,9 +1,10 @@
 import "server-only";
 
-import { AuditActionType, AuditEntityType } from "@prisma/client";
+import { AuditActionType, AuditEntityType, EnrollmentStatus } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { CreateBatchInput, UpdateBatchInput } from "@/lib/validation-schemas/batches";
+import { attemptAutoIssueCertificate } from "@/services/certifications/auto-issue";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { addLearnerEnrollmentService } from "@/services/learners-service";
 import { formatMockTrainerNames, mapBatchRecord, normalizeTrainerIds, resolveProgramAndTrainersWithAutoCourseMapping } from "@/services/batches/internal-helpers";
@@ -619,4 +620,55 @@ export async function bulkEnrollLearnersToBatchService(batchId: string, learnerC
     failed,
     results,
   };
+}
+
+// ── Enrollment status updates ────────────────────────────────────────────────
+
+export async function updateEnrollmentStatusService(
+  enrollmentId: string,
+  newStatus: EnrollmentStatus,
+  options?: { actorUserId?: string },
+): Promise<{ id: string; learnerId: string; batchId: string; status: EnrollmentStatus }> {
+  const enrollment = await prisma.batchEnrollment.findUnique({
+    where: { id: enrollmentId },
+    select: { id: true, learnerId: true, batchId: true, status: true },
+  });
+
+  if (!enrollment) {
+    throw new Error("Enrollment not found.");
+  }
+
+  const data: { status: EnrollmentStatus; completedAt?: Date | null } = { status: newStatus };
+  if (newStatus === "COMPLETED") {
+    data.completedAt = new Date();
+  } else if (enrollment.status === "COMPLETED") {
+    data.completedAt = null;
+  }
+
+  const updated = await prisma.batchEnrollment.update({
+    where: { id: enrollmentId },
+    data,
+    select: { id: true, learnerId: true, batchId: true, status: true },
+  });
+
+  await createAuditLogEntry({
+    entityType: "BATCH" as AuditEntityType,
+    entityId: enrollment.batchId,
+    action: "UPDATED" as AuditActionType,
+    message: `Enrollment status changed to ${newStatus} for learner.`,
+    actorUserId: options?.actorUserId,
+    metadata: { enrollmentId, learnerId: enrollment.learnerId, previousStatus: enrollment.status, newStatus },
+  });
+
+  // Auto-issue certificate on enrollment completion. The auto-issue service now
+  // persists attempt history so failures can be reviewed and retried from admin.
+  if (newStatus === "COMPLETED") {
+    void attemptAutoIssueCertificate({
+      learnerId: updated.learnerId,
+      batchId: updated.batchId,
+      trigger: "ENROLLMENT_COMPLETION",
+    });
+  }
+
+  return updated;
 }

@@ -2,6 +2,11 @@ import "server-only";
 
 import type { CurriculumProgressStatus, QuestionType } from "@prisma/client";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import {
+  evaluateModuleCompletion,
+  evaluateStageCompletion,
+  type CurriculumItemProgressLookup,
+} from "@/services/curriculum/completion-logic";
 import { listCurriculumItemProgressForLearnerService } from "@/services/curriculum/progress";
 import { resolveCurriculumStageItemAvailability } from "@/services/curriculum/release";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
@@ -12,6 +17,8 @@ import type {
   CurriculumAssignmentSource,
   CurriculumBatchMappingItem,
   CurriculumDetail,
+  CurriculumHealthIssue,
+  CurriculumHealthReport,
   CurriculumStageItemDetail,
   CurriculumSummary,
 } from "@/services/curriculum/types";
@@ -33,6 +40,7 @@ type CurriculumSummaryRecord = {
   title: string;
   description: string | null;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  isTemplate?: boolean;
   createdAt: Date;
   updatedAt: Date;
   course: { code: string; name: string };
@@ -56,6 +64,7 @@ type CurriculumDetailRecord = {
   title: string;
   description: string | null;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  isTemplate?: boolean;
   createdAt: Date;
   updatedAt: Date;
   course: { code: string; name: string };
@@ -65,11 +74,17 @@ type CurriculumDetailRecord = {
     title: string;
     description: string | null;
     sortOrder: number;
+    completionRule?: "ALL_REQUIRED" | "ALL_ITEMS" | "PERCENTAGE" | "MIN_ITEMS";
+    completionThreshold?: number | null;
+    prerequisiteModuleId?: string | null;
     stages: Array<{
       id: string;
       title: string;
       description: string | null;
       sortOrder: number;
+      completionRule?: "ALL_REQUIRED" | "ALL_ITEMS" | "PERCENTAGE" | "MIN_ITEMS";
+      completionThreshold?: number | null;
+      prerequisiteStageId?: string | null;
       items: Array<{
         id: string;
         itemType: "CONTENT" | "ASSESSMENT";
@@ -178,6 +193,38 @@ function buildCurriculumItemMetadata(curriculum: CurriculumDetail) {
   ]));
 }
 
+function buildCurriculumCompletionSnapshots(
+  curriculum: CurriculumDetail,
+  progressByStageItemId: Map<string, {
+    status: CurriculumProgressStatus;
+    progressPercent: number;
+    startedAt: Date | null;
+    completedAt: Date | null;
+  }>,
+) {
+  const progressMap: CurriculumItemProgressLookup = new Map(
+    Array.from(progressByStageItemId.entries()).map(([stageItemId, progress]) => [
+      stageItemId,
+      { status: progress.status, progressPercent: progress.progressPercent },
+    ]),
+  );
+  const stageCompletionById = new Map<string, boolean>();
+  const moduleCompletionById = new Map<string, boolean>();
+
+  for (const moduleRecord of curriculum.modules) {
+    for (const stage of moduleRecord.stages) {
+      stageCompletionById.set(stage.id, evaluateStageCompletion(stage, progressMap));
+    }
+
+    moduleCompletionById.set(moduleRecord.id, evaluateModuleCompletion(moduleRecord, progressMap));
+  }
+
+  return {
+    stageCompletionById,
+    moduleCompletionById,
+  };
+}
+
 function applyLearnerStateToCurriculum(
   curriculum: CurriculumDetail,
   options: {
@@ -193,6 +240,14 @@ function applyLearnerStateToCurriculum(
   },
 ): CurriculumDetail {
   const itemMetadata = buildCurriculumItemMetadata(curriculum);
+  const { stageCompletionById, moduleCompletionById } = buildCurriculumCompletionSnapshots(
+    curriculum,
+    options.progressByStageItemId,
+  );
+  const moduleById = new Map(curriculum.modules.map((moduleRecord) => [moduleRecord.id, moduleRecord]));
+  const stageById = new Map(
+    curriculum.modules.flatMap((moduleRecord) => moduleRecord.stages.map((stage) => [stage.id, stage] as const)),
+  );
 
   return {
     ...curriculum,
@@ -204,6 +259,12 @@ function applyLearnerStateToCurriculum(
           ...(() => {
             const progressRecord = options.progressByStageItemId.get(item.id);
             const metadata = itemMetadata.get(item.id);
+            const prerequisiteModule = moduleRecord.prerequisiteModuleId
+              ? moduleById.get(moduleRecord.prerequisiteModuleId) ?? null
+              : null;
+            const prerequisiteStage = stage.prerequisiteStageId
+              ? stageById.get(stage.prerequisiteStageId) ?? null
+              : null;
             const explicitPrerequisiteStageItemId = item.release.prerequisiteStageItemId;
             const effectivePrerequisiteStageItemId = explicitPrerequisiteStageItemId ?? metadata?.previousStageItemId ?? null;
             const effectivePrerequisiteTitle = effectivePrerequisiteStageItemId
@@ -233,6 +294,44 @@ function applyLearnerStateToCurriculum(
                 ? options.scoreByStageItemId.get(effectivePrerequisiteStageItemId) ?? null
                 : null,
             });
+            const isBlockedByModulePrerequisite = Boolean(
+              prerequisiteModule
+                && moduleCompletionById.get(prerequisiteModule.id) === false
+                && (progressRecord?.status ?? "NOT_STARTED") === "NOT_STARTED",
+            );
+            const isBlockedByStagePrerequisite = Boolean(
+              prerequisiteStage
+                && stageCompletionById.get(prerequisiteStage.id) === false
+                && (progressRecord?.status ?? "NOT_STARTED") === "NOT_STARTED",
+            );
+            const availabilityStatus = isBlockedByModulePrerequisite || isBlockedByStagePrerequisite
+              ? "LOCKED"
+              : availability.availabilityStatus;
+            const availabilityReason = isBlockedByModulePrerequisite && prerequisiteModule
+              ? {
+                  type: "WAITING_FOR_PREREQUISITE_MODULE" as const,
+                  message: `Complete module \"${prerequisiteModule.title}\" to unlock this item.`,
+                  unlocksAt: null,
+                  prerequisiteStageItemId: null,
+                  prerequisiteStageId: null,
+                  prerequisiteModuleId: prerequisiteModule.id,
+                  prerequisiteTitle: prerequisiteModule.title,
+                  requiredScorePercent: null,
+                  batchOffsetDays: null,
+                }
+              : isBlockedByStagePrerequisite && prerequisiteStage
+                ? {
+                    type: "WAITING_FOR_PREREQUISITE_STAGE" as const,
+                    message: `Complete stage \"${prerequisiteStage.title}\" to unlock this item.`,
+                    unlocksAt: null,
+                    prerequisiteStageItemId: null,
+                    prerequisiteStageId: prerequisiteStage.id,
+                    prerequisiteModuleId: null,
+                    prerequisiteTitle: prerequisiteStage.title,
+                    requiredScorePercent: null,
+                    batchOffsetDays: null,
+                  }
+                : availability.availabilityReason;
 
             return {
               ...item,
@@ -240,8 +339,8 @@ function applyLearnerStateToCurriculum(
               progressPercent: progressRecord?.progressPercent ?? 0,
               startedAt: progressRecord?.startedAt ?? null,
               completedAt: progressRecord?.completedAt ?? null,
-              availabilityStatus: availability.availabilityStatus,
-              availabilityReason: availability.availabilityReason,
+              availabilityStatus,
+              availabilityReason,
               release: availability.release,
             } satisfies CurriculumStageItemDetail;
           })(),
@@ -296,6 +395,7 @@ function mapCurriculumSummary(summary: CurriculumSummaryRecord): CurriculumSumma
     title: summary.title,
     description: summary.description,
     status: summary.status,
+    isTemplate: summary.isTemplate ?? false,
     moduleCount: counts.moduleCount,
     stageCount: counts.stageCount,
     itemCount: counts.itemCount,
@@ -312,6 +412,9 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
       title: stage.title,
       description: stage.description,
       sortOrder: stage.sortOrder,
+      completionRule: stage.completionRule ?? "ALL_REQUIRED",
+      completionThreshold: stage.completionThreshold ?? null,
+      prerequisiteStageId: stage.prerequisiteStageId ?? null,
       itemCount: stage.items.length,
       items: stage.items.map((item): CurriculumStageItemDetail => ({
         id: item.id,
@@ -339,6 +442,8 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
           message: "Available now.",
           unlocksAt: null,
           prerequisiteStageItemId: null,
+          prerequisiteStageId: null,
+          prerequisiteModuleId: null,
           prerequisiteTitle: null,
           requiredScorePercent: null,
           batchOffsetDays: null,
@@ -365,6 +470,9 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
       title: moduleRecord.title,
       description: moduleRecord.description,
       sortOrder: moduleRecord.sortOrder,
+      completionRule: moduleRecord.completionRule ?? "ALL_REQUIRED",
+      completionThreshold: moduleRecord.completionThreshold ?? null,
+      prerequisiteModuleId: moduleRecord.prerequisiteModuleId ?? null,
       stageCount: stages.length,
       itemCount: stages.reduce((sum, stage) => sum + stage.itemCount, 0),
       stages,
@@ -381,6 +489,7 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
     title: detail.title,
     description: detail.description,
     status: detail.status,
+    isTemplate: detail.isTemplate ?? false,
     moduleCount: counts.moduleCount,
     stageCount: counts.stageCount,
     itemCount: counts.itemCount,
@@ -406,6 +515,7 @@ export async function listCurriculaByCourseService(courseId: string): Promise<Cu
       title: true,
       description: true,
       status: true,
+      isTemplate: true,
       createdAt: true,
       updatedAt: true,
       course: { select: { code: true, name: true } },
@@ -444,6 +554,7 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
       title: true,
       description: true,
       status: true,
+      isTemplate: true,
       createdAt: true,
       updatedAt: true,
       course: { select: { code: true, name: true } },
@@ -455,6 +566,9 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
           title: true,
           description: true,
           sortOrder: true,
+          completionRule: true,
+          completionThreshold: true,
+          prerequisiteModuleId: true,
           stages: {
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
             select: {
@@ -462,6 +576,9 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
               title: true,
               description: true,
               sortOrder: true,
+              completionRule: true,
+              completionThreshold: true,
+              prerequisiteStageId: true,
               items: {
                 orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
                 select: {
@@ -874,5 +991,189 @@ export async function getCandidateCurriculaForBatchService(options: {
         manualReleaseAtByStageItemId,
       }),
     })),
+  };
+}
+
+export async function listCurriculumTemplatesService(): Promise<CurriculumSummary[]> {
+  if (!isDatabaseConfigured) {
+    return [];
+  }
+
+  const templates = await prisma.curriculum.findMany({
+    where: { isTemplate: true },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      courseId: true,
+      title: true,
+      description: true,
+      status: true,
+      isTemplate: true,
+      createdAt: true,
+      updatedAt: true,
+      course: { select: { code: true, name: true } },
+      modules: {
+        select: {
+          id: true,
+          stages: {
+            select: {
+              id: true,
+              _count: { select: { items: true } },
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          batchMappings: true,
+        },
+      },
+    },
+  });
+
+  return templates.map((template) => mapCurriculumSummary(template));
+}
+
+export async function getCurriculumHealthReportService(curriculumId: string): Promise<CurriculumHealthReport | null> {
+  const curriculum = await getCurriculumByIdService(curriculumId);
+
+  if (!curriculum) {
+    return null;
+  }
+
+  const issues: CurriculumHealthIssue[] = [];
+
+  if (curriculum.status !== "PUBLISHED") {
+    issues.push({
+      code: "UNPUBLISHED_CURRICULUM",
+      severity: "medium",
+      message: "Curriculum is not published. Learners will not receive this as default learning flow.",
+    });
+  }
+
+  if (curriculum.modules.length === 0) {
+    issues.push({
+      code: "NO_MODULES",
+      severity: "high",
+      message: "Curriculum has no modules. Add at least one module before publishing.",
+    });
+  }
+
+  for (const moduleRecord of curriculum.modules) {
+    if (moduleRecord.stages.length === 0) {
+      issues.push({
+        code: "NO_STAGES",
+        severity: "high",
+        message: `Module \"${moduleRecord.title}\" has no stages.`,
+        moduleId: moduleRecord.id,
+        moduleTitle: moduleRecord.title,
+      });
+    }
+
+    for (const stage of moduleRecord.stages) {
+      if (stage.items.length === 0) {
+        issues.push({
+          code: "NO_ITEMS",
+          severity: "high",
+          message: `Stage \"${stage.title}\" has no curriculum items.`,
+          moduleId: moduleRecord.id,
+          moduleTitle: moduleRecord.title,
+          stageId: stage.id,
+          stageTitle: stage.title,
+        });
+      }
+
+      for (const item of stage.items) {
+        if (!item.release?.releaseType) {
+          issues.push({
+            code: "MISSING_RELEASE_CONFIG",
+            severity: "medium",
+            message: `Item \"${item.referenceTitle}\" is missing release configuration.`,
+            moduleId: moduleRecord.id,
+            moduleTitle: moduleRecord.title,
+            stageId: stage.id,
+            stageTitle: stage.title,
+            itemId: item.id,
+            itemTitle: item.referenceTitle,
+          });
+        }
+
+        if (item.itemType === "CONTENT") {
+          if (!item.contentId || !item.referenceTitle) {
+            issues.push({
+              code: "BROKEN_REFERENCE",
+              severity: "high",
+              message: "A content item is missing its linked content record.",
+              moduleId: moduleRecord.id,
+              moduleTitle: moduleRecord.title,
+              stageId: stage.id,
+              stageTitle: stage.title,
+              itemId: item.id,
+              itemTitle: item.referenceTitle,
+            });
+          } else if (item.status && item.status !== "PUBLISHED") {
+            issues.push({
+              code: "DRAFT_REFERENCE",
+              severity: "medium",
+              message: `Item \"${item.referenceTitle}\" references ${String(item.status).toLowerCase()} content.`,
+              moduleId: moduleRecord.id,
+              moduleTitle: moduleRecord.title,
+              stageId: stage.id,
+              stageTitle: stage.title,
+              itemId: item.id,
+              itemTitle: item.referenceTitle,
+            });
+          }
+        }
+
+        if (item.itemType === "ASSESSMENT") {
+          if (!item.assessmentPoolId || !item.referenceTitle) {
+            issues.push({
+              code: "BROKEN_REFERENCE",
+              severity: "high",
+              message: "An assessment item is missing its linked assessment pool.",
+              moduleId: moduleRecord.id,
+              moduleTitle: moduleRecord.title,
+              stageId: stage.id,
+              stageTitle: stage.title,
+              itemId: item.id,
+              itemTitle: item.referenceTitle,
+            });
+          } else if (item.status && item.status !== "PUBLISHED") {
+            issues.push({
+              code: "DRAFT_REFERENCE",
+              severity: "medium",
+              message: `Item \"${item.referenceTitle}\" references ${String(item.status).toLowerCase()} assessment content.`,
+              moduleId: moduleRecord.id,
+              moduleTitle: moduleRecord.title,
+              stageId: stage.id,
+              stageTitle: stage.title,
+              itemId: item.id,
+              itemTitle: item.referenceTitle,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const stageCount = curriculum.modules.reduce((count, moduleRecord) => count + moduleRecord.stages.length, 0);
+  const itemCount = curriculum.modules.reduce(
+    (count, moduleRecord) => count + moduleRecord.stages.reduce((stageCountLocal, stage) => stageCountLocal + stage.items.length, 0),
+    0,
+  );
+
+  return {
+    curriculumId: curriculum.id,
+    curriculumTitle: curriculum.title,
+    status: curriculum.status,
+    summary: {
+      moduleCount: curriculum.modules.length,
+      stageCount,
+      itemCount,
+      issueCount: issues.length,
+      highSeverityCount: issues.filter((issue) => issue.severity === "high").length,
+    },
+    issues,
   };
 }

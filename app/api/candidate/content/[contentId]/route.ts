@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 import { withCors, handleCorsPreflight } from "@/lib/api-cors";
 import { apiError, apiSuccess } from "@/lib/api-response";
@@ -22,7 +23,19 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       throw new Error("Content not found.");
     }
 
-    const response = apiSuccess(content);
+    if (content.kind === "blocked") {
+      return withCors(request, NextResponse.json({
+        error: "Content is currently locked.",
+        code: "CURRICULUM_CONTENT_BLOCKED",
+        contentId: content.contentId,
+        title: content.title,
+        availabilityStatus: content.availabilityStatus,
+        availabilityReason: content.availabilityReason,
+        contexts: content.contexts,
+      }, { status: 423 }), ["GET", "OPTIONS"]);
+    }
+
+    const response = apiSuccess(content.content);
     return withCors(request, response, ["GET", "OPTIONS"]);
   } catch (error) {
     return withCors(request, apiError(error), ["GET", "OPTIONS"]);

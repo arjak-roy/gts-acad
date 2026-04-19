@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { AuthoredContentBlock, AuthoredContentDocument } from "@/lib/authored-content";
+import { getLmsLessonBlueprints } from "@/lib/authored-content";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -40,6 +42,9 @@ export function AuthoredContentEditor({
   onChange: (nextValue: AuthoredContentDocument) => void;
   disabled?: boolean;
 }) {
+  const blueprints = useMemo(() => getLmsLessonBlueprints(), []);
+  const [selectedBlueprintId, setSelectedBlueprintId] = useState<string>(blueprints[0]?.id ?? "");
+
   function updateBlock(blockId: string, nextBlock: AuthoredContentBlock) {
     onChange({
       ...value,
@@ -79,6 +84,15 @@ export function AuthoredContentEditor({
     });
   }
 
+  function applyBlueprint() {
+    const selected = blueprints.find((item) => item.id === selectedBlueprintId);
+    if (!selected) {
+      return;
+    }
+
+    onChange(selected.document);
+  }
+
   return (
     <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -92,6 +106,30 @@ export function AuthoredContentEditor({
           <Button type="button" size="sm" variant="secondary" disabled={disabled} onClick={() => addBlock("IMAGE")}>Add image</Button>
           <Button type="button" size="sm" variant="secondary" disabled={disabled} onClick={() => addBlock("BULLET_LIST")}>Add list</Button>
         </div>
+      </div>
+
+      <div className="grid gap-2 rounded-xl border border-[#dde1e6] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <label className="space-y-1">
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">LMS Blueprint</span>
+          <select
+            className="block h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
+            disabled={disabled}
+            value={selectedBlueprintId}
+            onChange={(event) => setSelectedBlueprintId(event.target.value)}
+          >
+            {blueprints.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500">
+            {blueprints.find((item) => item.id === selectedBlueprintId)?.description ?? "Choose a blueprint to prefill this lesson."}
+          </p>
+        </label>
+        <Button type="button" size="sm" variant="secondary" disabled={disabled} onClick={applyBlueprint}>
+          Apply Blueprint
+        </Button>
       </div>
 
       <div className="space-y-3">

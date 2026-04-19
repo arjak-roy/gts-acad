@@ -16,6 +16,7 @@ import {
 import { EditContentSheet } from "@/components/modules/course-builder/edit-content-sheet";
 import {
   type LearningResourceListItem,
+  type LearningResourceListPage,
   type LearningResourceLookups,
 } from "@/components/modules/course-builder/learning-resource-client";
 import { LearningResourceAssignmentsSheet } from "@/components/modules/course-builder/learning-resource-assignments-sheet";
@@ -189,7 +190,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
           fetch("/api/course-content-folders", { cache: "no-store" }),
           fetch("/api/course-content", { cache: "no-store" }),
           fetch("/api/course-content/shared", { cache: "no-store" }),
-          canViewResources ? fetch("/api/learning-resources", { cache: "no-store" }) : Promise.resolve(null),
+          canViewResources ? fetch("/api/learning-resources?page=1&pageSize=200", { cache: "no-store" }) : Promise.resolve(null),
         ]);
 
         const nextContents = await readApiData<CourseContentItem[]>(contentResponse, "Failed to load repository content.");
@@ -216,7 +217,26 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
 
         let nextResources: LearningResourceListItem[] = [];
         if (resourceResponse) {
-          nextResources = await readApiData<LearningResourceListItem[]>(resourceResponse, "Failed to load repository resources.");
+          const firstPage = await readApiData<LearningResourceListPage>(resourceResponse, "Failed to load repository resources.");
+          nextResources = [...firstPage.items];
+
+          if (firstPage.totalPages > 1) {
+            const remainingPageResponses = await Promise.all(
+              Array.from({ length: firstPage.totalPages - 1 }, (_, index) =>
+                fetch(`/api/learning-resources?page=${index + 2}&pageSize=${firstPage.pageSize}`, { cache: "no-store" }),
+              ),
+            );
+
+            const remainingPages = await Promise.all(
+              remainingPageResponses.map((response) =>
+                readApiData<LearningResourceListPage>(response, "Failed to load repository resources."),
+              ),
+            );
+
+            for (const pageData of remainingPages) {
+              nextResources.push(...pageData.items);
+            }
+          }
         }
 
         if (!active) {

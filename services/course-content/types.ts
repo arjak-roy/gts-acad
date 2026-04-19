@@ -1,6 +1,16 @@
-import { ContentStatus, ContentType, LearningResourceVisibility, UploadStorageProvider } from "@prisma/client";
+import {
+  ContentStatus,
+  ContentType,
+  CurriculumProgressStatus,
+  LearningResourceVisibility,
+  UploadStorageProvider,
+} from "@prisma/client";
 
-import type { AuthoredContentDocument } from "@/lib/authored-content";
+import type { AuthoredContentAnyDocument } from "@/lib/authored-content";
+import type {
+  CurriculumStageItemAvailabilityReason,
+  CurriculumStageItemAvailabilityStatus,
+} from "@/services/curriculum/types";
 
 export type ContentListItem = {
   id: string;
@@ -26,7 +36,7 @@ export type ContentListItem = {
 };
 
 export type ContentDetail = ContentListItem & {
-  bodyJson: AuthoredContentDocument | null;
+  bodyJson: AuthoredContentAnyDocument | null;
   renderedHtml: string | null;
   scormMetadata: unknown;
   isAiGenerated: boolean;
@@ -47,9 +57,42 @@ export type CandidateContentDetail = {
   fileName: string | null;
   mimeType: string | null;
   renderedHtml: string | null;
-  bodyJson: AuthoredContentDocument | null;
+  bodyJson: AuthoredContentAnyDocument | null;
   updatedAt: Date;
 };
+
+export type CandidateContentAccessContext = {
+  batchId: string;
+  batchCode: string;
+  batchName: string;
+  curriculumId: string;
+  curriculumTitle: string;
+  moduleId: string;
+  moduleTitle: string;
+  stageId: string;
+  stageTitle: string;
+  stageItemId: string;
+  itemTitle: string;
+  availabilityStatus: CurriculumStageItemAvailabilityStatus;
+  availabilityReason: CurriculumStageItemAvailabilityReason;
+  progressStatus: CurriculumProgressStatus;
+  progressPercent: number;
+};
+
+export type CandidateContentAccessResult =
+  | {
+      kind: "content";
+      content: CandidateContentDetail;
+      contexts: CandidateContentAccessContext[];
+    }
+  | {
+      kind: "blocked";
+      contentId: string;
+      title: string;
+      availabilityStatus: Exclude<CurriculumStageItemAvailabilityStatus, "AVAILABLE">;
+      availabilityReason: CurriculumStageItemAvailabilityReason;
+      contexts: CandidateContentAccessContext[];
+    };
 
 export type ContentCreateResult = {
   id: string;

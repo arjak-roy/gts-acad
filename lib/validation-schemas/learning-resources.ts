@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { authoredContentDocumentSchema } from "@/lib/authored-content";
+import { authoredContentAnyDocumentSchema } from "@/lib/authored-content";
 
 export const learningResourceContentTypeEnum = z.enum(["ARTICLE", "PDF", "DOCUMENT", "VIDEO", "SCORM", "LINK", "OTHER"]);
 export const learningResourceStatusEnum = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
@@ -34,7 +34,7 @@ const baseLearningResourceSchema = z.object({
   mimeType: z.string().trim().max(100).optional().default(""),
   storagePath: z.string().trim().max(500).optional().default(""),
   storageProvider: uploadStorageProviderEnum.optional(),
-  bodyJson: authoredContentDocumentSchema.optional().nullable(),
+  bodyJson: authoredContentAnyDocumentSchema.optional().nullable(),
   estimatedReadingMinutes: z.coerce.number().int().positive().max(600).optional(),
   attachments: z.array(learningResourceAttachmentSchema).max(20).optional().default([]),
   changeSummary: z.string().trim().max(500).optional().default(""),
@@ -93,6 +93,9 @@ export const resourceIdSchema = z.object({
   resourceId: z.string().trim().min(1, "Resource ID is required."),
 });
 
+export const learningResourceSortByEnum = z.enum(["updatedAt", "createdAt", "title", "status"]);
+export const sortDirectionEnum = z.enum(["asc", "desc"]);
+
 export const listLearningResourcesQuerySchema = z.object({
   search: z.string().trim().max(255).optional(),
   status: learningResourceStatusEnum.optional(),
@@ -100,6 +103,12 @@ export const listLearningResourcesQuerySchema = z.object({
   contentType: learningResourceContentTypeEnum.optional(),
   categoryId: z.string().trim().min(1).optional(),
   tag: z.string().trim().min(1).optional(),
+  createdById: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).optional().default(25),
+  sortBy: learningResourceSortByEnum.optional().default("updatedAt"),
+  sortDir: sortDirectionEnum.optional().default("desc"),
+  showDeleted: z.coerce.boolean().optional().default(false),
 });
 
 export const assignLearningResourceSchema = z.object({

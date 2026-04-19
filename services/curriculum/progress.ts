@@ -3,6 +3,7 @@ import "server-only";
 import { CurriculumProgressStatus } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { attemptAutoIssueCertificate } from "@/services/certifications/auto-issue";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
 
 type ProgressMutationRow = {
@@ -160,6 +161,33 @@ async function writeCurriculumProgressRows(rows: ProgressMutationRow[]): Promise
   return uniqueRows.length;
 }
 
+async function syncCurriculumAutoIssueForLearner(options: {
+  learnerId: string;
+  batchIds: string[];
+}) {
+  const uniqueBatchIds = Array.from(new Set(options.batchIds));
+
+  if (uniqueBatchIds.length === 0) {
+    return;
+  }
+
+  await Promise.all(uniqueBatchIds.map(async (batchId) => {
+    const { checkLearnerCurriculumCompletion } = await import("@/services/curriculum/completion-evaluator");
+    const results = await checkLearnerCurriculumCompletion(options.learnerId, batchId);
+
+    if (results.length === 0) {
+      return;
+    }
+
+    await Promise.all(results.map((result) => attemptAutoIssueCertificate({
+      learnerId: options.learnerId,
+      batchId,
+      trigger: "CURRICULUM_COMPLETION",
+      curriculumId: result.curriculumId,
+    })));
+  }));
+}
+
 export async function listCurriculumItemProgressForLearnerService(options: {
   learnerId: string;
   batchId: string;
@@ -266,6 +294,39 @@ export async function markCurriculumContentInProgressForLearnerService(options: 
   return writeCurriculumProgressRows(rows);
 }
 
+export async function markCurriculumContentCompletedForLearnerService(options: {
+  learnerId: string;
+  targets: Array<{
+    batchId: string;
+    stageItemId: string;
+  }>;
+}): Promise<number> {
+  if (!isDatabaseConfigured || options.targets.length === 0) {
+    return 0;
+  }
+
+  const rowsWritten = await writeCurriculumProgressRows(
+    options.targets.map((target) => ({
+      learnerId: options.learnerId,
+      batchId: target.batchId,
+      stageItemId: target.stageItemId,
+      status: "COMPLETED",
+      progressPercent: 100,
+    })),
+  );
+
+  if (rowsWritten > 0) {
+    void syncCurriculumAutoIssueForLearner({
+      learnerId: options.learnerId,
+      batchIds: options.targets.map((target) => target.batchId),
+    }).catch((error) => {
+      console.error("[curriculum-progress] Auto-issue check failed:", error);
+    });
+  }
+
+  return rowsWritten;
+}
+
 export async function markCurriculumAssessmentInProgressForLearnerService(options: {
   learnerId: string;
   batchId: string;
@@ -341,7 +402,7 @@ export async function markCurriculumAssessmentCompletedForLearnerService(options
     },
   });
 
-  return writeCurriculumProgressRows(
+  const rowsWritten = await writeCurriculumProgressRows(
     stageItems.map((stageItem) => ({
       learnerId: options.learnerId,
       batchId: options.batchId,
@@ -350,4 +411,15 @@ export async function markCurriculumAssessmentCompletedForLearnerService(options
       progressPercent: 100,
     })),
   );
+
+  if (rowsWritten > 0) {
+    void syncCurriculumAutoIssueForLearner({
+      learnerId: options.learnerId,
+      batchIds: [options.batchId],
+    }).catch((error) => {
+      console.error("[curriculum-progress] Auto-issue check failed:", error);
+    });
+  }
+
+  return rowsWritten;
 }

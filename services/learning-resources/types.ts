@@ -1,6 +1,6 @@
 import { ContentStatus, ContentType, LearningResourceTargetType, LearningResourceVisibility, UploadStorageProvider } from "@prisma/client";
 
-import type { AuthoredContentDocument } from "@/lib/authored-content";
+import type { AuthoredContentAnyDocument } from "@/lib/authored-content";
 
 export type LearningResourceCategorySummary = {
   id: string;
@@ -62,6 +62,7 @@ export type LearningResourceListItem = {
   publishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt: Date | null;
   assignmentCount: number;
   previewCount: number;
   downloadCount: number;
@@ -70,7 +71,7 @@ export type LearningResourceListItem = {
 export type LearningResourceDetail = LearningResourceListItem & {
   categoryId: string | null;
   subcategoryId: string | null;
-  bodyJson: AuthoredContentDocument | null;
+  bodyJson: AuthoredContentAnyDocument | null;
   renderedHtml: string | null;
   storagePath: string | null;
   storageProvider: UploadStorageProvider | null;
@@ -80,6 +81,14 @@ export type LearningResourceDetail = LearningResourceListItem & {
   versionsCount: number;
   createdByName: string | null;
   updatedByName: string | null;
+};
+
+export type LearningResourceListPage = {
+  items: LearningResourceListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 export type LearningResourceSnapshotAttachment = {
@@ -103,7 +112,7 @@ export type LearningResourceVersionSnapshot = {
   categoryName: string | null;
   subcategoryName: string | null;
   tags: string[];
-  bodyJson: AuthoredContentDocument | null;
+  bodyJson: AuthoredContentAnyDocument | null;
   renderedHtml: string | null;
   estimatedReadingMinutes: number | null;
   fileUrl: string | null;

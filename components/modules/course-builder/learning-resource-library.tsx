@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Eye, History, MoreHorizontal, PencilLine, Plus, Search, Trash2, Waypoints } from "lucide-react";
+import { Eye, History, MoreHorizontal, PencilLine, Plus, RotateCcw, Search, Trash2, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -16,12 +16,14 @@ import {
   LEARNING_RESOURCE_VISIBILITY_OPTIONS,
   parseApiResponse,
   type LearningResourceListItem,
+  type LearningResourceListPage,
   type LearningResourceLookups,
 } from "@/components/modules/course-builder/learning-resource-client";
 import { LearningResourceAssignmentsSheet } from "@/components/modules/course-builder/learning-resource-assignments-sheet";
 import { LearningResourceDetailSheet } from "@/components/modules/course-builder/learning-resource-detail-sheet";
 import { LearningResourceFormSheet, type LearningResourceFormSeed } from "@/components/modules/course-builder/learning-resource-form-sheet";
 import { LearningResourceHistorySheet } from "@/components/modules/course-builder/learning-resource-history-sheet";
+import { LearningResourceRecycleBin } from "@/components/modules/course-builder/learning-resource-recycle-bin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
@@ -54,7 +56,7 @@ type ResourceFilters = {
   categoryId: string;
 };
 
-function buildQuery(filters: ResourceFilters) {
+function buildQuery(filters: ResourceFilters, page: number, pageSize: number) {
   const params = new URLSearchParams();
 
   if (filters.search.trim()) {
@@ -72,6 +74,9 @@ function buildQuery(filters: ResourceFilters) {
   if (filters.categoryId) {
     params.set("categoryId", filters.categoryId);
   }
+
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
 
   return params.toString();
 }
@@ -99,6 +104,10 @@ export function LearningResourceLibrary({
   });
   const [resources, setResources] = useState<LearningResourceListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [refreshToken, setRefreshToken] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingResourceId, setEditingResourceId] = useState<string | null>(null);
@@ -106,6 +115,7 @@ export function LearningResourceLibrary({
   const [historyResource, setHistoryResource] = useState<{ id: string; title: string } | null>(null);
   const [assignmentResource, setAssignmentResource] = useState<{ id: string; title: string } | null>(null);
   const [resourcePendingDelete, setResourcePendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const [recycleBinOpen, setRecycleBinOpen] = useState(false);
   const debouncedSearch = useDebounce(filters.search, 250);
 
   useEffect(() => {
@@ -115,15 +125,20 @@ export function LearningResourceLibrary({
       setIsLoading(true);
 
       try {
-        const query = buildQuery({ ...filters, search: debouncedSearch });
+        const query = buildQuery({ ...filters, search: debouncedSearch }, page, pageSize);
         const response = await fetch(`/api/learning-resources${query ? `?${query}` : ""}`, { cache: "no-store" });
-        const payload = await parseApiResponse<LearningResourceListItem[]>(response, "Failed to load learning resources.");
+        const payload = await parseApiResponse<LearningResourceListPage>(response, "Failed to load learning resources.");
 
         if (!active) {
           return;
         }
 
-        setResources(payload);
+        setResources(payload.items);
+        setTotal(payload.total);
+        setTotalPages(payload.totalPages);
+        if (payload.totalPages > 0 && page > payload.totalPages) {
+          setPage(payload.totalPages);
+        }
       } catch (loadError) {
         if (!active) {
           return;
@@ -143,12 +158,15 @@ export function LearningResourceLibrary({
     return () => {
       active = false;
     };
-  }, [debouncedSearch, externalRefreshToken, filters.categoryId, filters.status, filters.visibility, refreshToken]);
+  }, [debouncedSearch, externalRefreshToken, filters.categoryId, filters.status, filters.visibility, page, pageSize, refreshToken]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, filters.categoryId, filters.status, filters.visibility]);
 
   const summary = useMemo(() => {
-    return resources.reduce(
+    const rollup = resources.reduce(
       (accumulator, resource) => {
-        accumulator.total += 1;
         accumulator.assignments += resource.assignmentCount;
         accumulator.previews += resource.previewCount;
         accumulator.downloads += resource.downloadCount;
@@ -159,9 +177,17 @@ export function LearningResourceLibrary({
 
         return accumulator;
       },
-      { total: 0, published: 0, assignments: 0, previews: 0, downloads: 0 },
+      { assignments: 0, previews: 0, downloads: 0, published: 0 },
     );
-  }, [resources]);
+
+    return {
+      total,
+      published: rollup.published,
+      assignments: rollup.assignments,
+      previews: rollup.previews,
+      downloads: rollup.downloads,
+    };
+  }, [resources, total]);
 
   const handleDeleteResource = async () => {
     if (!resourcePendingDelete) {
@@ -173,13 +199,13 @@ export function LearningResourceLibrary({
         method: "DELETE",
       });
 
-      await parseApiResponse(response, "Failed to delete learning resource.");
-      toast.success("Learning resource deleted.");
+      await parseApiResponse(response, "Failed to move learning resource to recycle bin.");
+      toast.success("Learning resource moved to recycle bin.");
       setResourcePendingDelete(null);
       setRefreshToken((current) => current + 1);
       onResourcesChanged?.();
     } catch (deleteError) {
-      const message = deleteError instanceof Error ? deleteError.message : "Failed to delete learning resource.";
+      const message = deleteError instanceof Error ? deleteError.message : "Failed to move learning resource to recycle bin.";
       toast.error(message);
     }
   };
@@ -238,6 +264,12 @@ export function LearningResourceLibrary({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {secondaryAction}
+              <CanAccess permission="learning_resources.delete">
+                <Button type="button" variant="secondary" onClick={() => setRecycleBinOpen(true)}>
+                  <Trash2 className="h-4 w-4" />
+                  Recycle Bin
+                </Button>
+              </CanAccess>
               <CanAccess permission="learning_resources.create">
                 <Button type="button" onClick={() => setCreateOpen(true)}>
                   <Plus className="h-4 w-4" />
@@ -317,9 +349,10 @@ export function LearningResourceLibrary({
               No learning resources match the current filters.
             </div>
           ) : (
-            <div className="divide-y rounded-3xl border border-slate-200 bg-white">
-              {resources.map((resource) => (
-                <div key={resource.id} className="flex items-start justify-between gap-4 px-4 py-4 transition-colors hover:bg-slate-50/70">
+            <>
+              <div className="divide-y rounded-3xl border border-slate-200 bg-white">
+                {resources.map((resource) => (
+                  <div key={resource.id} className="flex items-start justify-between gap-4 px-4 py-4 transition-colors hover:bg-slate-50/70">
                   <button
                     type="button"
                     className="min-w-0 flex-1 text-left"
@@ -392,8 +425,24 @@ export function LearningResourceLibrary({
                     </DropdownMenu>
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                <span>
+                  Showing {resources.length === 0 ? 0 : ((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {total}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                    Previous
+                  </Button>
+                  <span className="min-w-[86px] text-center text-xs font-medium text-slate-500">Page {page} of {Math.max(1, totalPages)}</span>
+                  <Button type="button" variant="secondary" size="sm" disabled={page >= Math.max(1, totalPages)} onClick={() => setPage((current) => Math.min(Math.max(1, totalPages), current + 1))}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -475,17 +524,28 @@ export function LearningResourceLibrary({
       {resourcePendingDelete ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4">
           <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <p className="text-lg font-semibold text-slate-950">Delete Resource</p>
+            <p className="text-lg font-semibold text-slate-950">Move Resource To Recycle Bin</p>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Delete {resourcePendingDelete.title}? This removes the library item, its assignments, usage history, and stored attachments.
+              Move {resourcePendingDelete.title} to the recycle bin? Assignments and history are retained and you can restore this item later.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <Button type="button" variant="secondary" onClick={() => setResourcePendingDelete(null)}>Cancel</Button>
-              <Button type="button" className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleDeleteResource()}>Delete Resource</Button>
+              <Button type="button" className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleDeleteResource()}>Move To Recycle Bin</Button>
             </div>
           </div>
         </div>
       ) : null}
+
+      <LearningResourceRecycleBin
+        lookups={lookups}
+        open={recycleBinOpen}
+        onOpenChange={setRecycleBinOpen}
+        refreshToken={refreshToken}
+        onResourceRestored={() => {
+          setRefreshToken((current) => current + 1);
+          onResourcesChanged?.();
+        }}
+      />
     </div>
   );
 }

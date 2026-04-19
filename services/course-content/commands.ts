@@ -6,6 +6,11 @@ import {
   extractAuthoredExcerpt,
   parseAuthoredContentDocument,
   renderAuthoredContentToHtml,
+  parseAuthoredContentAnyDocument,
+  isV2Document,
+  extractAnyExcerpt,
+  estimateAnyReadingMinutes,
+  renderAnyDocumentToHtml,
 } from "@/lib/authored-content";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { AUDIT_ENTITY_TYPE, AUDIT_ACTION_TYPE } from "@/services/logs-actions/constants";
@@ -20,17 +25,19 @@ export async function createContentService(
   options?: { actorUserId?: string },
 ): Promise<ContentCreateResult> {
   const isAuthoredContent = input.contentType === "ARTICLE";
-  const authoredBodyJson = isAuthoredContent ? parseAuthoredContentDocument(input.bodyJson) : null;
+  const parsedAnyBody = isAuthoredContent ? parseAuthoredContentAnyDocument(input.bodyJson) : null;
+  const authoredBodyJson = isAuthoredContent && !parsedAnyBody ? parseAuthoredContentDocument(input.bodyJson) : null;
+  const effectiveBody = parsedAnyBody ?? authoredBodyJson;
 
-  if (isAuthoredContent && !authoredBodyJson) {
-    throw new Error("Authored content requires body blocks.");
+  if (isAuthoredContent && !effectiveBody) {
+    throw new Error("Authored content requires body content.");
   }
 
-  const excerpt = isAuthoredContent ? (input.excerpt?.trim() || extractAuthoredExcerpt(authoredBodyJson)) : null;
+  const excerpt = isAuthoredContent ? (input.excerpt?.trim() || extractAnyExcerpt(parsedAnyBody) || extractAuthoredExcerpt(authoredBodyJson)) : null;
   const estimatedReadingMinutes = isAuthoredContent
-    ? (input.estimatedReadingMinutes ?? estimateReadingMinutesFromDocument(authoredBodyJson))
+    ? (input.estimatedReadingMinutes ?? estimateAnyReadingMinutes(parsedAnyBody) ?? estimateReadingMinutesFromDocument(authoredBodyJson))
     : null;
-  const renderedHtml = isAuthoredContent ? renderAuthoredContentToHtml(authoredBodyJson) : null;
+  const renderedHtml = isAuthoredContent ? (renderAnyDocumentToHtml(parsedAnyBody) || renderAuthoredContentToHtml(authoredBodyJson)) : null;
   const createData = {} as Prisma.CourseContentUncheckedCreateInput;
   createData.courseId = input.courseId;
   createData.folderId = input.folderId || null;
@@ -50,8 +57,8 @@ export async function createContentService(
   createData.isScorm = isAuthoredContent ? false : input.isScorm ?? false;
   createData.createdById = options?.actorUserId ?? null;
 
-  if (authoredBodyJson) {
-    createData.bodyJson = authoredBodyJson;
+  if (effectiveBody) {
+    createData.bodyJson = effectiveBody;
   }
 
   if (!isDatabaseConfigured) {
@@ -159,9 +166,10 @@ export async function updateContentService(
   const normalizedFileUrl = input.fileUrl !== undefined ? input.fileUrl.trim() : undefined;
   const isStoredUpload = Boolean(existing.storagePath);
   const isAuthoredContent = nextContentType === "ARTICLE";
-  const nextBodyJson = isAuthoredContent
-    ? parseAuthoredContentDocument(input.bodyJson !== undefined ? input.bodyJson : existing.bodyJson)
-    : null;
+  const rawBodyJson = input.bodyJson !== undefined ? input.bodyJson : existing.bodyJson;
+  const parsedAnyBody = isAuthoredContent ? parseAuthoredContentAnyDocument(rawBodyJson) : null;
+  const nextBodyJson = isAuthoredContent && !parsedAnyBody ? parseAuthoredContentDocument(rawBodyJson) : null;
+  const effectiveBody = parsedAnyBody ?? nextBodyJson;
 
   if (input.fileUrl !== undefined && isStoredUpload) {
     throw new Error("The source URL for uploaded content cannot be edited.");
@@ -179,17 +187,17 @@ export async function updateContentService(
     throw new Error("Link content requires a destination URL.");
   }
 
-  if (isAuthoredContent && !nextBodyJson) {
-    throw new Error("Authored content requires body blocks.");
+  if (isAuthoredContent && !effectiveBody) {
+    throw new Error("Authored content requires body content.");
   }
 
   const nextExcerpt = isAuthoredContent
-    ? (input.excerpt !== undefined ? input.excerpt.trim() : existing.excerpt || "") || extractAuthoredExcerpt(nextBodyJson)
+    ? (input.excerpt !== undefined ? input.excerpt.trim() : existing.excerpt || "") || extractAnyExcerpt(parsedAnyBody) || extractAuthoredExcerpt(nextBodyJson)
     : null;
   const nextEstimatedReadingMinutes = isAuthoredContent
-    ? (input.estimatedReadingMinutes ?? existing.estimatedReadingMinutes ?? estimateReadingMinutesFromDocument(nextBodyJson))
+    ? (input.estimatedReadingMinutes ?? existing.estimatedReadingMinutes ?? estimateAnyReadingMinutes(parsedAnyBody) ?? estimateReadingMinutesFromDocument(nextBodyJson))
     : null;
-  const nextRenderedHtml = isAuthoredContent ? renderAuthoredContentToHtml(nextBodyJson) : null;
+  const nextRenderedHtml = isAuthoredContent ? (renderAnyDocumentToHtml(parsedAnyBody) || renderAuthoredContentToHtml(nextBodyJson)) : null;
   const updateData = {} as Prisma.CourseContentUncheckedUpdateInput;
 
   if (input.folderId !== undefined) {
@@ -220,8 +228,8 @@ export async function updateContentService(
     updateData.sortOrder = input.sortOrder;
   }
 
-  if (isAuthoredContent && nextBodyJson) {
-    updateData.bodyJson = nextBodyJson;
+  if (isAuthoredContent && effectiveBody) {
+    updateData.bodyJson = effectiveBody;
     updateData.renderedHtml = nextRenderedHtml;
     updateData.excerpt = nextExcerpt;
     updateData.estimatedReadingMinutes = nextEstimatedReadingMinutes;
@@ -379,4 +387,114 @@ export async function archiveContentService(
   });
 
   return content;
+}
+
+export async function cloneContentToCourseService(
+  input: { sourceContentIds: string[]; targetCourseId: string; targetFolderId?: string | null },
+  options?: { actorUserId?: string },
+): Promise<ContentCreateResult[]> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  if (input.sourceContentIds.length === 0) {
+    return [];
+  }
+
+  const targetCourse = await prisma.course.findUnique({
+    where: { id: input.targetCourseId },
+    select: { id: true },
+  });
+
+  if (!targetCourse) {
+    throw new Error("Target course not found.");
+  }
+
+  if (input.targetFolderId) {
+    const folder = await prisma.courseContentFolder.findFirst({
+      where: { id: input.targetFolderId, courseId: input.targetCourseId },
+      select: { id: true },
+    });
+
+    if (!folder) {
+      throw new Error("Target folder not found for the selected course.");
+    }
+  }
+
+  const sourceContents = await prisma.courseContent.findMany({
+    where: { id: { in: input.sourceContentIds } },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      excerpt: true,
+      contentType: true,
+      bodyJson: true,
+      renderedHtml: true,
+      estimatedReadingMinutes: true,
+      fileUrl: true,
+      fileName: true,
+      fileSize: true,
+      mimeType: true,
+      storagePath: true,
+      storageProvider: true,
+      isScorm: true,
+      scormMetadata: true,
+    },
+  });
+
+  if (sourceContents.length === 0) {
+    throw new Error("No valid source content found.");
+  }
+
+  const results = await prisma.$transaction(
+    sourceContents.map((source) =>
+      prisma.courseContent.create({
+        data: {
+          courseId: input.targetCourseId,
+          folderId: input.targetFolderId ?? null,
+          title: source.title,
+          description: source.description,
+          excerpt: source.excerpt,
+          contentType: source.contentType,
+          bodyJson: source.bodyJson ?? undefined,
+          renderedHtml: source.renderedHtml,
+          estimatedReadingMinutes: source.estimatedReadingMinutes,
+          fileUrl: source.fileUrl,
+          fileName: source.fileName,
+          fileSize: source.fileSize,
+          mimeType: source.mimeType,
+          storagePath: source.storagePath,
+          storageProvider: source.storageProvider,
+          isScorm: source.isScorm,
+          scormMetadata: source.scormMetadata ?? undefined,
+          sourceContentId: source.id,
+          status: "DRAFT",
+          createdById: options?.actorUserId ?? null,
+        },
+        select: {
+          id: true,
+          courseId: true,
+          folderId: true,
+          title: true,
+          contentType: true,
+          status: true,
+          fileName: true,
+        },
+      }),
+    ),
+  );
+
+  for (const content of results) {
+    await createAuditLogEntry({
+      entityType: AUDIT_ENTITY_TYPE.COURSE_CONTENT,
+      entityId: content.id,
+      action: AUDIT_ACTION_TYPE.CREATED,
+      message: `Content "${content.title}" cloned from another course.`,
+      actorUserId: options?.actorUserId,
+      metadata: { targetCourseId: input.targetCourseId, clonedFrom: true },
+    });
+  }
+
+  return results;
 }

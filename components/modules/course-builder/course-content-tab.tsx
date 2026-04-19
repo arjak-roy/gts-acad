@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, History, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
+import { Download, Eye, History, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -209,6 +209,32 @@ export function CourseContentTab({
                         <Eye className="mr-2 h-4 w-4" />
                         {isSharedAssignment ? "View Source Upload" : "View Upload"}
                       </DropdownMenuItem>
+                      {content.contentType === "ARTICLE" && (
+                        <DropdownMenuItem onSelect={() => {
+                          fetch(`/api/course-content/${content.id}/export?format=docx`, { cache: "no-store" })
+                            .then((res) => {
+                              if (!res.ok) throw new Error("Export failed.");
+                              return res.blob().then((blob) => ({ blob, headers: res.headers }));
+                            })
+                            .then(({ blob, headers }) => {
+                              const disposition = headers.get("Content-Disposition");
+                              const match = disposition?.match(/filename="?([^";]+)"?/i);
+                              const filename = match?.[1] ? decodeURIComponent(match[1]) : `${content.title}.docx`;
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = filename;
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
+                              URL.revokeObjectURL(url);
+                            })
+                            .catch(() => { /* silent */ });
+                        }}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download as DOCX
+                        </DropdownMenuItem>
+                      )}
                       {canEditContent && !isSharedAssignment ? (
                         <DropdownMenuItem onSelect={() => onEditContent(content.id)}>
                           <PencilLine className="mr-2 h-4 w-4" />

@@ -1,12 +1,15 @@
 import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import { parseAuthoredContentDocument } from "@/lib/authored-content";
-import { markCurriculumContentInProgressForLearnerService } from "@/services/curriculum/progress";
+import { parseAuthoredContentAnyDocument } from "@/lib/authored-content";
+import { getCandidateCurriculaForBatchService } from "@/services/curriculum/queries";
+import { markCurriculumContentCompletedForLearnerService } from "@/services/curriculum/progress";
 import { listCourseIdsForBatchIds } from "@/services/lms/hierarchy";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
 import type {
   AssignedSharedContentListItem,
+  CandidateContentAccessContext,
+  CandidateContentAccessResult,
   CandidateContentDetail,
   ContentDetail,
   ContentListItem,
@@ -82,6 +85,88 @@ function mapSharedContentToCourseItem(args: {
     isSharedAssignment: true,
     shareKind: args.shareKind,
   };
+}
+
+function dedupeCandidateContentContexts(contexts: CandidateContentAccessContext[]) {
+  return Array.from(
+    new Map(contexts.map((context) => [`${context.batchId}:${context.stageItemId}`, context])).values(),
+  );
+}
+
+function compareCandidateContentContext(
+  left: CandidateContentAccessContext,
+  right: CandidateContentAccessContext,
+) {
+  const leftStatusRank = left.availabilityStatus === "AVAILABLE" ? 0 : left.availabilityStatus === "LOCKED" ? 1 : 2;
+  const rightStatusRank = right.availabilityStatus === "AVAILABLE" ? 0 : right.availabilityStatus === "LOCKED" ? 1 : 2;
+
+  if (leftStatusRank !== rightStatusRank) {
+    return leftStatusRank - rightStatusRank;
+  }
+
+  const leftUnlockAt = left.availabilityReason.unlocksAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const rightUnlockAt = right.availabilityReason.unlocksAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+
+  if (leftUnlockAt !== rightUnlockAt) {
+    return leftUnlockAt - rightUnlockAt;
+  }
+
+  return `${left.batchId}:${left.stageItemId}`.localeCompare(`${right.batchId}:${right.stageItemId}`);
+}
+
+function selectBlockingCandidateContentContext(contexts: CandidateContentAccessContext[]) {
+  const blockingContexts = contexts.filter((context) => context.availabilityStatus !== "AVAILABLE");
+
+  if (blockingContexts.length === 0) {
+    return null;
+  }
+
+  return [...blockingContexts].sort(compareCandidateContentContext)[0] ?? null;
+}
+
+export async function resolveCandidateCurriculumContentContextsService(options: {
+  learnerId: string;
+  batchIds: string[];
+  contentId: string;
+}): Promise<CandidateContentAccessContext[]> {
+  if (!isDatabaseConfigured || options.batchIds.length === 0) {
+    return [];
+  }
+
+  const workspaces = await Promise.all(
+    Array.from(new Set(options.batchIds)).map((batchId) => getCandidateCurriculaForBatchService({
+      batchId,
+      learnerId: options.learnerId,
+    })),
+  );
+
+  const contexts = workspaces.flatMap((workspace) => workspace.assignedCurricula.flatMap((assignment) =>
+    assignment.curriculum.modules.flatMap((moduleRecord) =>
+      moduleRecord.stages.flatMap((stage) =>
+        stage.items.flatMap((item) => item.itemType === "CONTENT" && item.contentId === options.contentId
+          ? [{
+              batchId: workspace.batchId,
+              batchCode: workspace.batchCode,
+              batchName: workspace.batchName,
+              curriculumId: assignment.curriculum.id,
+              curriculumTitle: assignment.curriculum.title,
+              moduleId: moduleRecord.id,
+              moduleTitle: moduleRecord.title,
+              stageId: stage.id,
+              stageTitle: stage.title,
+              stageItemId: item.id,
+              itemTitle: item.referenceTitle,
+              availabilityStatus: item.availabilityStatus,
+              availabilityReason: item.availabilityReason,
+              progressStatus: item.progressStatus,
+              progressPercent: item.progressPercent,
+            } satisfies CandidateContentAccessContext]
+          : []),
+      ),
+    ),
+  ));
+
+  return dedupeCandidateContentContexts(contexts).sort(compareCandidateContentContext);
 }
 
 export async function listCourseContentService(courseId?: string, folderId?: string): Promise<ContentListItem[]> {
@@ -204,7 +289,7 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
     description: content.description,
     excerpt: content.excerpt,
     contentType: content.contentType,
-    bodyJson: parseAuthoredContentDocument(content.bodyJson),
+    bodyJson: parseAuthoredContentAnyDocument(content.bodyJson),
     renderedHtml: content.renderedHtml,
     estimatedReadingMinutes: content.estimatedReadingMinutes,
     fileUrl: content.fileUrl,
@@ -320,7 +405,7 @@ export async function listAssignedSharedCourseContentService(courseId?: string):
 export async function getCandidateAccessibleContentByIdService(
   userId: string,
   contentId: string,
-): Promise<CandidateContentDetail | null> {
+): Promise<CandidateContentAccessResult | null> {
   const profile = await getCandidateProfileByUserIdService(userId);
 
   if (!profile) {
@@ -448,42 +533,60 @@ export async function getCandidateAccessibleContentByIdService(
     return null;
   }
 
-  try {
-    const relevantBatchIds = await prisma.batch.findMany({
-      where: {
-        id: {
-          in: batchIds,
-        },
-        program: {
-          courseId: content.courseId,
-        },
-      },
-      select: {
-        id: true,
-      },
-    });
+  const contexts = await resolveCandidateCurriculumContentContextsService({
+    learnerId: profile.id,
+    batchIds,
+    contentId: content.id,
+  });
+  const availableContexts = contexts.filter((context) => context.availabilityStatus === "AVAILABLE");
 
-    await markCurriculumContentInProgressForLearnerService({
-      learnerId: profile.id,
-      batchIds: relevantBatchIds.map((batch) => batch.id),
+  if (contexts.length > 0 && availableContexts.length === 0) {
+    const blockingContext = selectBlockingCandidateContentContext(contexts);
+
+    if (!blockingContext) {
+      return null;
+    }
+
+    return {
+      kind: "blocked",
       contentId: content.id,
-    });
-  } catch (error) {
-    console.warn("Candidate content access succeeded, but curriculum progress sync failed", error);
+      title: content.title,
+      availabilityStatus: blockingContext.availabilityStatus === "SCHEDULED" ? "SCHEDULED" : "LOCKED",
+      availabilityReason: blockingContext.availabilityReason,
+      contexts,
+    };
+  }
+
+  if (availableContexts.length > 0) {
+    try {
+      await markCurriculumContentCompletedForLearnerService({
+        learnerId: profile.id,
+        targets: availableContexts.map((context) => ({
+          batchId: context.batchId,
+          stageItemId: context.stageItemId,
+        })),
+      });
+    } catch (error) {
+      console.warn("Candidate content access succeeded, but curriculum completion sync failed", error);
+    }
   }
 
   return {
-    id: content.id,
-    title: content.title,
-    description: content.description,
-    excerpt: content.excerpt,
-    contentType: content.contentType,
-    estimatedReadingMinutes: content.estimatedReadingMinutes,
-    fileUrl: content.fileUrl,
-    fileName: content.fileName,
-    mimeType: content.mimeType,
-    renderedHtml: content.renderedHtml,
-    bodyJson: parseAuthoredContentDocument(content.bodyJson),
-    updatedAt: content.updatedAt,
+    kind: "content",
+    content: {
+      id: content.id,
+      title: content.title,
+      description: content.description,
+      excerpt: content.excerpt,
+      contentType: content.contentType,
+      estimatedReadingMinutes: content.estimatedReadingMinutes,
+      fileUrl: content.fileUrl,
+      fileName: content.fileName,
+      mimeType: content.mimeType,
+      renderedHtml: content.renderedHtml,
+      bodyJson: parseAuthoredContentAnyDocument(content.bodyJson),
+      updatedAt: content.updatedAt,
+    },
+    contexts,
   };
 }

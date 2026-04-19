@@ -6,6 +6,7 @@ export {
   deleteUploadedSettingsAsset,
   publishBrandingSettingsAsset,
   resolveStoredAssetResponse,
+  storeUploadedCertificationBrandingAsset,
   storeUploadedCourseContentAsset,
   storeUploadedEmailTemplateAsset,
   storeUploadedLearningResourceAsset,

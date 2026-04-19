@@ -2,6 +2,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Mail,
   Lock,
@@ -14,6 +15,8 @@ import {
   CheckCircle,
   X,
 } from "lucide-react";
+
+import { SESSION_EXPIRY_QUERY_KEY } from "@/components/layout/session-expiry-warning";
 
 type ViewState = "SIGN_IN" | "TWO_STEP" | "RECOVERY" | "FORGOT_PASSWORD" | "RESET_SENT";
 
@@ -28,6 +31,7 @@ function resolvePostLoginPath(candidatePath: string | null) {
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const [viewState, setViewState] = useState<ViewState>("SIGN_IN");
   const [showPassword, setShowPassword] = useState(false);
   const [loginId, setLoginId] = useState("");
@@ -55,6 +59,10 @@ function LoginPageContent() {
   }, [searchParams]);
 
   const completeSignIn = async () => {
+    // Clear stale session-expiry cache so the warning component picks up
+    // the new session cookie on the next fetch instead of using old data
+    // that would trigger an immediate redirect loop.
+    queryClient.removeQueries({ queryKey: [...SESSION_EXPIRY_QUERY_KEY] });
     router.replace(postLoginPath);
     router.refresh();
   };

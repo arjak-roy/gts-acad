@@ -4,17 +4,28 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BookOpen, Boxes, Eye, GripVertical, Plus, Save, Trash2, Workflow } from "lucide-react";
+import DOMPurify from "isomorphic-dompurify";
+import { Award, BookOpen, Boxes, Copy, Download, Eye, FileText, GripVertical, HeartPulse, LayoutTemplate, Loader2, MoreHorizontal, PanelLeft, PanelLeftClose, Pencil, Plus, Save, Trash2, Workflow } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 import { CurriculumAssessmentPickerDialog } from "@/components/modules/curriculum-builder/curriculum-assessment-picker-dialog";
+import { CurriculumCertificateMilestone } from "@/components/modules/curriculum-builder/curriculum-certificate-milestone";
 import { CurriculumContentPickerDialog } from "@/components/modules/curriculum-builder/curriculum-content-picker-dialog";
+import { CurriculumInlineContentCreator } from "@/components/modules/curriculum-builder/curriculum-inline-content-creator";
+import { CurriculumHealthBadge, CurriculumHealthReport } from "@/components/modules/curriculum-builder/curriculum-health-badge";
 import { CurriculumHierarchyView } from "@/components/modules/curriculum-builder/curriculum-hierarchy-view";
+import { CurriculumTemplatesTab } from "@/components/modules/curriculum-builder/curriculum-templates-tab";
+import { AssessmentDetailSheet } from "@/components/modules/assessment-pool/assessment-detail-sheet";
+import { EditContentSheet } from "@/components/modules/course-builder/edit-content-sheet";
+import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
+import { CertificatePreviewRenderer } from "@/components/modules/certifications/certificate-preview-renderer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
@@ -122,6 +133,9 @@ type CurriculumStageSummary = {
   title: string;
   description: string | null;
   sortOrder: number;
+  completionRule: string;
+  completionThreshold: number | null;
+  prerequisiteStageId: string | null;
   itemCount: number;
   items: CurriculumStageItemDetail[];
 };
@@ -131,6 +145,9 @@ type CurriculumModuleSummary = {
   title: string;
   description: string | null;
   sortOrder: number;
+  completionRule: string;
+  completionThreshold: number | null;
+  prerequisiteModuleId: string | null;
   stageCount: number;
   itemCount: number;
   stages: CurriculumStageSummary[];
@@ -154,6 +171,22 @@ type CurriculumDetail = {
   modules: CurriculumModuleSummary[];
 };
 
+type ModuleSaveInput = {
+  title: string;
+  description: string;
+  completionRule?: string;
+  completionThreshold?: number | null;
+  prerequisiteModuleId?: string | null;
+};
+
+type StageSaveInput = {
+  title: string;
+  description: string;
+  completionRule?: string;
+  completionThreshold?: number | null;
+  prerequisiteStageId?: string | null;
+};
+
 type CurriculumSummary = {
   id: string;
   courseId: string;
@@ -162,6 +195,7 @@ type CurriculumSummary = {
   title: string;
   description: string | null;
   status: string;
+  isTemplate?: boolean;
   moduleCount: number;
   stageCount: number;
   itemCount: number;
@@ -191,7 +225,7 @@ type CurriculumBatchMapping = {
   canAddBatchMapping: boolean;
 };
 
-type WorkspacePopupView = "SEQUENCE" | "REFERENCES" | "BATCHES";
+type WorkspacePopupView = "SEQUENCE" | "REFERENCES" | "BATCHES" | "CLONE" | "TEMPLATES" | "CERTIFICATES" | "HEALTH";
 
 const selectClassName = "block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
 const textareaClassName = "flex min-h-[96px] w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
@@ -498,27 +532,73 @@ function CurriculumMetaEditor({
 
 function SortableStageItemRow({
   item,
+  courseId,
+  contentFolders,
   disabled,
   canEdit,
   stageItemOptions,
   onToggleRequired,
   onSaveReleaseConfig,
   onDelete,
+  onContentUpdated,
 }: {
   item: CurriculumStageItemDetail;
+  courseId: string;
+  contentFolders: ContentFolderOption[];
   disabled: boolean;
   canEdit: boolean;
   stageItemOptions: StageItemReferenceOption[];
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
   onSaveReleaseConfig: (itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) => Promise<boolean>;
   onDelete: (itemId: string) => Promise<boolean>;
+  onContentUpdated: () => void | Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     disabled: disabled || !canEdit,
   });
   const [isEditingRelease, setIsEditingRelease] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [releaseDraft, setReleaseDraft] = useState<StageItemReleaseDraft>(() => createReleaseDraft(item.release));
+
+  // Edit state
+  const [editContentOpen, setEditContentOpen] = useState(false);
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [richEditorHtml, setRichEditorHtml] = useState("");
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false);
+  const [assessmentDetailOpen, setAssessmentDetailOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const downloadContent = useCallback(async (format: "docx" | "html") => {
+    if (!item.contentId || isExporting) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/course-content/${item.contentId}/export?format=${format}`, { cache: "no-store" });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Export failed.");
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] ? decodeURIComponent(match[1]) : `content.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [item.contentId, isExporting]);
+
   const initialReleaseDraft = createReleaseDraft(item.release);
   const isReleaseDirty = JSON.stringify(releaseDraft) !== JSON.stringify(initialReleaseDraft);
   const prerequisiteOptions = stageItemOptions.filter((option) => option.id !== item.id);
@@ -540,6 +620,96 @@ function SortableStageItemRow({
     if (ok) {
       setIsEditingRelease(false);
     }
+  }
+
+  function handleEdit() {
+    if (item.itemType === "ASSESSMENT" && item.assessmentPoolId) {
+      setAssessmentDetailOpen(true);
+      return;
+    }
+
+    if (item.itemType === "CONTENT" && item.contentId) {
+      if (item.contentType === "ARTICLE") {
+        // For authored lessons, fetch HTML and open rich editor directly
+        setIsLoadingEdit(true);
+        fetch(`/api/course-content/${item.contentId}`)
+          .then((res) => (res.ok ? res.json() : Promise.reject()))
+          .then((json: { data?: { bodyJson?: { version?: number; html?: string } | null; renderedHtml?: string | null } }) => {
+            const data = json.data;
+            if (data?.bodyJson && data.bodyJson.version === 2 && data.bodyJson.html) {
+              setRichEditorHtml(data.bodyJson.html);
+            } else {
+              setRichEditorHtml(data?.renderedHtml ?? "<p></p>");
+            }
+            setRichEditorOpen(true);
+          })
+          .catch(() => {
+            toast.error("Failed to load content for editing.");
+          })
+          .finally(() => setIsLoadingEdit(false));
+      } else {
+        // For non-article content, open the full edit sheet
+        setEditContentOpen(true);
+      }
+    }
+  }
+
+  async function handleRichEditorSave(html: string, _plainText: string) {
+    if (!item.contentId) return;
+    try {
+      const res = await fetch(`/api/course-content/${item.contentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bodyJson: { version: 2, html } }),
+      });
+      if (!res.ok) {
+        toast.error("Failed to save content.");
+        return;
+      }
+      toast.success("Content saved.");
+      setRichEditorOpen(false);
+      setPreviewHtml(null); // Clear cached preview so it reloads
+      void onContentUpdated();
+    } catch {
+      toast.error("Failed to save content.");
+    }
+  }
+
+  function handleTogglePreview() {
+    if (isPreviewOpen) {
+      setIsPreviewOpen(false);
+      return;
+    }
+
+    setIsPreviewOpen(true);
+
+    if (previewHtml !== null) return; // Already loaded
+
+    const contentId = item.contentId;
+    if (!contentId) return;
+
+    setIsLoadingPreview(true);
+    fetch(`/api/course-content/${contentId}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((json: { data?: { renderedHtml?: string | null; bodyJson?: { version?: number; html?: string } | null } }) => {
+        const data = json.data;
+        if (!data) {
+          setPreviewHtml("<p class='text-slate-400'>No preview available.</p>");
+          return;
+        }
+        // Prefer v2 HTML directly, then renderedHtml, then fallback
+        if (data.bodyJson && data.bodyJson.version === 2 && data.bodyJson.html) {
+          setPreviewHtml(data.bodyJson.html);
+        } else if (data.renderedHtml) {
+          setPreviewHtml(data.renderedHtml);
+        } else {
+          setPreviewHtml("<p class='text-slate-400'>No preview available for this content type.</p>");
+        }
+      })
+      .catch(() => {
+        setPreviewHtml("<p class='text-red-400'>Failed to load preview.</p>");
+      })
+      .finally(() => setIsLoadingPreview(false));
   }
 
   return (
@@ -591,6 +761,57 @@ function SortableStageItemRow({
 
           {item.referenceDescription ? (
             <p className="text-sm text-slate-600">{item.referenceDescription}</p>
+          ) : null}
+
+          {/* Inline content preview */}
+          {item.itemType === "CONTENT" && item.contentId && isPreviewOpen ? (
+            <div className="rounded-xl border border-[#dde1e6] bg-slate-50/60">
+              {isLoadingPreview ? (
+                <div className="space-y-3 p-4">
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
+                  <div className="h-3 w-full animate-pulse rounded bg-slate-200" />
+                  <div className="h-3 w-5/6 animate-pulse rounded bg-slate-200" />
+                  <div className="h-3 w-2/3 animate-pulse rounded bg-slate-200" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200" />
+                  <div className="h-3 w-full animate-pulse rounded bg-slate-200" />
+                  <div className="h-3 w-4/5 animate-pulse rounded bg-slate-200" />
+                </div>
+              ) : previewHtml ? (
+                <>
+                  <div
+                    className="prose prose-sm prose-slate max-h-[400px] max-w-none overflow-y-auto p-4 [&_img]:max-w-full [&_img]:rounded-lg [&_table]:text-xs [&_pre]:text-xs"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
+                  />
+                  {item.contentType === "ARTICLE" && (
+                    <div className="flex items-center gap-1.5 border-t border-[#dde1e6] px-4 py-2">
+                      <span className="mr-auto text-[10px] font-medium uppercase tracking-wide text-slate-400">Export</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 rounded-lg px-2.5 text-xs"
+                        disabled={isExporting}
+                        onClick={() => downloadContent("docx")}
+                      >
+                        <Download className="h-3 w-3" />
+                        DOCX
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 rounded-lg px-2.5 text-xs"
+                        disabled={isExporting}
+                        onClick={() => downloadContent("html")}
+                      >
+                        <Download className="h-3 w-3" />
+                        HTML
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
           ) : null}
 
           {isEditingRelease ? (
@@ -798,6 +1019,29 @@ function SortableStageItemRow({
           >
             {isEditingRelease ? "Close Rules" : "Release Rules"}
           </Button>
+          {item.itemType === "CONTENT" && item.contentId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleTogglePreview}
+            >
+              <Eye className="h-4 w-4" />
+              {isPreviewOpen ? "Hide Preview" : "Preview"}
+            </Button>
+          ) : null}
+          {(item.contentId || item.assessmentPoolId) ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={disabled || !canEdit || isLoadingEdit}
+              onClick={handleEdit}
+            >
+              {isLoadingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+              Edit
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -815,6 +1059,35 @@ function SortableStageItemRow({
           </Button>
         </div>
       </div>
+
+      {/* Edit sheets */}
+      {item.itemType === "CONTENT" && item.contentId && item.contentType === "ARTICLE" ? (
+        <RichContentEditorSheet
+          open={richEditorOpen}
+          onOpenChange={setRichEditorOpen}
+          initialHtml={richEditorHtml}
+          onSave={(html, plainText) => void handleRichEditorSave(html, plainText)}
+          courseId={courseId}
+          disabled={disabled}
+        />
+      ) : null}
+      {item.itemType === "CONTENT" && item.contentId && item.contentType !== "ARTICLE" ? (
+        <EditContentSheet
+          contentId={editContentOpen ? item.contentId : null}
+          open={editContentOpen}
+          onOpenChange={setEditContentOpen}
+          folders={contentFolders.map((f) => ({ id: f.id, name: f.name, description: null }))}
+          onUpdated={() => void onContentUpdated()}
+        />
+      ) : null}
+      {item.itemType === "ASSESSMENT" && item.assessmentPoolId ? (
+        <AssessmentDetailSheet
+          poolId={assessmentDetailOpen ? item.assessmentPoolId : null}
+          open={assessmentDetailOpen}
+          onOpenChange={setAssessmentDetailOpen}
+          onUpdated={() => void onContentUpdated()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -830,6 +1103,8 @@ function SortableStageCard({
   canEdit,
   canCreateContent,
   stageItemOptions,
+  existingContentIds,
+  allStages,
   onSave,
   onDelete,
   onCreateItems,
@@ -849,7 +1124,9 @@ function SortableStageCard({
   canEdit: boolean;
   canCreateContent: boolean;
   stageItemOptions: StageItemReferenceOption[];
-  onSave: (stageId: string, input: { title: string; description: string }) => Promise<boolean>;
+  existingContentIds: string[];
+  allStages: CurriculumStageSummary[];
+  onSave: (stageId: string, input: StageSaveInput) => Promise<boolean>;
   onDelete: (stageId: string) => Promise<boolean>;
   onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
   onRefreshContentReferences: () => Promise<void>;
@@ -867,16 +1144,29 @@ function SortableStageCard({
   const [isEditing, setIsEditing] = useState(false);
   const [showAddItem, setShowAddItem] = useState(stage.itemCount === 0);
   const [activePicker, setActivePicker] = useState<CurriculumItemType | null>(null);
+  const [inlineCreatorOpen, setInlineCreatorOpen] = useState(false);
   const [title, setTitle] = useState(stage.title);
   const [description, setDescription] = useState(stage.description ?? "");
+  const [completionRule, setCompletionRule] = useState(stage.completionRule ?? "ALL_REQUIRED");
+  const [completionThreshold, setCompletionThreshold] = useState<string>(stage.completionThreshold?.toString() ?? "");
+  const [prerequisiteStageId, setPrerequisiteStageId] = useState<string>(stage.prerequisiteStageId ?? "");
 
   useEffect(() => {
     setTitle(stage.title);
     setDescription(stage.description ?? "");
-  }, [stage.description, stage.id, stage.title]);
+    setCompletionRule(stage.completionRule ?? "ALL_REQUIRED");
+    setCompletionThreshold(stage.completionThreshold?.toString() ?? "");
+    setPrerequisiteStageId(stage.prerequisiteStageId ?? "");
+  }, [stage.description, stage.id, stage.title, stage.completionRule, stage.completionThreshold, stage.prerequisiteStageId]);
 
   async function handleSaveStage() {
-    const ok = await onSave(stage.id, { title, description });
+    const ok = await onSave(stage.id, {
+      title,
+      description,
+      completionRule,
+      completionThreshold: completionThreshold ? Number(completionThreshold) : null,
+      prerequisiteStageId: prerequisiteStageId || null,
+    });
     if (ok) {
       setIsEditing(false);
     }
@@ -973,10 +1263,63 @@ function SortableStageCard({
                   placeholder="Describe what learners should complete in this stage."
                 />
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Completion rule</label>
+                  <select
+                    value={completionRule}
+                    disabled={disabled}
+                    onChange={(event) => setCompletionRule(event.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="ALL_REQUIRED">All required items</option>
+                    <option value="ALL_ITEMS">All items (required + optional)</option>
+                    <option value="PERCENTAGE">Percentage of items</option>
+                    <option value="MIN_ITEMS">Minimum number of items</option>
+                  </select>
+                </div>
+                {(completionRule === "PERCENTAGE" || completionRule === "MIN_ITEMS") ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      {completionRule === "PERCENTAGE" ? "Threshold (%)" : "Min items"}
+                    </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={completionRule === "PERCENTAGE" ? 100 : undefined}
+                      value={completionThreshold}
+                      disabled={disabled}
+                      onChange={(event) => setCompletionThreshold(event.target.value)}
+                      placeholder={completionRule === "PERCENTAGE" ? "e.g. 80" : "e.g. 3"}
+                    />
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Prerequisite stage</label>
+                  <select
+                    value={prerequisiteStageId}
+                    disabled={disabled}
+                    onChange={(event) => setPrerequisiteStageId(event.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">None</option>
+                    {allStages
+                      .filter((s) => s.id !== stage.id)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.title}</option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="secondary" disabled={disabled} onClick={() => {
                   setTitle(stage.title);
                   setDescription(stage.description ?? "");
+                  setCompletionRule(stage.completionRule ?? "ALL_REQUIRED");
+                  setCompletionThreshold(stage.completionThreshold?.toString() ?? "");
+                  setPrerequisiteStageId(stage.prerequisiteStageId ?? "");
                   setIsEditing(false);
                 }}>
                   Cancel
@@ -1001,12 +1344,15 @@ function SortableStageCard({
                       <SortableStageItemRow
                         key={item.id}
                         item={item}
+                        courseId={courseId}
+                        contentFolders={contentFolders}
                         disabled={disabled}
                         canEdit={canEdit}
                         stageItemOptions={stageItemOptions}
                         onToggleRequired={onToggleRequired}
                         onSaveReleaseConfig={onSaveReleaseConfig}
                         onDelete={onDeleteItem}
+                        onContentUpdated={onRefreshContentReferences}
                       />
                     ))}
                   </div>
@@ -1033,6 +1379,12 @@ function SortableStageCard({
                       <Plus className="h-4 w-4" />
                       Add Content
                     </Button>
+                    {canCreateContent ? (
+                      <Button type="button" variant="secondary" disabled={disabled} onClick={() => setInlineCreatorOpen(true)}>
+                        <FileText className="h-4 w-4" />
+                        Add Authored Content
+                      </Button>
+                    ) : null}
                     <Button type="button" variant="secondary" disabled={disabled} onClick={() => setActivePicker("ASSESSMENT")}>
                       <Plus className="h-4 w-4" />
                       Add Assessment
@@ -1066,6 +1418,7 @@ function SortableStageCard({
         isLoading={isLoadingReferences}
         isSaving={disabled}
         canCreateContent={canCreateContent}
+        existingContentIds={existingContentIds}
         onSubmit={async ({ contentIds, isRequired }) => {
           const ok = await onCreateItems(stage.id, {
             itemType: "CONTENT",
@@ -1104,6 +1457,28 @@ function SortableStageCard({
           return ok;
         }}
       />
+
+      <CurriculumInlineContentCreator
+        open={inlineCreatorOpen}
+        onOpenChange={setInlineCreatorOpen}
+        courseId={courseId}
+        folders={contentFolders}
+        stageId={stage.id}
+        onComplete={async (contentId) => {
+          const ok = await onCreateItems(stage.id, {
+            itemType: "CONTENT",
+            contentIds: [contentId],
+            assessmentPoolIds: [],
+            isRequired: false,
+          });
+          if (ok) {
+            setShowAddItem(false);
+          }
+          return ok;
+        }}
+        onRefresh={onRefreshContentReferences}
+        disabled={disabled}
+      />
     </div>
   );
 }
@@ -1119,6 +1494,8 @@ function SortableModuleCard({
   canEdit,
   canCreateContent,
   stageItemOptions,
+  existingContentIds,
+  allModules,
   onSave,
   onDelete,
   onCreateStage,
@@ -1142,10 +1519,12 @@ function SortableModuleCard({
   canEdit: boolean;
   canCreateContent: boolean;
   stageItemOptions: StageItemReferenceOption[];
-  onSave: (moduleId: string, input: { title: string; description: string }) => Promise<boolean>;
+  existingContentIds: string[];
+  allModules: CurriculumModuleSummary[];
+  onSave: (moduleId: string, input: ModuleSaveInput) => Promise<boolean>;
   onDelete: (moduleId: string) => Promise<boolean>;
   onCreateStage: (moduleId: string, input: { title: string; description: string }) => Promise<boolean>;
-  onSaveStage: (stageId: string, input: { title: string; description: string }) => Promise<boolean>;
+  onSaveStage: (stageId: string, input: StageSaveInput) => Promise<boolean>;
   onDeleteStage: (stageId: string) => Promise<boolean>;
   onReorderStages: (moduleId: string, stageIds: string[]) => Promise<void>;
   onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
@@ -1165,16 +1544,28 @@ function SortableModuleCard({
   const [showAddStage, setShowAddStage] = useState(module.stageCount === 0);
   const [title, setTitle] = useState(module.title);
   const [description, setDescription] = useState(module.description ?? "");
+  const [completionRule, setCompletionRule] = useState(module.completionRule ?? "ALL_REQUIRED");
+  const [completionThreshold, setCompletionThreshold] = useState<string>(module.completionThreshold?.toString() ?? "");
+  const [prerequisiteModuleId, setPrerequisiteModuleId] = useState<string>(module.prerequisiteModuleId ?? "");
   const [newStageTitle, setNewStageTitle] = useState("");
   const [newStageDescription, setNewStageDescription] = useState("");
 
   useEffect(() => {
     setTitle(module.title);
     setDescription(module.description ?? "");
-  }, [module.description, module.id, module.title]);
+    setCompletionRule(module.completionRule ?? "ALL_REQUIRED");
+    setCompletionThreshold(module.completionThreshold?.toString() ?? "");
+    setPrerequisiteModuleId(module.prerequisiteModuleId ?? "");
+  }, [module.description, module.id, module.title, module.completionRule, module.completionThreshold, module.prerequisiteModuleId]);
 
   async function handleSaveModule() {
-    const ok = await onSave(module.id, { title, description });
+    const ok = await onSave(module.id, {
+      title,
+      description,
+      completionRule,
+      completionThreshold: completionThreshold ? Number(completionThreshold) : null,
+      prerequisiteModuleId: prerequisiteModuleId || null,
+    });
     if (ok) {
       setIsEditing(false);
     }
@@ -1283,10 +1674,63 @@ function SortableModuleCard({
                     placeholder="Describe the learning arc or objective for this module."
                   />
                 </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Completion rule</label>
+                    <select
+                      value={completionRule}
+                      disabled={disabled}
+                      onChange={(event) => setCompletionRule(event.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="ALL_REQUIRED">All required items</option>
+                      <option value="ALL_ITEMS">All items (required + optional)</option>
+                      <option value="PERCENTAGE">Percentage of items</option>
+                      <option value="MIN_ITEMS">Minimum number of items</option>
+                    </select>
+                  </div>
+                  {(completionRule === "PERCENTAGE" || completionRule === "MIN_ITEMS") ? (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        {completionRule === "PERCENTAGE" ? "Threshold (%)" : "Min items"}
+                      </label>
+                      <Input
+                        type="number"
+                        min={completionRule === "PERCENTAGE" ? 1 : 1}
+                        max={completionRule === "PERCENTAGE" ? 100 : undefined}
+                        value={completionThreshold}
+                        disabled={disabled}
+                        onChange={(event) => setCompletionThreshold(event.target.value)}
+                        placeholder={completionRule === "PERCENTAGE" ? "e.g. 80" : "e.g. 3"}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Prerequisite module</label>
+                    <select
+                      value={prerequisiteModuleId}
+                      disabled={disabled}
+                      onChange={(event) => setPrerequisiteModuleId(event.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">None</option>
+                      {allModules
+                        .filter((m) => m.id !== module.id)
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>{m.title}</option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="secondary" disabled={disabled} onClick={() => {
                     setTitle(module.title);
                     setDescription(module.description ?? "");
+                    setCompletionRule(module.completionRule ?? "ALL_REQUIRED");
+                    setCompletionThreshold(module.completionThreshold?.toString() ?? "");
+                    setPrerequisiteModuleId(module.prerequisiteModuleId ?? "");
                     setIsEditing(false);
                   }}>
                     Cancel
@@ -1320,6 +1764,8 @@ function SortableModuleCard({
                           canEdit={canEdit}
                           canCreateContent={canCreateContent}
                           stageItemOptions={stageItemOptions}
+                          existingContentIds={existingContentIds}
+                          allStages={module.stages}
                           onSave={onSaveStage}
                           onDelete={onDeleteStage}
                           onCreateItems={onCreateItems}
@@ -1490,6 +1936,369 @@ function CurriculumBatchMappingCard({
   );
 }
 
+function CloneCurriculumDialog({
+  open,
+  onOpenChange,
+  curriculumTitle,
+  courses,
+  defaultCourseId,
+  disabled,
+  onClone,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  curriculumTitle: string;
+  courses: CourseOption[];
+  defaultCourseId: string;
+  disabled: boolean;
+  onClone: (title: string, targetCourseId: string) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [targetCourseId, setTargetCourseId] = useState(defaultCourseId);
+  const [isCloning, setIsCloning] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setTitle(`${curriculumTitle} (Copy)`);
+      setTargetCourseId(defaultCourseId);
+    }
+  }, [open, curriculumTitle, defaultCourseId]);
+
+  async function handleSubmit() {
+    if (!title.trim() || !targetCourseId) return;
+    setIsCloning(true);
+    try {
+      await onClone(title.trim(), targetCourseId);
+    } finally {
+      setIsCloning(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Duplicate Curriculum</DialogTitle>
+          <DialogDescription>Create a copy of &ldquo;{curriculumTitle}&rdquo; with all modules, stages, and items.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">New title</label>
+            <Input value={title} disabled={isCloning || disabled} onChange={(event) => setTitle(event.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Target course</label>
+            <select
+              value={targetCourseId}
+              disabled={isCloning || disabled}
+              onChange={(event) => setTargetCourseId(event.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {courses.map((course) => (
+                <option key={course.id} value={course.id}>{course.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" disabled={isCloning} onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={isCloning || disabled || !title.trim()} onClick={() => void handleSubmit()}>
+              {isCloning ? "Cloning…" : "Duplicate"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Certificate Templates Section (for workspace popup) ──────────────────────
+
+type CertTemplatePreview = {
+  id: string;
+  title: string;
+  description: string | null;
+  orientation: string;
+  paperSize: string;
+  isDefault: boolean;
+  isActive: boolean;
+  layoutJson: unknown[];
+  backgroundColor: string | null;
+  backgroundImageUrl: string | null;
+  logoUrl: string | null;
+  signatory1SignatureUrl: string | null;
+  signatory2SignatureUrl: string | null;
+};
+
+type CertAutoIssueRule = {
+  id: string;
+  templateId: string;
+  batchName: string;
+  batchCode: string;
+  programName: string;
+  curriculumId: string | null;
+  curriculumTitle: string | null;
+  trigger: string;
+  isActive: boolean;
+};
+
+const triggerLabels: Record<string, string> = {
+  CURRICULUM_COMPLETION: "Curriculum Completion",
+  ENROLLMENT_COMPLETION: "Enrollment Completion",
+};
+
+function CurriculumCertificateSection({
+  courseId,
+  curriculumId,
+  curriculumTitle,
+}: {
+  courseId: string;
+  curriculumId: string | null;
+  curriculumTitle: string | null;
+}) {
+  const [templates, setCertTemplates] = useState<CertTemplatePreview[]>([]);
+  const [rules, setRules] = useState<CertAutoIssueRule[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!courseId) return;
+    setIsLoading(true);
+    Promise.all([
+      fetch(`/api/certifications/templates?courseId=${courseId}`)
+        .then((r) => r.json())
+        .then((res: { data?: CertTemplatePreview[] }) => setCertTemplates(res.data ?? [])),
+      fetch(`/api/certifications/auto-issue-rules?courseId=${courseId}`)
+        .then((r) => r.json())
+        .then((res: { data?: CertAutoIssueRule[] }) => setRules(res.data ?? [])),
+    ])
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, [courseId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (templates.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Award className="mb-3 h-10 w-10 text-slate-300" />
+        <p className="text-sm font-medium text-slate-500">No certificate templates</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Create templates in the{" "}
+          <Link href="/certifications" className="text-[#0d3b84] underline">Certifications</Link>{" "}
+          page.
+        </p>
+      </div>
+    );
+  }
+
+  // Filter rules relevant to the current curriculum
+  const relevantRules = curriculumId
+    ? rules.filter((r) => r.curriculumId === curriculumId || r.curriculumId === null)
+    : rules;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="border-slate-200 bg-slate-50/70">
+          <CardContent className="py-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Templates</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-950">{templates.length}</p>
+            <p className="mt-1 text-sm text-slate-500">Certificate templates for this course.</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200 bg-slate-50/70">
+          <CardContent className="py-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Auto-Issue Rules</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-950">{relevantRules.length}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {curriculumId ? `Rules involving "${curriculumTitle}".` : "Total rules for this course."}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200 bg-slate-50/70">
+          <CardContent className="py-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Configure</p>
+            <p className="mt-2 text-sm text-slate-700">
+              Manage auto-issue rules in the dedicated configuration page.
+            </p>
+            <Link href="/certifications/issuance">
+              <Button size="sm" variant="secondary" className="mt-2">
+                <Award className="mr-1.5 h-3.5 w-3.5" />
+                Auto-Issue Config
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Template preview grid */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {templates.map((tpl) => {
+          const tplRules = relevantRules.filter((r) => r.templateId === tpl.id);
+          return (
+            <Card key={tpl.id} className="overflow-hidden border-slate-200">
+              <div className="border-b border-slate-100 bg-slate-50">
+                <CertificatePreviewRenderer
+                  layoutJson={tpl.layoutJson as import("@/services/certifications/types").CanvasElement[]}
+                  orientation={tpl.orientation}
+                  paperSize={tpl.paperSize}
+                  backgroundColor={tpl.backgroundColor}
+                  backgroundImageUrl={tpl.backgroundImageUrl}
+                  logoUrl={tpl.logoUrl}
+                  signatory1SignatureUrl={tpl.signatory1SignatureUrl}
+                  signatory2SignatureUrl={tpl.signatory2SignatureUrl}
+                />
+              </div>
+              <CardContent className="py-3">
+                <div className="flex items-center gap-2">
+                  <h4 className="truncate text-sm font-semibold text-slate-800">{tpl.title}</h4>
+                  {tpl.isDefault && (
+                    <Badge variant="default" className="shrink-0 text-[10px]">Default</Badge>
+                  )}
+                </div>
+                {tpl.description && (
+                  <p className="mt-0.5 truncate text-xs text-slate-400">{tpl.description}</p>
+                )}
+                {tplRules.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {tplRules.map((rule) => (
+                      <div
+                        key={rule.id}
+                        className="flex items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-[11px]"
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${rule.isActive ? "bg-emerald-500" : "bg-slate-300"}`} />
+                        <span className="font-medium text-slate-700">{rule.batchName}</span>
+                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-500">
+                          {rule.curriculumTitle ?? triggerLabels[rule.trigger] ?? rule.trigger}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-slate-400">No auto-issue rules configured.</p>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TemplateBrowserDialog({
+  open,
+  onOpenChange,
+  targetCourseId,
+  disabled,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  targetCourseId: string;
+  disabled: boolean;
+  onCreate: (templateId: string, title: string) => Promise<void>;
+}) {
+  const [templates, setTemplates] = useState<CurriculumSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [title, setTitle] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setIsLoading(true);
+    setSelectedTemplateId("");
+    setTitle("");
+    fetch("/api/curriculum/templates")
+      .then((response) => response.json())
+      .then((json: ApiEnvelope<CurriculumSummary[]>) => {
+        setTemplates(json.data ?? []);
+      })
+      .catch(() => {
+        toast.error("Failed to load templates.");
+      })
+      .finally(() => setIsLoading(false));
+  }, [open]);
+
+  async function handleCreate() {
+    if (!selectedTemplateId || !title.trim()) return;
+    setIsCreating(true);
+    try {
+      await onCreate(selectedTemplateId, title.trim());
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Create from Template</DialogTitle>
+          <DialogDescription>Choose a saved template and create a new curriculum based on it.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : templates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No templates found. Save an existing curriculum as a template first.</p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Template</label>
+                <select
+                  value={selectedTemplateId}
+                  disabled={isCreating || disabled}
+                  onChange={(event) => {
+                    setSelectedTemplateId(event.target.value);
+                    const selected = templates.find((t) => t.id === event.target.value);
+                    if (selected) setTitle(selected.title.replace(/^\[Template\]\s*/i, ""));
+                  }}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">Select a template…</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.title} ({template.moduleCount} modules, {template.itemCount} items)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedTemplateId ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Curriculum title</label>
+                  <Input value={title} disabled={isCreating || disabled} onChange={(event) => setTitle(event.target.value)} />
+                </div>
+              ) : null}
+            </>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" disabled={isCreating} onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={isCreating || disabled || !selectedTemplateId || !title.trim()} onClick={() => void handleCreate()}>
+              {isCreating ? "Creating…" : "Create"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WorkspaceScreenPopup({
   open,
   onOpenChange,
@@ -1548,11 +2357,28 @@ export default function CurriculumBuilderPage() {
   const [newModuleTitle, setNewModuleTitle] = useState("");
   const [newModuleDescription, setNewModuleDescription] = useState("");
   const [activeWorkspacePopup, setActiveWorkspacePopup] = useState<WorkspacePopupView | null>(null);
+  const [activeTab, setActiveTab] = useState<"builder" | "templates">("builder");
+  const [showVariantsPanel, setShowVariantsPanel] = useState(true);
+  const [milestoneTemplates, setMilestoneTemplates] = useState<CertTemplatePreview[]>([]);
+  const [milestoneRules, setMilestoneRules] = useState<CertAutoIssueRule[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const selectedCourse = courses.find((course) => course.id === selectedCourseId) ?? null;
   const selectedCurriculumSummary = curricula.find((item) => item.id === selectedCurriculumId) ?? null;
   const isMutating = activeAction !== null;
+
+  const existingContentIds = useMemo(() => {
+    if (!curriculum) return [];
+    const ids: string[] = [];
+    for (const mod of curriculum.modules) {
+      for (const stage of mod.stages) {
+        for (const item of stage.items) {
+          if (item.contentId) ids.push(item.contentId);
+        }
+      }
+    }
+    return ids;
+  }, [curriculum]);
 
   const loadCourses = useCallback(async () => {
     setIsLoadingCourses(true);
@@ -1756,6 +2582,23 @@ export default function CurriculumBuilderPage() {
     void loadReferences(selectedCourseId);
   }, [loadCurricula, loadReferences, selectedCourseId]);
 
+  // Load certificate data for the milestone preview
+  useEffect(() => {
+    if (!selectedCourseId) {
+      setMilestoneTemplates([]);
+      setMilestoneRules([]);
+      return;
+    }
+    Promise.all([
+      fetch(`/api/certifications/templates?courseId=${selectedCourseId}`)
+        .then((r) => r.json())
+        .then((res: { data?: CertTemplatePreview[] }) => setMilestoneTemplates(res.data ?? [])),
+      fetch(`/api/certifications/auto-issue-rules?courseId=${selectedCourseId}`)
+        .then((r) => r.json())
+        .then((res: { data?: CertAutoIssueRule[] }) => setMilestoneRules(res.data ?? [])),
+    ]).catch(() => {});
+  }, [selectedCourseId]);
+
   useEffect(() => {
     if (!selectedCurriculumId) {
       setCurriculum(null);
@@ -1856,6 +2699,80 @@ export default function CurriculumBuilderPage() {
     }
   }
 
+  async function handleCloneCurriculum(title: string, targetCourseId: string) {
+    if (!curriculum) return;
+
+    setActiveAction("curriculum:clone");
+    try {
+      const cloned = await sendJson<{ id: string }>("/api/curriculum/clone", {
+        method: "POST",
+        body: JSON.stringify({
+          sourceCurriculumId: curriculum.id,
+          targetCourseId,
+          title,
+        }),
+      }, "Failed to clone curriculum.");
+
+      toast.success("Curriculum duplicated.");
+      setActiveWorkspacePopup(null);
+
+      if (targetCourseId === selectedCourseId) {
+        await refreshSelectedCurriculumWorkspace({ preferredCurriculumId: cloned.id });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Clone failed.");
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
+  async function handleSaveAsTemplate() {
+    if (!curriculum) return;
+
+    setActiveAction("curriculum:template");
+    try {
+      await sendJson("/api/curriculum/templates", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "save-as-template",
+          curriculumId: curriculum.id,
+        }),
+      }, "Failed to save as template.");
+
+      toast.success("Saved as template.");
+      await refreshSelectedCurriculumWorkspace({ preferredCurriculumId: curriculum.id });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save as template.");
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
+  async function handleCreateFromTemplate(templateId: string, title: string) {
+    if (!selectedCourseId) return;
+
+    setActiveAction("curriculum:from-template");
+    try {
+      const created = await sendJson<{ id: string }>("/api/curriculum/templates", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "create-from-template",
+          templateCurriculumId: templateId,
+          targetCourseId: selectedCourseId,
+          title,
+        }),
+      }, "Failed to create from template.");
+
+      toast.success("Curriculum created from template.");
+      setActiveWorkspacePopup(null);
+      await refreshSelectedCurriculumWorkspace({ preferredCurriculumId: created.id });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create from template.");
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
   async function handleCreateModule() {
     if (!curriculum) {
       return;
@@ -1885,7 +2802,7 @@ export default function CurriculumBuilderPage() {
     }
   }
 
-  async function handleSaveModule(moduleId: string, input: { title: string; description: string }) {
+  async function handleSaveModule(moduleId: string, input: ModuleSaveInput) {
     setActiveAction(`module:${moduleId}:save`);
 
     try {
@@ -1948,7 +2865,7 @@ export default function CurriculumBuilderPage() {
     }
   }
 
-  async function handleSaveStage(stageId: string, input: { title: string; description: string }) {
+  async function handleSaveStage(stageId: string, input: StageSaveInput) {
     setActiveAction(`stage:${stageId}:save`);
 
     try {
@@ -2239,27 +3156,66 @@ export default function CurriculumBuilderPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="overflow-hidden border-slate-200 bg-white/95">
-        <CardContent className="py-3">
-          <div className="grid gap-2 xl:grid-cols-[minmax(0,220px)_minmax(230px,280px)_minmax(0,1fr)_auto] xl:items-center">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-primary shadow-sm">
-                  <Workflow className="h-4 w-4" />
-                </div>
-                <h1 className="text-lg font-semibold tracking-tight text-slate-950">Curriculum Builder</h1>
-                <Badge variant="info" className="px-2 py-0.5 text-[9px] tracking-[0.16em]">
-                  Sequence-first
-                </Badge>
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* ─── RIBBON TOOLBAR ─── */}
+      <div className="sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-white shadow-sm">
+        <div className="flex items-stretch divide-x divide-slate-200">
+          {/* ── Navigate Group ── */}
+          <div className="flex flex-col justify-between px-3 py-2">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-primary shadow-sm">
+                <Workflow className="h-3.5 w-3.5" />
               </div>
-              <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                Shape sequence, references, and rollout from one compact workspace.
-              </p>
+              <h1 className="text-sm font-semibold tracking-tight text-slate-950">Curriculum Builder</h1>
             </div>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <div className="inline-flex rounded-lg border border-[#dde1e6] bg-slate-50 p-0.5">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
+                    activeTab === "builder"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  )}
+                  onClick={() => setActiveTab("builder")}
+                >
+                  <Workflow className="mr-1 inline h-3 w-3" />
+                  Builder
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
+                    activeTab === "templates"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  )}
+                  onClick={() => setActiveTab("templates")}
+                >
+                  <LayoutTemplate className="mr-1 inline h-3 w-3" />
+                  Templates
+                </button>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={showVariantsPanel ? "default" : "secondary"}
+                className="h-7 rounded-lg px-2 text-[11px]"
+                onClick={() => setShowVariantsPanel((current) => !current)}
+                disabled={!selectedCourseId}
+              >
+                {showVariantsPanel ? <PanelLeftClose className="mr-1 h-3.5 w-3.5" /> : <PanelLeft className="mr-1 h-3.5 w-3.5" />}
+                Variants
+              </Button>
+            </div>
+            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Navigate</p>
+          </div>
 
+          {/* ── Scope Group ── */}
+          <div className="flex flex-col justify-between px-4 py-2">
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Course Scope</label>
+              <label className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">Course</label>
               <select
                 value={selectedCourseId}
                 onChange={(event) => {
@@ -2274,7 +3230,7 @@ export default function CurriculumBuilderPage() {
                   setNewModuleTitle("");
                   setNewModuleDescription("");
                 }}
-                className={selectClassName}
+                className={cn(selectClassName, "h-8 min-w-[180px] text-xs")}
                 disabled={isLoadingCourses || isMutating}
               >
                 <option value="">Select a course...</option>
@@ -2283,346 +3239,449 @@ export default function CurriculumBuilderPage() {
                 ))}
               </select>
             </div>
+            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Scope</p>
+          </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Active Sequence</p>
-                {selectedCurriculumId && currentCurriculumStatus ? (
-                  <Badge variant={statusVariant[currentCurriculumStatus] ?? "info"}>{currentCurriculumStatus}</Badge>
-                ) : null}
-              </div>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{activeSequenceTitle}</p>
-              <p className="mt-1 text-[11px] leading-5 text-slate-500">{activeSequenceSummary}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Scope: {selectedCourse?.name ?? "Select a course"}</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Curricula: {isLoadingCurricula ? "..." : curricula.length}</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Content: {isLoadingReferences ? "..." : contentOptions.length}</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Assessments: {isLoadingReferences ? "..." : assessmentOptions.length}</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
+          {/* ── Workspace Group ── */}
+          <div className="flex flex-col justify-between px-3 py-2">
+            <div className="flex items-center gap-1">
               <Button
                 type="button"
                 size="sm"
-                className="h-9 rounded-xl"
+                className="h-8 rounded-lg px-2.5 text-[11px]"
                 variant={activeWorkspacePopup === "SEQUENCE" ? "default" : "secondary"}
                 onClick={() => toggleWorkspacePopup("SEQUENCE")}
                 disabled={!canPreviewSequence}
               >
-                <Eye className="h-4 w-4" />
-                View Sequence
+                <Eye className="mr-1 h-3.5 w-3.5" />
+                Sequence
               </Button>
               <Button
                 type="button"
                 size="sm"
-                className="h-9 rounded-xl"
+                className="h-8 rounded-lg px-2.5 text-[11px]"
                 variant={activeWorkspacePopup === "REFERENCES" ? "default" : "secondary"}
                 onClick={() => toggleWorkspacePopup("REFERENCES")}
                 disabled={!selectedCourseId}
               >
-                <BookOpen className="h-4 w-4" />
-                Reference Inventory
+                <BookOpen className="mr-1 h-3.5 w-3.5" />
+                References
               </Button>
               <Button
                 type="button"
                 size="sm"
-                className="h-9 rounded-xl"
+                className="h-8 rounded-lg px-2.5 text-[11px]"
                 variant={activeWorkspacePopup === "BATCHES" ? "default" : "secondary"}
                 onClick={() => toggleWorkspacePopup("BATCHES")}
                 disabled={!selectedCurriculumId}
               >
-                <Boxes className="h-4 w-4" />
-                Batch Mapping
+                <Boxes className="mr-1 h-3.5 w-3.5" />
+                Batches
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 rounded-lg px-2.5 text-[11px]"
+                variant={activeWorkspacePopup === "CERTIFICATES" ? "default" : "secondary"}
+                onClick={() => toggleWorkspacePopup("CERTIFICATES")}
+                disabled={!selectedCourseId}
+              >
+                <Award className="mr-1 h-3.5 w-3.5" />
+                Certificates
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 rounded-lg px-2.5 text-[11px]"
+                variant={activeWorkspacePopup === "HEALTH" ? "default" : "secondary"}
+                onClick={() => toggleWorkspacePopup("HEALTH")}
+                disabled={!selectedCurriculumId}
+              >
+                <HeartPulse className="mr-1 h-3.5 w-3.5" />
+                Health
+                {selectedCurriculumId ? <CurriculumHealthBadge curriculumId={selectedCurriculumId} className="ml-1" /> : null}
               </Button>
             </div>
+            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Workspace</p>
           </div>
-        </CardContent>
-      </Card>
 
-      {!selectedCourseId ? (
-        <div className="rounded-3xl border border-dashed border-[#d9e0e7] bg-white p-12 text-center text-sm text-slate-500 shadow-sm">
-          Select a course to begin building its curriculum workspace.
+          {/* ── Actions Group (contextual) ── */}
+          {canCreateCurriculum && selectedCurriculumId ? (
+            <div className="flex flex-col justify-between px-3 py-2">
+              <div className="flex items-center gap-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" size="sm" variant="secondary" className="h-8 rounded-lg px-2.5 text-[11px]">
+                      <MoreHorizontal className="mr-1 h-3.5 w-3.5" />
+                      More
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    <DropdownMenuItem onClick={() => setActiveWorkspacePopup("CLONE")}>
+                      <Copy className="mr-2 h-4 w-4" />
+                      Duplicate Curriculum
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void handleSaveAsTemplate()}>
+                      <LayoutTemplate className="mr-2 h-4 w-4" />
+                      Save as Template
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setActiveWorkspacePopup("TEMPLATES")}>
+                      <LayoutTemplate className="mr-2 h-4 w-4" />
+                      Browse Templates
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Actions</p>
+            </div>
+          ) : null}
         </div>
-      ) : (
-        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <Card className="h-fit xl:sticky xl:top-6">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <CardTitle className="text-base">Curriculum Variants</CardTitle>
-                  <CardDescription>Choose or create a course-specific variant.</CardDescription>
-                </div>
-                {canCreateCurriculum && !showAddCurriculumForm ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="h-9 shrink-0 rounded-xl"
-                    disabled={isMutating}
-                    onClick={() => setShowAddCurriculumForm(true)}
-                  >
-                    <Plus className="h-4 w-4" />
-                    New Curriculum
-                  </Button>
-                ) : null}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              {canCreateCurriculum && showAddCurriculumForm ? (
-                <div className="space-y-2.5 rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/70 p-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Curriculum title</label>
-                    <Input
-                      value={newCurriculumTitle}
-                      disabled={isCreatingCurriculum || isMutating}
-                      onChange={(event) => setNewCurriculumTitle(event.target.value)}
-                      placeholder="e.g. Fast-track Intake Curriculum"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Description</label>
-                    <textarea
-                      value={newCurriculumDescription}
-                      disabled={isCreatingCurriculum || isMutating}
-                      onChange={(event) => setNewCurriculumDescription(event.target.value)}
-                      className={textareaClassName}
-                      placeholder="Optional notes about who this curriculum is for or how it differs."
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="h-9 rounded-xl"
-                      disabled={isCreatingCurriculum || isMutating}
-                      onClick={() => {
-                        setNewCurriculumTitle("");
-                        setNewCurriculumDescription("");
-                        setShowAddCurriculumForm(false);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="button"
-                      className="h-9 rounded-xl"
-                      disabled={isCreatingCurriculum || isMutating || !newCurriculumTitle.trim()}
-                      onClick={() => void handleCreateCurriculum()}
-                    >
-                      {isCreatingCurriculum ? "Creating…" : "Create Curriculum"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
 
-              {isLoadingCurricula ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-24 w-full rounded-xl" />
-                  <Skeleton className="h-24 w-full rounded-xl" />
-                  <Skeleton className="h-24 w-full rounded-xl" />
-                </div>
-              ) : curricula.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-6 text-sm text-slate-500">
-                  No curricula exist for {selectedCourse?.name ?? "this course"} yet.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {curricula.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={cn(
-                        "w-full rounded-xl border px-3 py-3 text-left transition-colors",
-                        selectedCurriculumId === item.id
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-[#dde1e6] bg-white hover:border-primary/40",
-                      )}
-                      onClick={() => setSelectedCurriculumId(item.id)}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
-                          <p className="mt-1 line-clamp-1 text-xs text-slate-500">
-                            {item.description || "No description yet."}
-                          </p>
-                        </div>
-                        <Badge variant={statusVariant[item.status] ?? "info"} className="shrink-0">{item.status}</Badge>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.moduleCount} modules</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.stageCount} stages</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.itemCount} items</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">{item.batchCount} mapped</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+        {/* ── Active Sequence Info Strip ── */}
+        <div className="flex items-center gap-2.5 border-t border-slate-100 bg-slate-50/60 px-4 py-1.5">
+          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Active</p>
+          {selectedCurriculumId && currentCurriculumStatus ? (
+            <Badge variant={statusVariant[currentCurriculumStatus] ?? "info"} className="text-[10px]">{currentCurriculumStatus}</Badge>
+          ) : null}
+          <span className="text-slate-300">·</span>
+          <p className="truncate text-xs font-semibold text-slate-900">{activeSequenceTitle}</p>
+          <span className="text-slate-300">·</span>
+          <p className="flex-1 truncate text-[10px] text-slate-500">{activeSequenceSummary}</p>
+        </div>
+      </div>
+
+      {/* ─── MAIN CONTENT (fills remaining viewport) ─── */}
+      {activeTab === "builder" ? (
+        <div className="flex min-h-0 flex-1">
+          {/* ── Variants Sidebar ── */}
+          {selectedCourseId ? (
+            <div
+              className={cn(
+                "shrink-0 overflow-hidden border-r border-slate-200 bg-white transition-all duration-200",
+                showVariantsPanel ? "w-[300px]" : "w-0"
               )}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-6">
-            {!selectedCurriculumId ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-                  <div className="space-y-1">
-                    <p className="text-base font-semibold">
-                      {curricula.length === 0
-                        ? `No curriculum yet for ${selectedCourse?.name ?? "this course"}`
-                        : "Select a curriculum to continue"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {curricula.length === 0
-                        ? "Create the first curriculum for this course, then build modules, stages, and batch mappings from there."
-                        : "Choose one of the curricula on the left to edit its delivery sequence and required learning items."}
-                    </p>
+            >
+              <div className="flex h-full w-[300px] flex-col">
+                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Curriculum Variants</p>
+                    <p className="text-[10px] text-slate-500">Choose or create a variant.</p>
                   </div>
-                  {!canCreateCurriculum && curricula.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">You can view curricula but do not currently have permission to create one.</p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ) : isLoadingCurriculum ? (
-              <div className="space-y-3">
-                <Skeleton className="h-36 w-full rounded-xl" />
-                <Skeleton className="h-28 w-full rounded-xl" />
-                <Skeleton className="h-96 w-full rounded-xl" />
-              </div>
-            ) : curriculum ? (
-              <div className="space-y-6">
-                <Card className="overflow-hidden border-slate-200 bg-white/95">
-                  <CardContent className="py-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 space-y-1.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-slate-950">{currentCurriculumTitle}</p>
-                          {currentCurriculumStatus ? <Badge variant={statusVariant[currentCurriculumStatus] ?? "info"}>{currentCurriculumStatus}</Badge> : null}
-                        </div>
-                        <p className="max-w-3xl text-sm leading-6 text-slate-600">{activeSequenceDescription}</p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                        <Badge variant="info">Modules: {currentModuleCount}</Badge>
-                        <Badge variant="info">Stages: {currentStageCount}</Badge>
-                        <Badge variant="info">Items: {currentItemCount}</Badge>
-                        <Badge variant="info">Mapped Batches: {currentBatchCount}</Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <CurriculumMetaEditor
-                  curriculum={curriculum}
-                  disabled={isMutating}
-                  canEdit={canEditCurriculum}
-                  onSave={handleSaveCurriculum}
-                />
-
-                <Card>
-                  <CardHeader>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <CardTitle>Module Sequence</CardTitle>
-                        <CardDescription>
-                          Drag modules, then stages, then items within a stage to persist the delivery order.
-                        </CardDescription>
-                      </div>
-                      {canEditCurriculum && !showAddModuleForm ? (
-                        <Button type="button" variant="secondary" disabled={isMutating} onClick={() => setShowAddModuleForm(true)}>
-                          <Plus className="h-4 w-4" />
-                          Add Module
-                        </Button>
-                      ) : null}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    {canEditCurriculum && showAddModuleForm ? (
-                      <div className="space-y-3 rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/70 p-4">
+                  <div className="flex items-center gap-1.5">
+                    {canCreateCurriculum && !showAddCurriculumForm ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 rounded-lg px-2 text-[10px]"
+                        disabled={isMutating}
+                        onClick={() => setShowAddCurriculumForm(true)}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 rounded-lg p-0"
+                      onClick={() => setShowVariantsPanel(false)}
+                    >
+                      <PanelLeftClose className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  <div className="space-y-3">
+                    {canCreateCurriculum && showAddCurriculumForm ? (
+                      <div className="space-y-2.5 rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/70 p-3">
                         <div className="space-y-2">
-                          <label className="text-sm font-medium">Module title</label>
-                          <Input value={newModuleTitle} disabled={isMutating} onChange={(event) => setNewModuleTitle(event.target.value)} placeholder="e.g. Module 1 · Foundations" />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Module description</label>
-                          <textarea
-                            value={newModuleDescription}
-                            disabled={isMutating}
-                            onChange={(event) => setNewModuleDescription(event.target.value)}
-                            className={textareaClassName}
-                            placeholder="Summarize the focus of this module."
+                          <label className="text-sm font-medium">Curriculum title</label>
+                          <Input
+                            value={newCurriculumTitle}
+                            disabled={isCreatingCurriculum || isMutating}
+                            onChange={(event) => setNewCurriculumTitle(event.target.value)}
+                            placeholder="e.g. Fast-track Intake Curriculum"
                           />
                         </div>
-                        <div className="flex justify-end gap-2">
-                          <Button type="button" variant="secondary" disabled={isMutating} onClick={() => {
-                            setNewModuleTitle("");
-                            setNewModuleDescription("");
-                            setShowAddModuleForm(false);
-                          }}>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Description</label>
+                          <textarea
+                            value={newCurriculumDescription}
+                            disabled={isCreatingCurriculum || isMutating}
+                            onChange={(event) => setNewCurriculumDescription(event.target.value)}
+                            className={textareaClassName}
+                            placeholder="Optional notes about who this curriculum is for or how it differs."
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-8 rounded-xl text-xs"
+                            disabled={isCreatingCurriculum || isMutating}
+                            onClick={() => {
+                              setNewCurriculumTitle("");
+                              setNewCurriculumDescription("");
+                              setShowAddCurriculumForm(false);
+                            }}
+                          >
                             Cancel
                           </Button>
-                          <Button type="button" disabled={isMutating || !newModuleTitle.trim()} onClick={() => void handleCreateModule()}>
-                            Add Module
+                          <Button
+                            type="button"
+                            className="h-8 rounded-xl text-xs"
+                            disabled={isCreatingCurriculum || isMutating || !newCurriculumTitle.trim()}
+                            onClick={() => void handleCreateCurriculum()}
+                          >
+                            {isCreatingCurriculum ? "Creating…" : "Create"}
                           </Button>
                         </div>
                       </div>
                     ) : null}
 
-                    {curriculum.modules.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
-                        Add your first module to begin shaping this curriculum.
+                    {isLoadingCurricula ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-20 w-full rounded-xl" />
+                        <Skeleton className="h-20 w-full rounded-xl" />
+                        <Skeleton className="h-20 w-full rounded-xl" />
+                      </div>
+                    ) : curricula.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-5 text-xs text-slate-500">
+                        No curricula exist for {selectedCourse?.name ?? "this course"} yet.
                       </div>
                     ) : (
-                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleModuleDragEnd}>
-                        <SortableContext items={curriculum.modules.map((moduleRecord) => moduleRecord.id)} strategy={verticalListSortingStrategy}>
-                          <div className="space-y-4">
-                            {curriculum.modules.map((moduleRecord) => (
-                              <SortableModuleCard
-                                key={moduleRecord.id}
-                                module={moduleRecord}
-                                courseId={selectedCourseId}
-                                contentOptions={contentOptions}
-                                contentFolders={contentFolders}
-                                assessmentOptions={assessmentOptions}
-                                isLoadingReferences={isLoadingReferences}
-                                disabled={isMutating}
-                                canEdit={canEditCurriculum}
-                                canCreateContent={canCreateContent}
-                                stageItemOptions={stageItemOptions}
-                                onSave={handleSaveModule}
-                                onDelete={handleDeleteModule}
-                                onCreateStage={handleCreateStage}
-                                onSaveStage={handleSaveStage}
-                                onDeleteStage={handleDeleteStage}
-                                onReorderStages={handleReorderStages}
-                                onCreateItems={handleCreateStageItems}
-                                onRefreshContentReferences={refreshReferenceInventory}
-                                onToggleRequired={handleToggleItemRequired}
-                                onSaveReleaseConfig={handleSaveStageItemReleaseConfig}
-                                onDeleteItem={handleDeleteStageItem}
-                                onReorderItems={handleReorderStageItems}
-                              />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </DndContext>
+                      <div className="space-y-2">
+                        {curricula.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={cn(
+                              "w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
+                              selectedCurriculumId === item.id
+                                ? "border-primary bg-primary/5 shadow-sm"
+                                : "border-[#dde1e6] bg-white hover:border-primary/40",
+                            )}
+                            onClick={() => setSelectedCurriculumId(item.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-semibold text-slate-900">{item.title}</p>
+                                <p className="mt-0.5 line-clamp-1 text-[10px] text-slate-500">
+                                  {item.description || "No description yet."}
+                                </p>
+                              </div>
+                              <Badge variant={statusVariant[item.status] ?? "info"} className="shrink-0 text-[9px]">{item.status}</Badge>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-slate-500">
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5">{item.moduleCount} mod</span>
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5">{item.stageCount} stg</span>
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5">{item.itemCount} itm</span>
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5">{item.batchCount} bat</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ── Main Builder Area ── */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="space-y-6 p-6">
+              {!selectedCourseId ? (
+                <div className="rounded-3xl border border-dashed border-[#d9e0e7] bg-white p-12 text-center text-sm text-slate-500 shadow-sm">
+                  Select a course to begin building its curriculum workspace.
+                </div>
+              ) : !selectedCurriculumId ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+                    <div className="space-y-1">
+                      <p className="text-base font-semibold">
+                        {curricula.length === 0
+                          ? `No curriculum yet for ${selectedCourse?.name ?? "this course"}`
+                          : "Select a curriculum to continue"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {curricula.length === 0
+                          ? "Create the first curriculum for this course, then build modules, stages, and batch mappings from there."
+                          : "Choose one of the curricula on the left to edit its delivery sequence and required learning items."}
+                      </p>
+                    </div>
+                    {!canCreateCurriculum && curricula.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">You can view curricula but do not currently have permission to create one.</p>
+                    ) : null}
                   </CardContent>
                 </Card>
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-                  <div className="space-y-1">
-                    <p className="text-base font-semibold">Unable to load the selected curriculum</p>
-                    <p className="text-sm text-muted-foreground">
-                      Try selecting the curriculum again from the list on the left.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+              ) : isLoadingCurriculum ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-36 w-full rounded-xl" />
+                  <Skeleton className="h-28 w-full rounded-xl" />
+                  <Skeleton className="h-96 w-full rounded-xl" />
+                </div>
+              ) : curriculum ? (
+                <div className="space-y-6">
+                  <Card className="overflow-hidden border-slate-200 bg-white/95">
+                    <CardContent className="py-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-semibold text-slate-950">{currentCurriculumTitle}</p>
+                            {currentCurriculumStatus ? <Badge variant={statusVariant[currentCurriculumStatus] ?? "info"}>{currentCurriculumStatus}</Badge> : null}
+                          </div>
+                          <p className="max-w-3xl text-sm leading-6 text-slate-600">{activeSequenceDescription}</p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                          <Badge variant="info">Modules: {currentModuleCount}</Badge>
+                          <Badge variant="info">Stages: {currentStageCount}</Badge>
+                          <Badge variant="info">Items: {currentItemCount}</Badge>
+                          <Badge variant="info">Mapped Batches: {currentBatchCount}</Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <CurriculumMetaEditor
+                    curriculum={curriculum}
+                    disabled={isMutating}
+                    canEdit={canEditCurriculum}
+                    onSave={handleSaveCurriculum}
+                  />
+
+                  <Card>
+                    <CardHeader>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <CardTitle>Module Sequence</CardTitle>
+                          <CardDescription>
+                            Drag modules, then stages, then items within a stage to persist the delivery order.
+                          </CardDescription>
+                        </div>
+                        {canEditCurriculum && !showAddModuleForm ? (
+                          <Button type="button" variant="secondary" disabled={isMutating} onClick={() => setShowAddModuleForm(true)}>
+                            <Plus className="h-4 w-4" />
+                            Add Module
+                          </Button>
+                        ) : null}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      {canEditCurriculum && showAddModuleForm ? (
+                        <div className="space-y-3 rounded-xl border border-dashed border-[#cfd8e3] bg-slate-50/70 p-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Module title</label>
+                            <Input value={newModuleTitle} disabled={isMutating} onChange={(event) => setNewModuleTitle(event.target.value)} placeholder="e.g. Module 1 · Foundations" />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Module description</label>
+                            <textarea
+                              value={newModuleDescription}
+                              disabled={isMutating}
+                              onChange={(event) => setNewModuleDescription(event.target.value)}
+                              className={textareaClassName}
+                              placeholder="Summarize the focus of this module."
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" variant="secondary" disabled={isMutating} onClick={() => {
+                              setNewModuleTitle("");
+                              setNewModuleDescription("");
+                              setShowAddModuleForm(false);
+                            }}>
+                              Cancel
+                            </Button>
+                            <Button type="button" disabled={isMutating || !newModuleTitle.trim()} onClick={() => void handleCreateModule()}>
+                              Add Module
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {curriculum.modules.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
+                          Add your first module to begin shaping this curriculum.
+                        </div>
+                      ) : (
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleModuleDragEnd}>
+                          <SortableContext items={curriculum.modules.map((moduleRecord) => moduleRecord.id)} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-4">
+                              {curriculum.modules.map((moduleRecord) => (
+                                <SortableModuleCard
+                                  key={moduleRecord.id}
+                                  module={moduleRecord}
+                                  courseId={selectedCourseId}
+                                  contentOptions={contentOptions}
+                                  contentFolders={contentFolders}
+                                  assessmentOptions={assessmentOptions}
+                                  isLoadingReferences={isLoadingReferences}
+                                  disabled={isMutating}
+                                  canEdit={canEditCurriculum}
+                                  canCreateContent={canCreateContent}
+                                  stageItemOptions={stageItemOptions}
+                                  existingContentIds={existingContentIds}
+                                  allModules={curriculum.modules}
+                                  onSave={handleSaveModule}
+                                  onDelete={handleDeleteModule}
+                                  onCreateStage={handleCreateStage}
+                                  onSaveStage={handleSaveStage}
+                                  onDeleteStage={handleDeleteStage}
+                                  onReorderStages={handleReorderStages}
+                                  onCreateItems={handleCreateStageItems}
+                                  onRefreshContentReferences={refreshReferenceInventory}
+                                  onToggleRequired={handleToggleItemRequired}
+                                  onSaveReleaseConfig={handleSaveStageItemReleaseConfig}
+                                  onDeleteItem={handleDeleteStageItem}
+                                  onReorderItems={handleReorderStageItems}
+                                />
+                              ))}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Certificate completion milestone */}
+                  <CurriculumCertificateMilestone
+                    templates={milestoneTemplates}
+                    rules={milestoneRules}
+                    curriculumId={curriculum.id}
+                    curriculumTitle={curriculum.title}
+                  />
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+                    <div className="space-y-1">
+                      <p className="text-base font-semibold">Unable to load the selected curriculum</p>
+                      <p className="text-sm text-muted-foreground">
+                        Try selecting the curriculum again from the list on the left.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6">
+          <CurriculumTemplatesTab
+            courses={courses}
+            selectedCourseId={selectedCourseId}
+            onCreateFromTemplate={(id) => {
+              setActiveTab("builder");
+              if (selectedCourseId) {
+                loadCurricula(selectedCourseId);
+              }
+            }}
+            disabled={isMutating}
+          />
         </div>
       )}
 
@@ -2793,6 +3852,58 @@ export default function CurriculumBuilderPage() {
           </div>
         )}
       </WorkspaceScreenPopup>
+
+      <WorkspaceScreenPopup
+        open={activeWorkspacePopup === "CERTIFICATES"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "CERTIFICATES" : null)}
+        title="Certificate Templates"
+        description="View certificate templates for this course and configure auto-issue rules."
+      >
+        {selectedCourseId ? (
+          <CurriculumCertificateSection
+            courseId={selectedCourseId}
+            curriculumId={selectedCurriculumId}
+            curriculumTitle={currentCurriculumTitle}
+          />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
+            Select a course to view its certificate templates.
+          </div>
+        )}
+      </WorkspaceScreenPopup>
+
+      <WorkspaceScreenPopup
+        open={activeWorkspacePopup === "HEALTH"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "HEALTH" : null)}
+        title="Curriculum Health Check"
+        description="Review structural issues, missing references, and configuration problems in the active curriculum."
+      >
+        {selectedCurriculumId ? (
+          <CurriculumHealthReport curriculumId={selectedCurriculumId} />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
+            Select a curriculum variant to run its health check.
+          </div>
+        )}
+      </WorkspaceScreenPopup>
+
+      <CloneCurriculumDialog
+        open={activeWorkspacePopup === "CLONE"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "CLONE" : null)}
+        curriculumTitle={curriculum?.title ?? ""}
+        courses={courses}
+        defaultCourseId={selectedCourseId}
+        disabled={isMutating}
+        onClone={handleCloneCurriculum}
+      />
+
+      <TemplateBrowserDialog
+        open={activeWorkspacePopup === "TEMPLATES"}
+        onOpenChange={(open) => setActiveWorkspacePopup(open ? "TEMPLATES" : null)}
+        targetCourseId={selectedCourseId}
+        disabled={isMutating}
+        onCreate={handleCreateFromTemplate}
+      />
     </div>
   );
 }
