@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const imageDataUriPattern = /^data:image\/(?:png|jpeg|jpg|webp);base64,[a-z0-9+/=\s]+$/i;
+
 export const updateCandidateSelfProfileSchema = z
   .object({
     fullName: z.string().trim().min(2).max(255).optional(),
@@ -22,4 +24,14 @@ export const updateCandidateSelfProfileSchema = z
     },
   );
 
+export const uploadCandidateSelfProfilePhotoSchema = z.object({
+  photoDataUri: z
+    .string()
+    .trim()
+    .min(1, "Profile photo is required.")
+    .regex(imageDataUriPattern, "Upload a PNG, JPEG, or WEBP image."),
+  fileName: z.string().trim().max(255).optional(),
+});
+
 export type UpdateCandidateSelfProfileInput = z.infer<typeof updateCandidateSelfProfileSchema>;
+export type UploadCandidateSelfProfilePhotoInput = z.infer<typeof uploadCandidateSelfProfilePhotoSchema>;

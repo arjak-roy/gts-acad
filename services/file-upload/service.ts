@@ -14,12 +14,14 @@ import {
 import { isStoredSettingsAsset } from "@/lib/settings/validation";
 import { getBrandingAssetSlot, getBrandingCanonicalStoragePath, getFileUploadServiceConfig } from "@/services/file-upload/config";
 import {
+  buildLocalCandidateProfilePhotoStoragePath,
   buildCourseContentStorageScope,
   buildLocalCertificationBrandingStoragePath,
   buildLocalCourseContentStoragePath,
   buildLocalEmailTemplateStoragePath,
   buildLocalLearningResourceStoragePath,
   buildLocalSettingsStoragePath,
+  buildS3CandidateProfilePhotoStoragePath,
   buildS3CertificationBrandingStoragePath,
   buildS3CourseContentStoragePath,
   buildS3EmailTemplateStoragePath,
@@ -41,7 +43,7 @@ type StoredUploadAsset = {
   uploadedAt: string;
 };
 
-const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/", "email-templates/", "learning-resources/", "certifications/"];
+const S3_ALLOWED_PREFIXES = ["settings/uploads/", "branding/", "course-content/", "email-templates/", "learning-resources/", "certifications/", "candidate-profile-photos/"];
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 function getPublicUploadDirectory() {
@@ -117,6 +119,10 @@ function buildStoredAssetUrl(storageProvider: FileUploadStorageProvider, storage
   });
 
   return `/api/settings/assets?${params.toString()}`;
+}
+
+export function getStoredUploadAssetUrl(input: { storageProvider?: unknown; storagePath: string }) {
+  return buildStoredAssetUrl(normalizeStorageProvider(input.storageProvider), input.storagePath);
 }
 
 function buildStoredUploadValue(file: File, storageProvider: FileUploadStorageProvider, storagePath: string): StoredUploadAsset {
@@ -255,6 +261,28 @@ export async function storeUploadedLearningResourceAsset(file: File): Promise<St
     buildLocalStoragePath: () => buildLocalLearningResourceStoragePath(file.name),
     buildS3StoragePath: (config) => buildS3LearningResourceStoragePath(file.name, config.s3.namingStrategy),
   });
+}
+
+export async function storeUploadedCandidateProfilePhotoAsset(file: File, learnerScope: string): Promise<StoredUploadAsset> {
+  const config = await getFileUploadServiceConfig();
+
+  if (!config.s3.isConfigured) {
+    throw new Error("S3 profile photo storage is not configured.");
+  }
+
+  const client = getS3Client(config.s3);
+  const storagePath = buildS3CandidateProfilePhotoStoragePath(file.name, config.s3.namingStrategy, learnerScope);
+  const body = Buffer.from(await file.arrayBuffer());
+
+  await client.send(new PutObjectCommand({
+    Bucket: config.s3.bucket,
+    Key: storagePath,
+    Body: body,
+    ContentType: file.type || inferContentType(file.name),
+    CacheControl: IMMUTABLE_CACHE_CONTROL,
+  }));
+
+  return buildStoredUploadValue(file, "S3", storagePath);
 }
 
 export async function storeUploadedEmailTemplateAsset(file: File): Promise<StoredUploadAsset> {

@@ -26,6 +26,15 @@ type LearnerEditSheetProps = {
 
 const EXAM_OPTIONS = ["IELTS", "OET", "NCLEX", "GOETHE_A1", "GOETHE_A2", "GOETHE_B1", "GOETHE_B2", "PROMETRIC"] as const;
 
+function getLearnerInitials(value: string | null | undefined) {
+  return value
+    ?.split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "CA";
+}
+
 export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -56,6 +65,7 @@ export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
     () => new Set((learner?.activeEnrollments ?? []).map((enrollment) => enrollment.batchCode.toLowerCase())),
     [learner?.activeEnrollments],
   );
+  const learnerInitials = useMemo(() => getLearnerInitials(learner?.fullName), [learner?.fullName]);
 
   useEffect(() => {
     if (!open) {
@@ -257,8 +267,21 @@ export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
 
             <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50 p-6">
               <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Learner</p>
-                <p className="mt-2 text-sm text-slate-500">Learner Code: {learner.learnerCode}</p>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 text-lg font-black text-slate-700">
+                    {learner.profilePhotoUrl ? (
+                      <img alt={`${learner.fullName} profile`} className="h-full w-full object-cover" src={learner.profilePhotoUrl} />
+                    ) : (
+                      <span>{learnerInitials}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Learner</p>
+                    <p className="mt-1 text-lg font-bold text-slate-950">{learner.fullName}</p>
+                    <p className="mt-1 text-sm text-slate-500">Learner Code: {learner.learnerCode}</p>
+                  </div>
+                </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">

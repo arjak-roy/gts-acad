@@ -1,7 +1,7 @@
 import "server-only";
 
 export { getCandidateProfileByUserIdService, getLearnerByCodeService, getLearnersService, searchLearnersService } from "@/services/learners/queries";
-export { addLearnerEnrollmentService, createLearnerService, updateCandidateSelfProfileService, updateLearnerService } from "@/services/learners/commands";
+export { addLearnerEnrollmentService, createLearnerService, updateCandidateProfilePhotoService, updateCandidateSelfProfileService, updateLearnerService } from "@/services/learners/commands";
 export { commitLearnerImportService, previewLearnerImportService } from "@/services/learners/import";
 
 export type {

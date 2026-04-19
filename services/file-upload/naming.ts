@@ -57,6 +57,10 @@ export function buildLocalLearningResourceStoragePath(fileName: string) {
   return buildLocalScopedStoragePath("learning-resources", fileName);
 }
 
+export function buildLocalCandidateProfilePhotoStoragePath(fileName: string, learnerScope: string) {
+  return buildLocalScopedStoragePath(path.posix.join("candidate-profile-photos", sanitizeStoragePathSegment(learnerScope)), fileName);
+}
+
 export function buildLocalEmailTemplateStoragePath(fileName: string) {
   return buildLocalScopedStoragePath(path.posix.join("email-templates", "inline-images"), fileName);
 }
@@ -89,6 +93,10 @@ export function buildS3CourseContentStoragePath(fileName: string, namingStrategy
 
 export function buildS3LearningResourceStoragePath(fileName: string, namingStrategy: string) {
   return buildS3ScopedStoragePath("learning-resources", fileName, namingStrategy);
+}
+
+export function buildS3CandidateProfilePhotoStoragePath(fileName: string, namingStrategy: string, learnerScope: string) {
+  return buildS3ScopedStoragePath(path.posix.join("candidate-profile-photos", sanitizeStoragePathSegment(learnerScope)), fileName, namingStrategy);
 }
 
 export function buildS3EmailTemplateStoragePath(fileName: string, namingStrategy: string) {

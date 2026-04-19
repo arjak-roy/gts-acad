@@ -281,6 +281,7 @@ export type LearnerActiveEnrollment = {
 };
 
 export type LearnerDetail = LearnerListItem & {
+  profilePhotoUrl?: string | null;
   phone?: string | null;
   country?: string | null;
   dob?: string | null;

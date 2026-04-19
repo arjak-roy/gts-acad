@@ -5,6 +5,7 @@ import { AuditActionType, AuditEntityType, Prisma } from "@prisma/client";
 
 import { buildPendingAccountActivationMetadata, mergeAccountMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword } from "@/lib/auth/password";
+import { getStoredUploadAssetUrl } from "@/services/file-upload";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { UpdateCandidateSelfProfileInput } from "@/lib/validation-schemas/candidate-profile";
 import { CreateLearnerEnrollmentInput, CreateLearnerInput, UpdateLearnerInput } from "@/lib/validation-schemas/learners";
@@ -615,6 +616,71 @@ export async function updateCandidateSelfProfileService(
   if (!profile) {
     throw new Error("Candidate profile not found.");
   }
+
+  return profile;
+}
+
+export async function updateCandidateProfilePhotoService(
+  userId: string,
+  profileImageUrl: string | null,
+  actorUserId?: string,
+): Promise<CandidateProfile> {
+  if (!isDatabaseConfigured) {
+    const mockProfile = await getCandidateProfileByUserIdService(userId);
+
+    if (!mockProfile) {
+      throw new Error("Candidate profile not found.");
+    }
+
+    return {
+      ...mockProfile,
+      profilePhotoUrl: profileImageUrl
+        ? getStoredUploadAssetUrl({
+          storageProvider: "S3",
+          storagePath: profileImageUrl,
+        })
+        : null,
+    };
+  }
+
+  const learner = await prisma.learner.findFirst({
+    where: { userId },
+    select: {
+      id: true,
+      learnerCode: true,
+    },
+  });
+
+  if (!learner) {
+    throw new Error("Candidate profile not found.");
+  }
+
+  await prisma.learner.update({
+    where: { id: learner.id },
+    data: {
+      profileImageUrl,
+    },
+  });
+
+  const profile = await getCandidateProfileByUserIdService(userId);
+
+  if (!profile) {
+    throw new Error("Candidate profile not found.");
+  }
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.CANDIDATE,
+    entityId: learner.id,
+    action: AuditActionType.UPDATED,
+    message: profileImageUrl
+      ? `Candidate ${learner.learnerCode} profile photo updated.`
+      : `Candidate ${learner.learnerCode} profile photo removed.`,
+    metadata: {
+      learnerCode: learner.learnerCode,
+      profileImageUrl,
+    },
+    actorUserId: actorUserId ?? userId,
+  });
 
   return profile;
 }

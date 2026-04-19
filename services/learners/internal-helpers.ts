@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { CANDIDATE_WELCOME_CREDENTIALS_EMAIL_TEMPLATE_KEY } from "@/lib/mail-templates/email-template-defaults";
 import { prisma } from "@/lib/prisma-client";
 import { GetLearnersInput } from "@/lib/validation-schemas/learners";
+import { getStoredUploadAssetUrl } from "@/services/file-upload";
 import { renderEmailTemplateByKeyService } from "@/services/email-templates";
 import { deliverLoggedEmail } from "@/services/logs-actions-service";
 import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
@@ -346,11 +347,29 @@ function mapEnrollmentToActiveEnrollment(enrollment: LearnerEnrollmentRecord): L
   };
 }
 
+function resolveLearnerProfilePhotoUrl(value: string | null | undefined) {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(normalizedValue) || normalizedValue.startsWith("/")) {
+    return normalizedValue;
+  }
+
+  return getStoredUploadAssetUrl({
+    storageProvider: "S3",
+    storagePath: normalizedValue,
+  });
+}
+
 export function mapLearnerToDetail(learner: LearnerDetailRecord): LearnerDetail {
   const base = mapLearnerToListItem(learner);
 
   return {
     ...base,
+    profilePhotoUrl: resolveLearnerProfilePhotoUrl(learner.profileImageUrl),
     phone: learner.phone,
     country: learner.country,
     dob: learner.dob?.toISOString() ?? null,
@@ -433,6 +452,7 @@ export function buildMockLearnerDetail(learnerCode: string): LearnerDetail | nul
   return learner
     ? {
         ...learner,
+        profilePhotoUrl: null,
         phone: "+91 98765 43210",
         country: "India",
         dob: "2001-01-01T00:00:00.000Z",
