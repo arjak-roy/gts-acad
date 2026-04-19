@@ -1066,7 +1066,7 @@ function SortableStageItemRow({
           open={richEditorOpen}
           onOpenChange={setRichEditorOpen}
           initialHtml={richEditorHtml}
-          onSave={(html, plainText) => void handleRichEditorSave(html, plainText)}
+          onSave={(html) => void handleRichEditorSave(html)}
           courseId={courseId}
           disabled={disabled}
         />

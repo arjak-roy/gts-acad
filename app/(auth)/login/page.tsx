@@ -277,6 +277,7 @@ function LoginPageContent() {
         <div className="z-20 mx-auto w-full max-w-lg">
           <div className="mb-12">
             <div className="inline-flex items-center justify-center rounded-2xl bg-white p-2 shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/api/branding/application-logo"
                 alt="Global Talent Square Logo"
