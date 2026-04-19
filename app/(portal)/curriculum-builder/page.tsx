@@ -654,7 +654,7 @@ function SortableStageItemRow({
     }
   }
 
-  async function handleRichEditorSave(html: string, _plainText: string) {
+  async function handleRichEditorSave(html: string) {
     if (!item.contentId) return;
     try {
       const res = await fetch(`/api/course-content/${item.contentId}`, {
@@ -2198,13 +2198,11 @@ function CurriculumCertificateSection({
 function TemplateBrowserDialog({
   open,
   onOpenChange,
-  targetCourseId,
   disabled,
   onCreate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  targetCourseId: string;
   disabled: boolean;
   onCreate: (templateId: string, title: string) => Promise<void>;
 }) {
@@ -3674,7 +3672,7 @@ export default function CurriculumBuilderPage() {
           <CurriculumTemplatesTab
             courses={courses}
             selectedCourseId={selectedCourseId}
-            onCreateFromTemplate={(id) => {
+            onCreateFromTemplate={() => {
               setActiveTab("builder");
               if (selectedCourseId) {
                 loadCurricula(selectedCourseId);
@@ -3900,7 +3898,6 @@ export default function CurriculumBuilderPage() {
       <TemplateBrowserDialog
         open={activeWorkspacePopup === "TEMPLATES"}
         onOpenChange={(open) => setActiveWorkspacePopup(open ? "TEMPLATES" : null)}
-        targetCourseId={selectedCourseId}
         disabled={isMutating}
         onCreate={handleCreateFromTemplate}
       />

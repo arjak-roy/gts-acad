@@ -5,14 +5,12 @@ import {
   AlertTriangle,
   ArrowLeft,
   Award,
-  Check,
   FileText,
   Loader2,
   Plus,
   Power,
   RotateCcw,
   Trash2,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -37,7 +35,6 @@ import {
 import { CertificatePreviewRenderer } from "@/components/modules/certifications/certificate-preview-renderer";
 import type {
   CertificateTemplateWithPreview,
-  CanvasElement,
 } from "@/services/certifications/types";
 
 // ── Style constants ──────────────────────────────────────────────────────────
@@ -48,8 +45,7 @@ const selectClassName =
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type CourseOption = { id: string; name: string };
-type ProgramOption = { id: string; name: string };
-type BatchOption = { id: string; code: string; name: string; programName: string; status?: string };
+
 type CurriculumOption = { id: string; title: string; status: string };
 type AutoIssueRule = {
   id: string;
@@ -86,17 +82,6 @@ const triggerLabels: Record<string, string> = {
   CURRICULUM_COMPLETION: "Curriculum Completion",
   ENROLLMENT_COMPLETION: "Enrollment Completion",
 };
-
-const batchStatusBadgeVariant: Record<string, "default" | "success" | "warning" | "danger" | "info" | "accent"> = {
-  DRAFT: "accent",
-  PLANNED: "info",
-  IN_SESSION: "success",
-  COMPLETED: "warning",
-  ARCHIVED: "danger",
-  CANCELLED: "danger",
-};
-
-const eligibleBatchStatuses = ["PLANNED", "IN_SESSION"];
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 

@@ -1072,15 +1072,6 @@ function IssueCertificateDialog({
     setSelectedLearnerIds(new Set());
   }
 
-  function toggleLearner(learnerId: string) {
-    setSelectedLearnerIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(learnerId)) next.delete(learnerId);
-      else next.add(learnerId);
-      return next;
-    });
-  }
-
   function toggleAllLearners() {
     if (selectedLearnerIds.size === learners.length) {
       setSelectedLearnerIds(new Set());
@@ -1312,6 +1303,7 @@ function BrandingImageUpload({
       <span className="text-xs font-semibold text-slate-500 uppercase">{label}</span>
       {value && (
         <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={value}
             alt={label}
