@@ -348,7 +348,7 @@ export function CertificateCanvasEditor({ template, onSave, isSaving }: Props) {
                     position={{ x: el.x, y: el.y }}
                     size={{ width: el.width, height: el.height }}
                     onDrag={(_e, d) => handleDrag(el.id, d.x, d.y)}
-                    onDragStop={() => handleDragStop(el.id)}
+                    onDragStop={() => handleDragStop()}
                     onResize={(_e, dir, ref, _delta, pos) =>
                       handleResize(el.id, ref.offsetWidth, ref.offsetHeight, pos.x, pos.y, dir)
                     }

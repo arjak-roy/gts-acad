@@ -1,7 +1,7 @@
 import { BatchMode, EvaluationStatus, LiveClassProvider, Prisma } from "@prisma/client";
 
 export type ScheduleEventType = "CLASS" | "TEST";
-export type LiveClassProviderType = "MANUAL" | "HMS";
+export type LiveClassProviderType = "MANUAL" | "HMS" | "WEBRTC";
 export type ScheduleContextType = "batch" | "learner" | "trainer";
 
 export type BatchScheduleEventWhereInput = Record<string, unknown>;

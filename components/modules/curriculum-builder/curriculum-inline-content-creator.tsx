@@ -271,7 +271,7 @@ export function CurriculumInlineContentCreator({
           }
         }}
         initialHtml="<p></p>"
-        onSave={(html, plainText) => void handleEditorSave(html, plainText)}
+        onSave={(html) => void handleEditorSave(html)}
         courseId={courseId}
         disabled={isSaving || disabled}
       />
