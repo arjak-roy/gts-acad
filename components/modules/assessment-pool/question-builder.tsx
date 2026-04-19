@@ -614,6 +614,7 @@ export function QuestionBuilder({
     setTwoPartB("");
     setMultiFields([...DEFAULT_MULTI_FIELDS]);
     setValidationError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultType, initialQuestion?.id, mode]);
 
   const buildPayload = () => {

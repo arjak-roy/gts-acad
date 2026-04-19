@@ -214,6 +214,7 @@ export function AssessmentDetailSheet({
       setMetadataForm(buildMetadataForm(detail));
       setMetadataErrors({});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail?.id]);
 
   useEffect(() => {
@@ -244,6 +245,7 @@ export function AssessmentDetailSheet({
 
     const nextEditingQuestion = detail.questions.find((question) => question.id === editingQuestion.id) ?? null;
     setEditingQuestion(nextEditingQuestion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail, editingQuestion?.id]);
 
   useEffect(() => {
@@ -264,6 +266,7 @@ export function AssessmentDetailSheet({
 
       return availableCourses[0]?.id ?? "";
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseLinks, courses]);
 
   const handleStartMetadataEdit = () => {

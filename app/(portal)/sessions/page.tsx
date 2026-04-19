@@ -165,7 +165,7 @@ export default function SessionsPage() {
     },
   });
 
-  const sessions = sessionsQuery.data?.items ?? [];
+  const sessions = useMemo(() => sessionsQuery.data?.items ?? [], [sessionsQuery.data?.items]);
   const sortedSessions = useMemo(
     () => sortByAccessor(sessions, sortState.direction, sessionSortAccessors[sortState.column]),
     [sessions, sortState],

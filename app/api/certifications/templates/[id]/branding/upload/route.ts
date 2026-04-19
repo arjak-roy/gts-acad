@@ -10,9 +10,7 @@ import {
 
 export const runtime = "nodejs";
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-export async function GET(request: NextRequest, _context: RouteContext) {
+export async function GET(request: NextRequest) {
   try {
     await requirePermission(request, "certifications.edit");
     const config = await getFileUploadServiceConfig();
@@ -27,7 +25,7 @@ export async function GET(request: NextRequest, _context: RouteContext) {
   }
 }
 
-export async function POST(request: NextRequest, _context: RouteContext) {
+export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, "certifications.edit");
     const formData = await request.formData();
