@@ -13,8 +13,8 @@ FROM base AS builder
 
 # Build-time values used by prisma generate / next build.
 # Pass real values with --build-arg in CI/CD when needed.
-ARG DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gts_academy?schema=public"
-ARG NEXT_PUBLIC_APP_URL="http://localhost:3000"
+ARG DATABASE_URL="postgresql://neondb_owner:npg_oWQ9BrUbi5ds@ep-lingering-unit-aj1y79lu-pooler.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+ARG NEXT_PUBLIC_APP_URL="https://dev-academy-candidate.globaltalentsquare.com/"
 ENV DATABASE_URL=${DATABASE_URL}
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV CI=1
@@ -37,18 +37,20 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-ENV DATABASE_URL=""
-ENV AUTH_SESSION_SECRET=""
+ENV DATABASE_URL="postgresql://neondb_owner:npg_oWQ9BrUbi5ds@ep-lingering-unit-aj1y79lu-pooler.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+ARG NEXT_PUBLIC_APP_URL="https://dev-academy-candidate.globaltalentsquare.com/"
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV AUTH_SESSION_SECRET="replace-with-a-long-random-secret"
 ENV SETTINGS_ENCRYPTION_SECRET=""
-ENV INTERNAL_APP_ORIGIN=""
-ENV AUTH_PASSWORD_RESET_URL_BASE=""
-ENV MAIL_HOST=""
-ENV MAIL_PORT=""
-ENV MAIL_USERNAME=""
-ENV MAIL_PASSWORD=""
-ENV MAIL_FROM_ADDRESS=""
-ENV MAIL_FROM_NAME=""
-ENV ADMIN_MAIL=""
+ENV INTERNAL_APP_ORIGIN="https://dev-academy-admin.globaltalentsquare.com"
+ENV AUTH_PASSWORD_RESET_URL_BASE="https://dev-academy-admin.globaltalentsquare.com"
+ENV MAIL_HOST="smtp.zeptomail.in"
+ENV MAIL_PORT="587"
+ENV MAIL_USERNAME="emailapikey"
+ENV MAIL_PASSWORD="PHtE6r0OFOy/jGMq8hIB7PG8H8KkNIMo/7tjf1ZFuYpKCqILTU1T+tgjxGO2/xsjAfNCF/6bwY08ub3Jt++MJGrpYT1EVWqyqK3sx/VYSPOZsbq6x00csVoZd0bfUYTnetJj1CfRuN7cNA=="
+ENV MAIL_FROM_ADDRESS="noreply@2coms.com"
+ENV MAIL_FROM_NAME="${APP_NAME}"
+ENV ADMIN_MAIL="resumes@2coms.zohorecruitmail.in"
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
