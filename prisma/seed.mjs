@@ -475,7 +475,7 @@ function placementForIndex(index) {
   };
 }
 
-async function seed() {
+async function seedEssentialData() {
   // --- Seed RBAC: Roles ---
   const roleRecords = {};
   for (const roleDef of SYSTEM_ROLES) {
@@ -588,6 +588,36 @@ async function seed() {
   });
   await assignUserRole(adminUser.id, roleRecords.SUPER_ADMIN.id);
 
+  // --- Seed reference data: currency and geography ---
+  await prisma.currency.upsert({ where: { code: "INR" }, update: { symbol: "Rs" }, create: { code: "INR", symbol: "Rs" } });
+
+  const india = await prisma.country.upsert({
+    where: { isoCode: "IN" },
+    update: { name: "India" },
+    create: { name: "India", isoCode: "IN" },
+  });
+
+  const kerala = await prisma.state.upsert({
+    where: { id: 1 },
+    update: { name: "Kerala", countryId: india.id },
+    create: { id: 1, name: "Kerala", countryId: india.id },
+  });
+
+  const kochi = await prisma.city.upsert({
+    where: { id: 1 },
+    update: { name: "Kochi", stateId: kerala.id },
+    create: { id: 1, name: "Kochi", stateId: kerala.id },
+  });
+
+  console.log("Essential data seeded", {
+    roles: Object.keys(roleRecords).length,
+    permissions: Object.keys(permissionRecords).length,
+  });
+
+  return { roleRecords, permissionRecords, adminUser, kochi };
+}
+
+async function seedMockData({ roleRecords, adminUser, kochi }) {
   // --- Seed additional test users for each role ---
   const academyAdminUser = await upsertUser({
     email: "academyadmin@gts-academy.test",
@@ -612,26 +642,6 @@ async function seed() {
     password: "dev-password",
   });
   await assignUserRole(supportUser.id, roleRecords.SUPPORT_USER.id);
-
-  await prisma.currency.upsert({ where: { code: "INR" }, update: { symbol: "Rs" }, create: { code: "INR", symbol: "Rs" } });
-
-  const india = await prisma.country.upsert({
-    where: { isoCode: "IN" },
-    update: { name: "India" },
-    create: { name: "India", isoCode: "IN" },
-  });
-
-  const kerala = await prisma.state.upsert({
-    where: { id: 1 },
-    update: { name: "Kerala", countryId: india.id },
-    create: { id: 1, name: "Kerala", countryId: india.id },
-  });
-
-  const kochi = await prisma.city.upsert({
-    where: { id: 1 },
-    update: { name: "Kochi", stateId: kerala.id },
-    create: { id: 1, name: "Kochi", stateId: kerala.id },
-  });
 
   const centreRecords = [];
   for (const centreDef of TRAINING_CENTRES) {
@@ -1278,9 +1288,7 @@ async function seed() {
 
   const readyCount = await prisma.learner.count({ where: { placementStatus: PlacementStatus.PLACEMENT_READY } });
 
-  console.log("Seed complete", {
-    roles: Object.keys(roleRecords).length,
-    permissions: Object.keys(permissionRecords).length,
+  console.log("Mock data seeded", {
     curricula: seededCurricula.length,
     curriculumStagesSeeded: seededCurricula.reduce((total, item) => total + item.stageCount, 0),
     programs: programRecords.length,
@@ -1291,11 +1299,90 @@ async function seed() {
   });
 }
 
-seed()
-  .catch((error) => {
+// FK-respecting top-down cleanup for --force mode.
+async function cleanMockData() {
+  const tables = [
+    "trainerPmsLog",
+    "assessmentScore",
+    "assessment",
+    "interview",
+    "roleplay",
+    "performanceMetric",
+    "certificate",
+    "recruiterSyncLog",
+    "readinessSnapshot",
+    "candidateDocument",
+    "candidateBasicDetails",
+    "attendanceRecord",
+    "attendanceSession",
+    "batchEnrollment",
+    "learner",
+    "batch",
+    "trainerCourseAssignment",
+    "trainerProfile",
+    "program",
+    "curriculumStage",
+    "curriculumModule",
+    "curriculum",
+    "course",
+    "trainingCentre",
+    "readinessEngineRule",
+  ];
+
+  for (const table of tables) {
+    const count = await prisma[table].deleteMany();
+    if (count.count > 0) {
+      console.log(`  cleaned ${table}: ${count.count} rows`);
+    }
+  }
+
+  console.log("Mock data cleaned");
+}
+
+// ---------------------------------------------------------------------------
+// CLI orchestrator (matches GTS Admin ERP seed pattern)
+// ---------------------------------------------------------------------------
+// --essential   Seed only system data (roles, permissions, settings, admin, geo).
+//               Safe for production.
+// --force       Wipe mock data then re-seed everything. Blocked in production.
+// (default)     Seed essential + mock data. Mock data blocked in production.
+// ---------------------------------------------------------------------------
+
+const args = process.argv.slice(2);
+const isEssentialOnly = args.includes("--essential");
+const isForce = args.includes("--force");
+const isProduction = process.env.NODE_ENV === "production";
+
+if (isProduction && isForce) {
+  console.error("ERROR: --force is not allowed when NODE_ENV=production");
+  process.exit(1);
+}
+
+if (isProduction && !isEssentialOnly) {
+  console.error("ERROR: Mock data seeding is blocked in production. Use --essential for system data only.");
+  process.exit(1);
+}
+
+(async () => {
+  try {
+    if (isForce) {
+      console.log("Force mode: cleaning mock data...");
+      await cleanMockData();
+    }
+
+    console.log("Seeding essential data...");
+    const essentialData = await seedEssentialData();
+
+    if (!isEssentialOnly) {
+      console.log("Seeding mock data...");
+      await seedMockData(essentialData);
+    }
+
+    console.log("Seed finished successfully.");
+  } catch (error) {
     console.error("Seed failed", error);
     process.exitCode = 1;
-  })
-  .finally(async () => {
+  } finally {
     await prisma.$disconnect();
-  });
+  }
+})();
