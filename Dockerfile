@@ -11,8 +11,13 @@ RUN npm ci --ignore-scripts
 
 FROM base AS builder
 
-# Prisma generate needs a datasource value even though the build does not connect to a database.
-ENV DATABASE_URL="postgresql://neondb_owner:npg_oWQ9BrUbi5ds@ep-lingering-unit-aj1y79lu-pooler.c-3.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+# Build-time values used by prisma generate / next build.
+# Pass real values with --build-arg in CI/CD when needed.
+ARG DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gts_academy?schema=public"
+ARG NEXT_PUBLIC_APP_URL="http://localhost:3000"
+ENV DATABASE_URL=${DATABASE_URL}
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV CI=1
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json ./
@@ -32,6 +37,18 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+ENV DATABASE_URL=""
+ENV AUTH_SESSION_SECRET=""
+ENV SETTINGS_ENCRYPTION_SECRET=""
+ENV INTERNAL_APP_ORIGIN=""
+ENV AUTH_PASSWORD_RESET_URL_BASE=""
+ENV MAIL_HOST=""
+ENV MAIL_PORT=""
+ENV MAIL_USERNAME=""
+ENV MAIL_PASSWORD=""
+ENV MAIL_FROM_ADDRESS=""
+ENV MAIL_FROM_NAME=""
+ENV ADMIN_MAIL=""
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \

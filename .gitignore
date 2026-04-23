@@ -1,6 +1,8 @@
 .next
 .next-build
 node_modules
+.venv
+.python-version
 .env
 .env.local
 coverage
@@ -8,3 +10,11 @@ dist
 *.tsbuildinfo
 *.log
 docker-compose.*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Test and tooling artifacts
+.eslintcache
+*.tmp

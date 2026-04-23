@@ -53,6 +53,10 @@ export async function middleware(request: NextRequest) {
     return appendPathnameHeader(request);
   }
 
+  if (pathname === "/health") {
+    return appendPathnameHeader(request);
+  }
+
   if (pathname.startsWith("/api/")) {
     return appendPathnameHeader(request);
   }
