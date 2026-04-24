@@ -192,7 +192,10 @@ export function resolveCurriculumStageItemAvailability(
   }
 
   if (release.releaseType === "PREVIOUS_ITEM_SCORE" && release.prerequisiteStageItemId) {
-    const requiredScorePercent = release.minimumScorePercent ?? 40;
+    if (release.minimumScorePercent == null) {
+      throw new Error(`PREVIOUS_ITEM_SCORE release is missing a required minimumScorePercent on item ${release.prerequisiteStageItemId}`);
+    }
+    const requiredScorePercent = release.minimumScorePercent;
     if ((input.prerequisiteScorePercent ?? -1) < requiredScorePercent) {
       const prerequisiteTitle = release.prerequisiteTitle ?? "the previous assessment";
       return {
@@ -206,6 +209,48 @@ export function resolveCurriculumStageItemAvailability(
           prerequisiteModuleId: null,
           prerequisiteTitle,
           requiredScorePercent,
+          batchOffsetDays: null,
+        }),
+        release,
+      };
+    }
+  }
+
+  if (release.releaseType === "STAGE_COMPLETION") {
+    if (input.prerequisiteProgressStatus !== "COMPLETED") {
+      const prerequisiteTitle = release.prerequisiteTitle ?? "the previous stage";
+      return {
+        availabilityStatus: "LOCKED",
+        availabilityReason: buildAvailabilityReason({
+          type: "WAITING_FOR_PREREQUISITE_STAGE",
+          message: `Complete ${JSON.stringify(prerequisiteTitle)} to unlock this item.`,
+          unlocksAt: null,
+          prerequisiteStageItemId: null,
+          prerequisiteStageId: null, // Depending on if it's stored in prerequisites
+          prerequisiteModuleId: null,
+          prerequisiteTitle,
+          requiredScorePercent: null,
+          batchOffsetDays: null,
+        }),
+        release,
+      };
+    }
+  }
+
+  if (release.releaseType === "MODULE_COMPLETION") {
+    if (input.prerequisiteProgressStatus !== "COMPLETED") {
+      const prerequisiteTitle = release.prerequisiteTitle ?? "the previous module";
+      return {
+        availabilityStatus: "LOCKED",
+        availabilityReason: buildAvailabilityReason({
+          type: "WAITING_FOR_PREREQUISITE_MODULE",
+          message: `Complete ${JSON.stringify(prerequisiteTitle)} to unlock this item.`,
+          unlocksAt: null,
+          prerequisiteStageItemId: null,
+          prerequisiteStageId: null,
+          prerequisiteModuleId: null, // Depending on if it's stored in prerequisites
+          prerequisiteTitle,
+          requiredScorePercent: null,
           batchOffsetDays: null,
         }),
         release,

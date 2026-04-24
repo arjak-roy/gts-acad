@@ -114,6 +114,7 @@ function applyCompletionRuleForStages(
 ): boolean {
   switch (rule) {
     case "ALL_REQUIRED":
+      throw new Error("ALL_REQUIRED rule is only applicable to item-level completion.");
     case "ALL_ITEMS":
       return completedCount >= totalCount;
 

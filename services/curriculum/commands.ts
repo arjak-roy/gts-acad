@@ -295,6 +295,23 @@ async function validateStageItemReleasePrerequisite(options: {
   if (prerequisiteItem.stage.module.curriculumId !== options.curriculumId) {
     throw new Error("Release prerequisites must belong to the same curriculum.");
   }
+
+  const itemsWithRelease = await options.tx.curriculumStageItem.findMany({
+    where: { stage: { module: { curriculumId: options.curriculumId } } },
+    select: { id: true, release: { select: { prerequisiteStageItemId: true } } },
+  });
+
+  const prerequisiteById = new Map(
+    itemsWithRelease.map((item) => [item.id, item.release?.prerequisiteStageItemId || null])
+  );
+  prerequisiteById.set(options.stageItemId, options.prerequisiteStageItemId);
+
+  ensureNoPrerequisiteCycle({
+    nodeId: options.stageItemId,
+    prerequisiteId: options.prerequisiteStageItemId,
+    prerequisiteById,
+    entityLabel: "Stage Item",
+  });
 }
 
 function ensureNoPrerequisiteCycle(options: {
@@ -387,10 +404,6 @@ async function validateStagePrerequisite(options: {
 
   if (!prerequisiteStage) {
     throw new Error("Prerequisite stage not found.");
-  }
-
-  if (prerequisiteStage.moduleId !== options.moduleId) {
-    throw new Error("Stage prerequisites must belong to the same module.");
   }
 
   if (!options.stageId) {
