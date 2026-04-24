@@ -4,7 +4,7 @@ import { LEARNER_IMPORT_MAX_ROWS } from "@/lib/imports/learners";
 
 export const getLearnersSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().max(100).optional().default(""),
   batchCode: z.string().trim().max(50).optional().default(""),
   placementStatus: z.enum(["NOT_READY", "IN_REVIEW", "PLACEMENT_READY"]).optional(),
