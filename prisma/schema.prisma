@@ -2162,6 +2162,9 @@ model AssessmentPool {
   passingMarks         Int                  @default(40) @map("passing_marks")
   timeLimitMinutes     Int?                 @map("time_limit_minutes")
   status               AssessmentPoolStatus @default(DRAFT)
+  shuffleQuestions     Boolean              @default(false) @map("shuffle_questions")
+  shuffleOptions       Boolean              @default(false) @map("shuffle_options")
+  randomSubsetCount    Int?                 @map("random_subset_count")
   isAiGenerated        Boolean              @default(false) @map("is_ai_generated")
   aiGenerationMetadata Json?                @map("ai_generation_metadata")
   createdById          String?              @db.Uuid @map("created_by_user_id")
@@ -2169,6 +2172,7 @@ model AssessmentPool {
   updatedAt            DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy            User?                @relation("AssessmentPoolCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   questions            AssessmentQuestion[]
+  sections             AssessmentSection[]
   courseAssessmentLinks CourseAssessmentLink[]
   batchAssessmentMappings BatchAssessmentMapping[]
   trainerAssignments   TrainerAssessmentAssignment[]
@@ -2183,21 +2187,40 @@ model AssessmentPool {
 }
 
 model AssessmentQuestion {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("question_id")
-  assessmentPoolId String         @db.Uuid @map("assessment_pool_id")
-  questionText     String         @map("question_text")
-  questionType     QuestionType   @map("question_type")
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("question_id")
+  assessmentPoolId String              @db.Uuid @map("assessment_pool_id")
+  sectionId        String?             @db.Uuid @map("section_id")
+  questionText     String              @map("question_text")
+  questionType     QuestionType        @map("question_type")
+  difficultyLevel  DifficultyLevel?    @map("difficulty_level")
   options          Json?
-  correctAnswer    Json?          @map("correct_answer")
+  correctAnswer    Json?               @map("correct_answer")
   explanation      String?
-  marks            Int            @default(1)
-  sortOrder        Int            @default(0) @map("sort_order")
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  assessmentPool   AssessmentPool @relation(fields: [assessmentPoolId], references: [id], onDelete: Cascade)
+  marks            Int                 @default(1)
+  sortOrder        Int                 @default(0) @map("sort_order")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  assessmentPool   AssessmentPool      @relation(fields: [assessmentPoolId], references: [id], onDelete: Cascade)
+  section          AssessmentSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
   @@index([assessmentPoolId, sortOrder], map: "idx_assessment_questions_pool_order")
+  @@index([sectionId], map: "idx_assessment_questions_section")
   @@map("assessment_questions")
+}
+
+model AssessmentSection {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("section_id")
+  assessmentPoolId String              @db.Uuid @map("assessment_pool_id")
+  title            String              @db.VarChar(255)
+  description      String?
+  sortOrder        Int                 @default(0) @map("sort_order")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  assessmentPool   AssessmentPool      @relation(fields: [assessmentPoolId], references: [id], onDelete: Cascade)
+  questions        AssessmentQuestion[]
+
+  @@index([assessmentPoolId, sortOrder], map: "idx_assessment_sections_pool_order")
+  @@map("assessment_sections")
 }
 
 model TrainerAssessmentAssignment {
@@ -2223,15 +2246,16 @@ model TrainerAssessmentAssignment {
 }
 
 model QuestionBankQuestion {
-  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("question_bank_question_id")
-  courseId      String?      @db.Uuid @map("course_id")
-  questionText  String       @map("question_text")
-  questionType  QuestionType @map("question_type")
-  options       Json?
-  correctAnswer Json?        @map("correct_answer")
-  explanation   String?
-  tags          String[]     @default([])
-  marks         Int          @default(1)
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("question_bank_question_id")
+  courseId        String?          @db.Uuid @map("course_id")
+  questionText    String           @map("question_text")
+  questionType    QuestionType     @map("question_type")
+  difficultyLevel DifficultyLevel? @map("difficulty_level")
+  options         Json?
+  correctAnswer   Json?            @map("correct_answer")
+  explanation     String?
+  tags            String[]         @default([])
+  marks           Int              @default(1)
   createdById   String?      @db.Uuid @map("created_by_user_id")
   createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { questionTypeEnum } from "@/lib/validation-schemas/assessment-pool";
+import { questionTypeEnum, difficultyLevelEnum } from "@/lib/validation-schemas/assessment-pool";
 
 const questionBankTagsSchema = z.array(z.string().trim().min(1).max(32)).max(12).optional().default([]);
 
@@ -12,6 +12,7 @@ export const createQuestionBankQuestionSchema = z.object({
   courseId: z.string().trim().optional().default(""),
   questionText: z.string().trim().min(1, "Question text is required."),
   questionType: questionTypeEnum,
+  difficultyLevel: difficultyLevelEnum.optional().nullable(),
   options: z.any().optional().default(null),
   correctAnswer: z.any().optional().default(null),
   explanation: z.string().trim().max(2000).optional().default(""),
@@ -24,6 +25,7 @@ export const updateQuestionBankQuestionSchema = z.object({
   courseId: z.string().trim().optional(),
   questionText: z.string().trim().min(1).optional(),
   questionType: questionTypeEnum.optional(),
+  difficultyLevel: difficultyLevelEnum.optional().nullable(),
   options: z.any().optional(),
   correctAnswer: z.any().optional(),
   explanation: z.string().trim().max(2000).optional(),

@@ -16,6 +16,9 @@ export const createAssessmentPoolSchema = z.object({
   totalMarks: z.coerce.number().int().positive().optional().default(100),
   passingMarks: z.coerce.number().int().nonnegative().optional().default(40),
   timeLimitMinutes: z.coerce.number().int().positive().optional().nullable(),
+  shuffleQuestions: z.coerce.boolean().optional().default(false),
+  shuffleOptions: z.coerce.boolean().optional().default(false),
+  randomSubsetCount: z.coerce.number().int().positive().optional().nullable(),
 });
 
 export const assessmentPoolIdSchema = z.object({
@@ -32,17 +35,22 @@ export const updateAssessmentPoolSchema = z.object({
   passingMarks: z.coerce.number().int().nonnegative().optional(),
   timeLimitMinutes: z.coerce.number().int().positive().optional().nullable(),
   status: assessmentPoolStatusEnum.optional(),
+  shuffleQuestions: z.coerce.boolean().optional(),
+  shuffleOptions: z.coerce.boolean().optional(),
+  randomSubsetCount: z.coerce.number().int().positive().optional().nullable(),
 });
 
 export const createQuestionSchema = z.object({
   assessmentPoolId: z.string().trim().min(1),
   questionText: z.string().trim().min(1, "Question text is required."),
   questionType: questionTypeEnum,
+  difficultyLevel: difficultyLevelEnum.optional().nullable(),
   options: z.any().optional().default(null),
   correctAnswer: z.any().optional().default(null),
   explanation: z.string().trim().max(2000).optional().default(""),
   marks: z.coerce.number().int().positive().optional().default(1),
   sortOrder: z.coerce.number().int().nonnegative().optional().default(0),
+  sectionId: z.string().trim().optional().nullable(),
 });
 
 export const questionIdSchema = z.object({
@@ -53,11 +61,13 @@ export const updateQuestionSchema = z.object({
   questionId: z.string().trim().min(1),
   questionText: z.string().trim().min(1).optional(),
   questionType: questionTypeEnum.optional(),
+  difficultyLevel: difficultyLevelEnum.optional().nullable(),
   options: z.any().optional(),
   correctAnswer: z.any().optional(),
   explanation: z.string().trim().max(2000).optional(),
   marks: z.coerce.number().int().positive().optional(),
   sortOrder: z.coerce.number().int().nonnegative().optional(),
+  sectionId: z.string().trim().optional().nullable(),
 });
 
 export const linkAssessmentToCourseSchema = z.object({

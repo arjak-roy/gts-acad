@@ -1,7 +1,7 @@
 import "server-only";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
-import type { AssessmentPoolDetail, AssessmentPoolListItem, QuestionDetail } from "@/services/assessment-pool/types";
+import type { AssessmentPoolDetail, AssessmentPoolListItem, AssessmentSectionDetail, QuestionDetail } from "@/services/assessment-pool/types";
 
 export async function listAssessmentPoolsService(filters?: {
   courseId?: string;
@@ -78,6 +78,9 @@ export async function getAssessmentPoolByIdService(poolId: string): Promise<Asse
       timeLimitMinutes: true,
       status: true,
       isAiGenerated: true,
+      shuffleQuestions: true,
+      shuffleOptions: true,
+      randomSubsetCount: true,
       createdAt: true,
       updatedAt: true,
       createdBy: { select: { name: true } },
@@ -87,10 +90,21 @@ export async function getAssessmentPoolByIdService(poolId: string): Promise<Asse
           id: true,
           questionText: true,
           questionType: true,
+          difficultyLevel: true,
           options: true,
           correctAnswer: true,
           explanation: true,
           marks: true,
+          sortOrder: true,
+          sectionId: true,
+        },
+      },
+      sections: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
           sortOrder: true,
         },
       },
@@ -118,6 +132,10 @@ export async function getAssessmentPoolByIdService(poolId: string): Promise<Asse
     updatedAt: pool.updatedAt,
     createdByName: pool.createdBy?.name ?? null,
     questions: pool.questions as QuestionDetail[],
+    sections: pool.sections as AssessmentSectionDetail[],
+    shuffleQuestions: pool.shuffleQuestions,
+    shuffleOptions: pool.shuffleOptions,
+    randomSubsetCount: pool.randomSubsetCount,
   };
 }
 
@@ -133,11 +151,13 @@ export async function listQuestionsService(poolId: string): Promise<QuestionDeta
       id: true,
       questionText: true,
       questionType: true,
+      difficultyLevel: true,
       options: true,
       correctAnswer: true,
       explanation: true,
       marks: true,
       sortOrder: true,
+      sectionId: true,
     },
   });
 

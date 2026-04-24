@@ -23,17 +23,30 @@ export type QuestionDetail = {
   id: string;
   questionText: string;
   questionType: QuestionType;
+  difficultyLevel: DifficultyLevel | null;
   options: unknown;
   correctAnswer: unknown;
   explanation: string | null;
   marks: number;
   sortOrder: number;
+  sectionId: string | null;
+};
+
+export type AssessmentSectionDetail = {
+  id: string;
+  title: string;
+  description: string | null;
+  sortOrder: number;
 };
 
 export type AssessmentPoolDetail = AssessmentPoolListItem & {
   questions: QuestionDetail[];
+  sections: AssessmentSectionDetail[];
   createdByName: string | null;
   updatedAt: Date;
+  shuffleQuestions: boolean;
+  shuffleOptions: boolean;
+  randomSubsetCount: number | null;
 };
 
 export type AssessmentPoolCreateResult = {

@@ -8,8 +8,6 @@ export const curriculumItemReleaseTypeEnum = z.enum([
   "BATCH_RELATIVE",
   "PREVIOUS_ITEM_COMPLETION",
   "PREVIOUS_ITEM_SCORE",
-  "STAGE_COMPLETION",
-  "MODULE_COMPLETION",
   "MANUAL",
 ]);
 
