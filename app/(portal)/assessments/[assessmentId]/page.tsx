@@ -126,7 +126,8 @@ export default function AssessmentBuilderPage() {
     try {
       const res = await fetch(`/api/assessment-pool/${assessmentId}`);
       if (!res.ok) throw new Error("Failed to load assessment");
-      const data = (await res.json()) as AssessmentDetail;
+      const json = (await res.json()) as { data: AssessmentDetail };
+      const data = json.data;
       setDetail(data);
       setMetaForm({
         title: data.title,
