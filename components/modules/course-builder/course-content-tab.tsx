@@ -1,10 +1,18 @@
 "use client";
 
-import { Download, Eye, History, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
+import { Download, Eye, FolderOpen, GripVertical, History, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export type CourseContentItem = {
   id: string;
@@ -48,6 +56,12 @@ export type LinkedRepositoryResourceSummary = {
   assignmentCount: number;
 };
 
+export type CourseContentMoveTarget = {
+  id: string;
+  courseId: string;
+  name: string;
+};
+
 const contentTypeLabels: Record<string, string> = {
   ARTICLE: "Authored Lesson",
   PDF: "PDF",
@@ -75,10 +89,12 @@ export function CourseContentTab({
   items,
   folderName,
   linkedResources = {},
+  availableMoveTargets,
   onAddContent,
   onViewContent,
   onEditContent,
   onDeleteContent,
+  onMoveContent,
   onViewRepositoryResource,
   onEditRepositoryResource,
   onViewRepositoryHistory,
@@ -86,14 +102,22 @@ export function CourseContentTab({
   canCreateContent,
   canEditContent,
   canDeleteContent,
+  showCourseName,
+  movingContentId,
+  dragToFolderEnabled,
+  draggingContentId,
+  onContentDragStart,
+  onContentDragEnd,
 }: {
   items: CourseContentItem[];
   folderName?: string | null;
   linkedResources?: Record<string, LinkedRepositoryResourceSummary>;
+  availableMoveTargets?: CourseContentMoveTarget[];
   onAddContent: () => void;
   onViewContent: (contentId: string) => void;
   onEditContent: (contentId: string) => void;
   onDeleteContent: (content: CourseContentItem) => void;
+  onMoveContent?: (content: CourseContentItem, targetFolderId: string | null) => void;
   onViewRepositoryResource?: (resourceId: string) => void;
   onEditRepositoryResource?: (resourceId: string) => void;
   onViewRepositoryHistory?: (resourceId: string, resourceTitle: string) => void;
@@ -101,6 +125,12 @@ export function CourseContentTab({
   canCreateContent?: boolean;
   canEditContent?: boolean;
   canDeleteContent?: boolean;
+  showCourseName?: boolean;
+  movingContentId?: string | null;
+  dragToFolderEnabled?: boolean;
+  draggingContentId?: string | null;
+  onContentDragStart?: (content: CourseContentItem) => void;
+  onContentDragEnd?: () => void;
 }) {
   const published = items.filter((content) => content.status === "PUBLISHED").length;
   const drafts = items.filter((content) => content.status === "DRAFT").length;
@@ -113,6 +143,9 @@ export function CourseContentTab({
             {items.length} item{items.length !== 1 ? "s" : ""} · {published} published · {drafts} draft{drafts !== 1 ? "s" : ""}
             {folderName ? ` · Folder: ${folderName}` : ""}
           </p>
+          {dragToFolderEnabled ? (
+            <p className="text-xs text-slate-500">Drag a handle onto a folder in the explorer or use Actions &gt; Move to Folder.</p>
+          ) : null}
         </div>
         {canCreateContent ? (
           <Button size="sm" onClick={onAddContent}>
@@ -134,6 +167,17 @@ export function CourseContentTab({
             const linkedResource = linkedResources[content.id] ?? null;
             const repositoryResourceId = linkedResource?.id ?? content.resourceId ?? null;
             const isSharedAssignment = content.isSharedAssignment === true;
+            const isMoveBusy = movingContentId === content.id;
+            const isDragging = draggingContentId === content.id;
+            const moveOptions = !isSharedAssignment && onMoveContent
+              ? [
+                  ...(content.folderId ? [{ id: null, name: "Library root" }] : []),
+                  ...(availableMoveTargets ?? [])
+                    .filter((folder) => folder.courseId === content.courseId && folder.id !== content.folderId)
+                    .sort((left, right) => left.name.localeCompare(right.name))
+                    .map((folder) => ({ id: folder.id, name: folder.name })),
+                ]
+              : [];
             const handlePrimaryOpen = () => {
               if (repositoryResourceId && onViewRepositoryResource) {
                 onViewRepositoryResource(repositoryResourceId);
@@ -144,7 +188,10 @@ export function CourseContentTab({
             };
 
             return (
-              <div key={content.id} className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/50">
+              <div key={content.id} className={[
+                "flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/50",
+                isDragging ? "bg-primary/[0.04] opacity-60" : "",
+              ].filter(Boolean).join(" ")}>
                 <button
                   type="button"
                   className="min-w-0 flex-1 text-left"
@@ -152,6 +199,11 @@ export function CourseContentTab({
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-medium">{content.title}</span>
+                    {showCourseName ? (
+                      <Badge variant="accent" className="px-1.5 py-0 text-[10px]">
+                        {content.courseName}
+                      </Badge>
+                    ) : null}
                     {!folderName && content.folderName ? (
                       <Badge variant="info" className="px-1.5 py-0 text-[10px]">
                         {content.folderName}
@@ -188,6 +240,29 @@ export function CourseContentTab({
                   </p>
                 </button>
                 <div className="flex items-center gap-2">
+                  {dragToFolderEnabled && !isSharedAssignment ? (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      draggable={!isMoveBusy}
+                      aria-label={`Drag ${content.title} into a folder`}
+                      title="Drag into a folder"
+                      className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-700 active:cursor-grabbing"
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", content.id);
+                        onContentDragStart?.(content);
+                      }}
+                      onDragEnd={() => onContentDragEnd?.()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                        }
+                      }}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </div>
+                  ) : null}
                   <Badge variant={statusVariant[linkedResource?.status ?? content.resourceStatus ?? content.status] ?? "info"} className="shrink-0">
                     {linkedResource?.status ?? content.resourceStatus ?? content.status}
                   </Badge>
@@ -240,6 +315,26 @@ export function CourseContentTab({
                           <PencilLine className="mr-2 h-4 w-4" />
                           Edit Upload
                         </DropdownMenuItem>
+                      ) : null}
+                      {moveOptions.length > 0 && onMoveContent ? (
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>
+                            <FolderOpen className="mr-2 h-4 w-4" />
+                            {isMoveBusy ? "Moving..." : "Move to Folder"}
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            {moveOptions.map((option) => (
+                              <DropdownMenuItem
+                                key={option.id ?? "__root__"}
+                                onSelect={() => onMoveContent(content, option.id)}
+                                disabled={isMoveBusy}
+                              >
+                                <FolderOpen className="mr-2 h-4 w-4" />
+                                {option.name}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
                       ) : null}
                       {linkedResource && onEditRepositoryResource && !isSharedAssignment ? (
                         <DropdownMenuItem onSelect={() => onEditRepositoryResource(linkedResource.id)}>

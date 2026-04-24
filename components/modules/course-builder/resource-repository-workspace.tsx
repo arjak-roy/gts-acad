@@ -10,6 +10,7 @@ import { AddContentSheet } from "@/components/modules/course-builder/add-content
 import { CourseContentDetailSheet } from "@/components/modules/course-builder/course-content-detail-sheet";
 import {
   CourseContentTab,
+  type CourseContentMoveTarget,
   type CourseContentItem,
   type LinkedRepositoryResourceSummary,
 } from "@/components/modules/course-builder/course-content-tab";
@@ -47,9 +48,16 @@ type FolderOption = {
   createdAt: string;
 };
 
-type RepositorySelection = {
-  folderId: string | null;
-};
+const REPOSITORY_ROOT_SELECTION_ID = "__repository_root__";
+
+type RepositorySelection =
+  | {
+      kind: "root";
+    }
+  | {
+      kind: "folder";
+      folderId: string;
+    };
 
 type ExplorerFolderNode = {
   folder: FolderOption;
@@ -139,6 +147,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
   const [assignedContents, setAssignedContents] = useState<CourseContentItem[]>([]);
   const [resources, setResources] = useState<LearningResourceListItem[]>([]);
   const [selection, setSelection] = useState<RepositorySelection | null>(null);
+  const [isRootExpanded, setIsRootExpanded] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
   const [explorerSearch, setExplorerSearch] = useState("");
   const [isLoadingExplorer, setIsLoadingExplorer] = useState(true);
@@ -155,6 +164,9 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
   const [editingContentId, setEditingContentId] = useState<string | null>(null);
   const [contentPendingDelete, setContentPendingDelete] = useState<CourseContentItem | null>(null);
   const [isDeletingContent, setIsDeletingContent] = useState(false);
+  const [movingContentId, setMovingContentId] = useState<string | null>(null);
+  const [draggingContentId, setDraggingContentId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [viewingRepositoryResourceId, setViewingRepositoryResourceId] = useState<string | null>(null);
   const [editingRepositoryResourceId, setEditingRepositoryResourceId] = useState<string | null>(null);
   const [historyTarget, setHistoryTarget] = useState<ResourceSheetTarget | null>(null);
@@ -278,8 +290,10 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
       const queryFolderId = params.get(explorerQueryKeys.folder) ?? "";
       const initialFolderId = folders.find((folder) => folder.id === queryFolderId)?.id ?? null;
 
-      if (initialFolderId) {
-        setSelection({ folderId: initialFolderId });
+      if (queryFolderId === REPOSITORY_ROOT_SELECTION_ID) {
+        setSelection({ kind: "root" });
+      } else if (initialFolderId) {
+        setSelection({ kind: "folder", folderId: initialFolderId });
         setExpandedFolders((current) => (current.includes(initialFolderId) ? current : [...current, initialFolderId]));
       } else {
         setSelection(null);
@@ -296,7 +310,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
       return;
     }
 
-    if (selection.folderId && !folders.some((folder) => folder.id === selection.folderId)) {
+    if (selection.kind === "folder" && !folders.some((folder) => folder.id === selection.folderId)) {
       setSelection(null);
     }
   }, [courses, folders, selection, selectionInitialized]);
@@ -310,7 +324,9 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
     params.delete(explorerQueryKeys.course);
     params.delete(explorerQueryKeys.folder);
 
-    if (selection?.folderId) {
+    if (selection?.kind === "root") {
+      params.set(explorerQueryKeys.folder, REPOSITORY_ROOT_SELECTION_ID);
+    } else if (selection?.kind === "folder") {
       params.set(explorerQueryKeys.folder, selection.folderId);
     }
 
@@ -322,10 +338,13 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
     router.replace(nextQuery ? `${pathname || RESOURCE_REPOSITORY_ROUTE}?${nextQuery}` : (pathname || RESOURCE_REPOSITORY_ROUTE), { scroll: false });
   }, [pathname, router, searchValue, selection, selectionInitialized]);
 
-  const selectedFolderId = selection?.folderId ?? "";
+  const isRootSelected = selection?.kind === "root";
+  const selectedFolderId = selection?.kind === "folder" ? selection.folderId : "";
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null;
   const selectedFolderName = selectedFolder?.name ?? null;
-  const repositoryCourseId = selectedFolder?.courseId
+  const repositoryCourseId = isRootSelected
+    ? ""
+    : selectedFolder?.courseId
     ?? folders[0]?.courseId
     ?? contents[0]?.courseId
     ?? courses[0]?.id
@@ -341,11 +360,6 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
     [contents, folderPendingDelete],
   );
   const allContents = useMemo(() => [...contents, ...assignedContents], [assignedContents, contents]);
-
-  const visibleContents = useMemo(
-    () => (selectedFolderId ? allContents.filter((content) => content.folderId === selectedFolderId) : []),
-    [allContents, selectedFolderId],
-  );
 
   const linkedResourcesByContentId = useMemo<Record<string, LinkedRepositoryResourceSummary>>(() => {
     return resources.reduce<Record<string, LinkedRepositoryResourceSummary>>((map, resource) => {
@@ -364,6 +378,10 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
       return map;
     }, {});
   }, [resources]);
+  const moveTargets = useMemo<CourseContentMoveTarget[]>(
+    () => folders.map((folder) => ({ id: folder.id, courseId: folder.courseId, name: folder.name })),
+    [folders],
+  );
 
   useEffect(() => {
     if (isLoadingPermissions || isLoadingExplorer || !canViewContent || !canBackfillResources) {
@@ -459,6 +477,32 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
       });
   }, [allContents]);
 
+  const visibleContents = useMemo(() => {
+    if (selectedFolderId) {
+      return allContents.filter((content) => content.folderId === selectedFolderId);
+    }
+
+    if (isRootSelected) {
+      return repositoryRootContents;
+    }
+
+    return [];
+  }, [allContents, isRootSelected, repositoryRootContents, selectedFolderId]);
+
+  const editingContent = useMemo(
+    () => contents.find((content) => content.id === editingContentId) ?? null,
+    [contents, editingContentId],
+  );
+  const editingContentCourseId = editingContent?.courseId ?? selectedFolder?.courseId ?? "";
+  const editingContentFolders = useMemo(
+    () => folders.filter((folder) => folder.courseId === editingContentCourseId).sort(sortFolders),
+    [editingContentCourseId, folders],
+  );
+  const draggingContent = useMemo(
+    () => contents.find((content) => content.id === draggingContentId) ?? null,
+    [contents, draggingContentId],
+  );
+
   const filteredExplorerFolders = useMemo(() => {
     return explorerFolders
       .filter((entry) => {
@@ -490,13 +534,80 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
   }, [normalizedExplorerSearch, repositoryRootContents]);
 
   const handleSelectFolder = (folderId: string) => {
-    setSelection({ folderId });
+    setSelection({ kind: "folder", folderId });
     setExpandedFolders((current) => (current.includes(folderId) ? current : [...current, folderId]));
+  };
+
+  const handleSelectRoot = () => {
+    setSelection({ kind: "root" });
   };
 
   const handleRepositoryResourcesChanged = () => {
     setResourceRefreshToken((current) => current + 1);
     setWorkspaceRefreshToken((current) => current + 1);
+  };
+
+  const handleMoveContent = async (content: CourseContentItem, targetFolderId: string | null) => {
+    if (movingContentId) {
+      return;
+    }
+
+    if (content.isSharedAssignment) {
+      toast.error("Assigned repository items cannot be moved from this workspace.");
+      return;
+    }
+
+    if ((content.folderId ?? null) === targetFolderId) {
+      return;
+    }
+
+    const targetFolder = targetFolderId ? folders.find((folder) => folder.id === targetFolderId) ?? null : null;
+
+    if (targetFolderId && !targetFolder) {
+      toast.error("The target folder could not be found.");
+      return;
+    }
+
+    if (targetFolder && targetFolder.courseId !== content.courseId) {
+      toast.error("Repository items can only be moved into folders from the same course.");
+      return;
+    }
+
+    const nextSortOrder = contents
+      .filter((item) => item.id !== content.id && item.courseId === content.courseId && (item.folderId ?? null) === targetFolderId)
+      .reduce((highest, item) => Math.max(highest, item.sortOrder), -1) + 1;
+
+    setMovingContentId(content.id);
+
+    try {
+      const response = await fetch(`/api/course-content/${content.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          folderId: targetFolderId,
+          sortOrder: nextSortOrder,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to move repository item.");
+      }
+
+      if (targetFolder) {
+        setExpandedFolders((current) => (current.includes(targetFolder.id) ? current : [...current, targetFolder.id]));
+      }
+
+      setDragOverFolderId(null);
+      toast.success(targetFolder ? `Moved to ${targetFolder.name}.` : "Moved to Repository Root.");
+      handleRepositoryResourcesChanged();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to move repository item.");
+    } finally {
+      setMovingContentId(null);
+    }
   };
 
   const handleDeleteContent = async () => {
@@ -559,7 +670,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
       }
 
       toast.success("Folder deleted.");
-      setSelection((current) => (current?.folderId === deletedFolderId ? null : current));
+      setSelection((current) => (current?.kind === "folder" && current.folderId === deletedFolderId ? null : current));
       setExpandedFolders((current) => current.filter((folderId) => folderId !== deletedFolderId));
       setEditingFolder((current) => (current?.id === deletedFolderId ? null : current));
       if (wasEditingDeletedFolder) {
@@ -607,51 +718,104 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredRepositoryRootContents.length > 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white">
-                    <div className="space-y-1 border-b border-slate-100 px-3 py-2">
-                      <div className="flex items-center gap-2 rounded-xl px-2 py-2 text-left">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
-                          <Folder className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-950">Repository Root</p>
-                          <p className="mt-1 text-xs text-slate-500">{filteredRepositoryRootContents.length} file(s)</p>
-                        </div>
+                {!isSearchActive || filteredRepositoryRootContents.length > 0 || isRootSelected ? (
+                  <div className={cn(
+                    "rounded-2xl border border-slate-200 bg-white",
+                    isRootSelected ? "border-primary/40 bg-primary/[0.05]" : null,
+                  )}>
+                    <div className="flex items-center gap-1 px-1 py-1">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                        onClick={() => setIsRootExpanded((current) => !current)}
+                        aria-label={isSearchActive || isRootExpanded ? "Collapse repository root" : "Expand repository root"}
+                      >
+                        {isSearchActive || isRootExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-slate-50"
+                        onClick={handleSelectRoot}
+                      >
+                        <Folder className="h-4 w-4 text-slate-500" />
+                        <span className="truncate text-sm font-medium text-slate-800">Repository Root</span>
+                        <Badge variant="accent" className="ml-auto shrink-0">{filteredRepositoryRootContents.length}</Badge>
+                      </button>
+                    </div>
+
+                    {isSearchActive || isRootExpanded ? (
+                      <div className="space-y-1 pb-2 pl-10 pr-2">
+                        {filteredRepositoryRootContents.map((content) => (
+                          <button
+                            key={content.id}
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm text-slate-600 transition-colors hover:bg-slate-50"
+                            onClick={() => {
+                              handleSelectRoot();
+                              const linkedResourceId = linkedResourcesByContentId[content.id]?.id;
+                              if (linkedResourceId && canViewResources) {
+                                setViewingRepositoryResourceId(linkedResourceId);
+                              } else {
+                                setViewingContentId(content.id);
+                              }
+                            }}
+                          >
+                            <FileText className="h-4 w-4 text-slate-400" />
+                            <span className="truncate">{content.title}</span>
+                          </button>
+                        ))}
                       </div>
-                    </div>
-                    <div className="space-y-1 px-3 py-2">
-                      {filteredRepositoryRootContents.map((content) => (
-                        <button
-                          key={content.id}
-                          type="button"
-                          className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm text-slate-600 transition-colors hover:bg-slate-50"
-                          onClick={() => {
-                            const linkedResourceId = linkedResourcesByContentId[content.id]?.id;
-                            if (linkedResourceId && canViewResources) {
-                              setViewingRepositoryResourceId(linkedResourceId);
-                            } else {
-                              setViewingContentId(content.id);
-                            }
-                          }}
-                        >
-                          <FileText className="h-4 w-4 text-slate-400" />
-                          <span className="truncate">{content.title}</span>
-                        </button>
-                      ))}
-                    </div>
+                    ) : null}
                   </div>
                 ) : null}
 
                 {filteredExplorerFolders.map((entry) => {
                   const folderExpanded = isSearchActive || expandedFolders.includes(entry.folder.id);
-                  const isFolderSelected = selection?.folderId === entry.folder.id;
+                  const isFolderSelected = selection?.kind === "folder" && selection.folderId === entry.folder.id;
+                  const canAcceptDraggedContent = Boolean(
+                    draggingContent
+                    && !draggingContent.isSharedAssignment
+                    && draggingContent.courseId === entry.folder.courseId
+                    && draggingContent.folderId !== entry.folder.id,
+                  );
+                  const isDropTargetActive = dragOverFolderId === entry.folder.id;
 
                   return (
                     <div key={entry.folder.id} className={cn(
                       "rounded-2xl border border-slate-200 bg-white",
+                      draggingContent && canAcceptDraggedContent ? "border-dashed border-primary/30" : null,
+                      isDropTargetActive ? "border-primary bg-primary/[0.08] shadow-sm" : null,
                       isFolderSelected ? "border-primary/40 bg-primary/[0.05]" : null,
-                    )}>
+                    )}
+                    onDragOver={(event) => {
+                      if (!canAcceptDraggedContent) {
+                        return;
+                      }
+
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      if (dragOverFolderId !== entry.folder.id) {
+                        setDragOverFolderId(entry.folder.id);
+                      }
+                    }}
+                    onDragLeave={(event) => {
+                      const nextTarget = event.relatedTarget;
+                      if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+                        return;
+                      }
+
+                      setDragOverFolderId((current) => (current === entry.folder.id ? null : current));
+                    }}
+                    onDrop={(event) => {
+                      if (!canAcceptDraggedContent || !draggingContent) {
+                        return;
+                      }
+
+                      event.preventDefault();
+                      setDragOverFolderId(null);
+                      setDraggingContentId(null);
+                      void handleMoveContent(draggingContent, entry.folder.id);
+                    }}>
                       <div className="flex items-center gap-1 px-1 py-1">
                         <button
                           type="button"
@@ -714,10 +878,12 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
             <CardHeader className="border-b border-slate-100 bg-white/90">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <CardTitle>{selectedFolderName ?? "Nothing Selected"}</CardTitle>
+                  <CardTitle>{isRootSelected ? "Repository Root" : selectedFolderName ?? "Nothing Selected"}</CardTitle>
                   <CardDescription>
                     {selectedFolder
                       ? `Browse uploads inside ${selectedFolder.name}. Folders only organize repository files and do not control assignment or delivery.`
+                      : isRootSelected
+                        ? "Browse unfiled repository uploads. Root items can stay here or be moved into custom folders for organization."
                       : "Choose a custom folder from the explorer to browse uploads, or create one to organize the repository."}
                   </CardDescription>
                 </div>
@@ -763,22 +929,36 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
               </div>
             </CardHeader>
             <CardContent className="pt-6">
-              {selectedFolder ? (
+              {selectedFolder || isRootSelected ? (
                 <CourseContentTab
                   items={visibleContents}
                   folderName={selectedFolderName}
                   linkedResources={linkedResourcesByContentId}
+                  availableMoveTargets={moveTargets}
                   onAddContent={() => setAddContentOpen(true)}
                   onViewContent={setViewingContentId}
                   onEditContent={setEditingContentId}
                   onDeleteContent={setContentPendingDelete}
+                  onMoveContent={handleMoveContent}
                   onViewRepositoryResource={canViewResources ? setViewingRepositoryResourceId : undefined}
                   onEditRepositoryResource={canEditResources ? setEditingRepositoryResourceId : undefined}
                   onViewRepositoryHistory={canViewResources ? (resourceId, title) => setHistoryTarget({ id: resourceId, title }) : undefined}
                   onManageRepositoryAssignments={canAssignResources ? (resourceId, title) => setAssignmentTarget({ id: resourceId, title }) : undefined}
-                  canCreateContent={canCreateContent}
+                  canCreateContent={selectedFolder ? canCreateContent : false}
                   canEditContent={canEditContent}
                   canDeleteContent={canDeleteContent}
+                  showCourseName={isRootSelected}
+                  movingContentId={movingContentId}
+                  dragToFolderEnabled={isRootSelected}
+                  draggingContentId={draggingContentId}
+                  onContentDragStart={(content) => {
+                    setDraggingContentId(content.id);
+                    setDragOverFolderId(null);
+                  }}
+                  onContentDragEnd={() => {
+                    setDraggingContentId(null);
+                    setDragOverFolderId(null);
+                  }}
                 />
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center text-sm text-slate-500">
@@ -812,7 +992,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
           courseId={editingFolder?.courseId ?? selectedFolder?.courseId ?? repositoryCourseId}
           folder={editingFolder ? { id: editingFolder.id, name: editingFolder.name, description: editingFolder.description } : null}
           onSaved={async (folderId) => {
-            setSelection({ folderId });
+            setSelection({ kind: "folder", folderId });
             setExpandedFolders((current) => (current.includes(folderId) ? current : [...current, folderId]));
             setWorkspaceRefreshToken((current) => current + 1);
             setEditingFolder(null);
@@ -839,7 +1019,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
           }
         }}
         contentId={editingContentId}
-        folders={selectedCourseFolders.map((folder) => ({ id: folder.id, name: folder.name, description: folder.description }))}
+        folders={editingContentFolders.map((folder) => ({ id: folder.id, name: folder.name, description: folder.description }))}
         onUpdated={() => {
           setEditingContentId(null);
           handleRepositoryResourcesChanged();
