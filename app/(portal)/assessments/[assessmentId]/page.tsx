@@ -63,13 +63,11 @@ const STATUS_COLORS: Record<string, string> = {
 function QuestionRow({
   question,
   index,
-  assessmentId,
   onEdit,
   onDelete,
 }: {
   question: QuestionItem;
   index: number;
-  assessmentId: string;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -401,7 +399,6 @@ export default function AssessmentBuilderPage() {
                   key={q.id}
                   question={q}
                   index={i}
-                  assessmentId={assessmentId}
                   onEdit={() => router.push(`/assessments/questions/${q.id}?poolId=${assessmentId}&context=assessment`)}
                   onDelete={() => handleDeleteQuestion(q.id)}
                 />
@@ -424,7 +421,6 @@ export default function AssessmentBuilderPage() {
                 key={q.id}
                 question={q}
                 index={i}
-                assessmentId={assessmentId}
                 onEdit={() => router.push(`/assessments/questions/${q.id}?poolId=${assessmentId}&context=assessment`)}
                 onDelete={() => handleDeleteQuestion(q.id)}
               />
