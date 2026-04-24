@@ -2,6 +2,7 @@
 
 import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { toast } from "sonner";
 
 import { LearnerAssignmentsCard } from "@/components/modules/learners/learner-assignments-card";
@@ -270,7 +271,13 @@ export function LearnerEditSheet({ learner }: LearnerEditSheetProps) {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                   <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 text-lg font-black text-slate-700">
                     {learner.profilePhotoUrl ? (
-                      <img alt={`${learner.fullName} profile`} className="h-full w-full object-cover" src={learner.profilePhotoUrl} />
+                      <Image
+                        alt={`${learner.fullName} profile`}
+                        className="h-full w-full object-cover"
+                        src={learner.profilePhotoUrl}
+                        width={64}
+                        height={64}
+                      />
                     ) : (
                       <span>{learnerInitials}</span>
                     )}

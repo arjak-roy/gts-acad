@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { BookOpen, Mail, Phone, Star, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +118,7 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
     }
   };
 
-  const loadActivity = async (page: number, append: boolean) => {
+  const loadActivity = useCallback(async (page: number, append: boolean) => {
     if (!trainerId) {
       return;
     }
@@ -142,7 +143,7 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
     } finally {
       setIsActivityLoading(false);
     }
-  };
+  }, [trainerId]);
 
   useEffect(() => {
     if (!open || !trainerId || activeTab !== "activity" || activity.length > 0 || isActivityLoading) {
@@ -150,7 +151,7 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
     }
 
     void loadActivity(1, false);
-  }, [activeTab, activity.length, isActivityLoading, open, trainerId]);
+  }, [activeTab, activity.length, isActivityLoading, loadActivity, open, trainerId]);
   useEffect(() => {
     if (!open || !trainerId || activeTab !== "status-history" || statusHistory.length > 0 || statusHistoryLoading) {
       return;
@@ -205,7 +206,13 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
             <SheetHeader>
                 <div className="flex items-start gap-4">
                   {trainer.profilePhotoUrl ? (
-                    <img src={trainer.profilePhotoUrl} alt={trainer.fullName} className="h-14 w-14 shrink-0 rounded-2xl object-cover" />
+                    <Image
+                      src={trainer.profilePhotoUrl}
+                      alt={trainer.fullName}
+                      width={56}
+                      height={56}
+                      className="h-14 w-14 shrink-0 rounded-2xl object-cover"
+                    />
                   ) : (
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-lg font-black text-emerald-700">
                       {trainer.fullName.split(" ").map((part) => part[0]).join("").slice(0, 2)}

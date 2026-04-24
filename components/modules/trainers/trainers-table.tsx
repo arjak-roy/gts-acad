@@ -52,22 +52,6 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString();
 }
 
-function getAvailabilityVariant(availabilityStatus: TrainerAvailabilityStatus) {
-  if (availabilityStatus === "AVAILABLE") {
-    return "success" as const;
-  }
-
-  if (availabilityStatus === "LIMITED") {
-    return "warning" as const;
-  }
-
-  if (availabilityStatus === "UNAVAILABLE") {
-    return "danger" as const;
-  }
-
-  return "info" as const;
-}
-
 export function TrainersTable({ response, courseOptions, filters, onRefresh }: TrainersTableProps) {
   const router = useRouter();
   const pathname = usePathname();
