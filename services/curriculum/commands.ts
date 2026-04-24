@@ -298,11 +298,11 @@ async function validateStageItemReleasePrerequisite(options: {
 
   const itemsWithRelease = await options.tx.curriculumStageItem.findMany({
     where: { stage: { module: { curriculumId: options.curriculumId } } },
-    select: { id: true, release: { select: { prerequisiteStageItemId: true } } },
+    select: { id: true, releaseConfig: { select: { prerequisiteStageItemId: true } } },
   });
 
   const prerequisiteById = new Map(
-    itemsWithRelease.map((item) => [item.id, item.release?.prerequisiteStageItemId || null])
+    itemsWithRelease.map((item) => [item.id, item.releaseConfig?.prerequisiteStageItemId || null])
   );
   prerequisiteById.set(options.stageItemId, options.prerequisiteStageItemId);
 
