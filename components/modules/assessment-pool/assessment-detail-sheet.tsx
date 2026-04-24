@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDownToLine } from "lucide-react";
 import { toast } from "sonner";
 
@@ -129,6 +130,7 @@ export function AssessmentDetailSheet({
   onOpenChange: (open: boolean) => void;
   onUpdated?: () => void;
 }) {
+  const router = useRouter();
   const [detail, setDetail] = useState<AssessmentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -559,6 +561,17 @@ export function AssessmentDetailSheet({
                 <span className="font-mono text-xs">{detail.code}</span>
                 {detail.createdByName && <span> · Created by {detail.createdByName}</span>}
               </SheetDescription>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-2 gap-1.5 text-xs"
+                onClick={() => {
+                  onOpenChange(false);
+                  router.push(`/assessments/${detail.id}`);
+                }}
+              >
+                Open in Full Builder →
+              </Button>
             </SheetHeader>
 
             <div className="space-y-6 px-6 py-6">

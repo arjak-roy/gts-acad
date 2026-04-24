@@ -4,6 +4,7 @@ export {
   listAssessmentPoolsService,
   getAssessmentPoolByIdService,
   listQuestionsService,
+  getQuestionByIdService,
 } from "@/services/assessment-pool/queries";
 
 export {

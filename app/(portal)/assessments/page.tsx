@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BookOpen, ClipboardList, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,6 +23,7 @@ type CourseOption = {
 };
 
 export default function AssessmentsPage() {
+  const router = useRouter();
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [isLoadingCourses, setIsLoadingCourses] = useState(true);
@@ -68,7 +70,7 @@ export default function AssessmentsPage() {
 
   const handleCreated = (poolId: string) => {
     setRefreshKey((previous) => previous + 1);
-    setDetailPoolId(poolId);
+    router.push(`/assessments/${poolId}`);
   };
 
   const handleAssessmentUpdated = () => {
@@ -183,7 +185,7 @@ export default function AssessmentsPage() {
             key={`pool-${selectedCourseId}-${refreshKey}`}
             courseId={selectedCourseId || undefined}
             onAddAssessment={() => setAddSheetOpen(true)}
-            onSelectAssessment={(poolId) => setDetailPoolId(poolId)}
+            onSelectAssessment={(poolId) => router.push(`/assessments/${poolId}`)}
             onAiGenerate={() => {
               toast.info(
                 "AI-powered assessment generation is coming soon. This feature will use tool calling to automatically create questions based on your prompt.",

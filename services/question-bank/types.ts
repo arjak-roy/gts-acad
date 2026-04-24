@@ -1,4 +1,4 @@
-import { QuestionType } from "@prisma/client";
+import { DifficultyLevel, QuestionType } from "@prisma/client";
 
 export type QuestionBankQuestionItem = {
   id: string;
@@ -11,6 +11,7 @@ export type QuestionBankQuestionItem = {
   explanation: string | null;
   tags: string[];
   marks: number;
+  difficultyLevel: DifficultyLevel | null;
   createdByName: string | null;
   createdAt: Date;
   updatedAt: Date;

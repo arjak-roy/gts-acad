@@ -15,6 +15,7 @@ const questionBankQuestionSelect = {
   explanation: true,
   tags: true,
   marks: true,
+  difficultyLevel: true,
   createdAt: true,
   updatedAt: true,
   course: { select: { name: true } },
@@ -35,10 +36,20 @@ function mapQuestionBankQuestion(question: QuestionBankQuestionRecord): Question
     explanation: question.explanation,
     tags: question.tags,
     marks: question.marks,
+    difficultyLevel: question.difficultyLevel,
     createdByName: question.createdBy?.name ?? null,
     createdAt: question.createdAt,
     updatedAt: question.updatedAt,
   };
+}
+
+export async function getQuestionBankQuestionByIdService(questionId: string): Promise<QuestionBankQuestionItem | null> {
+  const question = await prisma.questionBankQuestion.findUnique({
+    where: { id: questionId },
+    select: questionBankQuestionSelect,
+  });
+  if (!question) return null;
+  return mapQuestionBankQuestion(question);
 }
 
 export async function listQuestionBankQuestionsService(filters?: {

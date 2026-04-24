@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,6 +52,7 @@ function parseQuestionBankTags(value: string) {
 }
 
 export function QuestionBankWorkspace() {
+  const router = useRouter();
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -285,6 +287,11 @@ export function QuestionBankWorkspace() {
                     Back to Assessments
                   </Link>
                 </Button>
+                <CanAccess permission="assessment_pool.create">
+                  <Button size="sm" onClick={() => router.push("/assessments/questions/new?context=question-bank")}>
+                    + New Question (Full Editor)
+                  </Button>
+                </CanAccess>
               </div>
             </div>
 
@@ -476,6 +483,15 @@ export function QuestionBankWorkspace() {
 
                     <CanAccess permission="assessment_pool.edit">
                       <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => router.push(`/assessments/questions/${question.id}?context=question-bank`)}
+                        >
+                          Full Editor
+                        </Button>
                         <Button type="button" variant="secondary" size="sm" onClick={() => setEditingQuestion((current) => current?.id === question.id ? null : question)}>
                           {editingQuestion?.id === question.id ? "Close" : "Edit"}
                         </Button>

@@ -1,6 +1,6 @@
 import "server-only";
 
-export { listQuestionBankQuestionsService } from "@/services/question-bank/queries";
+export { listQuestionBankQuestionsService, getQuestionBankQuestionByIdService } from "@/services/question-bank/queries";
 
 export {
   createQuestionBankQuestionService,

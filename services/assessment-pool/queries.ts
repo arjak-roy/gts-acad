@@ -163,3 +163,22 @@ export async function listQuestionsService(poolId: string): Promise<QuestionDeta
 
   return questions as QuestionDetail[];
 }
+
+export async function getQuestionByIdService(questionId: string): Promise<QuestionDetail | null> {
+  const question = await prisma.assessmentQuestion.findUnique({
+    where: { id: questionId },
+    select: {
+      id: true,
+      questionText: true,
+      questionType: true,
+      difficultyLevel: true,
+      options: true,
+      correctAnswer: true,
+      explanation: true,
+      marks: true,
+      sortOrder: true,
+      sectionId: true,
+    },
+  });
+  return question as QuestionDetail | null;
+}
