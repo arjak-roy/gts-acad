@@ -110,3 +110,31 @@ export type TrainerImportCommitResult = {
   createdCount: number;
   totalCount: number;
 };
+
+export type TrainerPerformanceSummary = {
+  trainerId: string;
+  assignedCourses: number;
+  numberOfLearners: number;
+  completionRate: number;
+  averageLearnerScore: number;
+  pendingReviews: number;
+  lastActiveAt: string | null;
+};
+
+export type TrainerActivityType = "COURSE_ASSIGNMENT" | "QUIZ_ASSIGNMENT" | "LOGIN" | "AUDIT";
+
+export type TrainerActivityItem = {
+  id: string;
+  type: TrainerActivityType;
+  title: string;
+  occurredAt: string;
+  metadata: Record<string, unknown>;
+};
+
+export type TrainerActivityResponse = {
+  items: TrainerActivityItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { requirePermission } from "@/lib/auth/route-guards";
+import { requireAnyPermission } from "@/lib/auth/route-guards";
 import { replaceTrainerAssessmentAssignmentsSchema } from "@/lib/validation-schemas/assessment-reviews";
 import { trainerIdSchema } from "@/lib/validation-schemas/trainers";
 import {
@@ -17,7 +17,7 @@ type RouteContext = {
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "trainers.manage");
+    await requireAnyPermission(request, ["trainers.assign", "trainers.manage"]);
     const { trainerId } = trainerIdSchema.parse(params);
     const assignments = await listTrainerAssessmentAssignmentsService(trainerId);
     return apiSuccess(assignments);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    const session = await requirePermission(request, "trainers.manage");
+    const session = await requireAnyPermission(request, ["trainers.assign", "trainers.manage"]);
     const { trainerId } = trainerIdSchema.parse(params);
     const body = await request.json();
     const input = replaceTrainerAssessmentAssignmentsSchema.parse(body);

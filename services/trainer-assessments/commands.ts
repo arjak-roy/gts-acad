@@ -27,11 +27,23 @@ export async function replaceTrainerAssessmentAssignmentsService(options: {
   const normalizedAssignments = normalizeAssignments(options.assignments);
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: options.trainerId },
-    select: { id: true },
+    select: {
+      id: true,
+      isActive: true,
+      capacity: true,
+    },
   });
 
   if (!trainer) {
     throw new Error("Trainer not found.");
+  }
+
+  if (!trainer.isActive && normalizedAssignments.length > 0) {
+    throw new Error("Inactive trainers cannot be assigned to assessments.");
+  }
+
+  if (trainer.capacity > 0 && normalizedAssignments.length > trainer.capacity) {
+    throw new Error(`Trainer capacity exceeded. Maximum allowed assignments: ${trainer.capacity}.`);
   }
 
   const assessmentPoolIds = normalizedAssignments.map((assignment) => assignment.assessmentPoolId);

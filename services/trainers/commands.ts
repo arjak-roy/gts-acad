@@ -455,6 +455,10 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
       throw new Error("Trainer not found.");
     }
 
+    if (!trainer.isActive && normalizedCourses.length > 0) {
+      throw new Error("Inactive trainers cannot be assigned to courses.");
+    }
+
     return {
       id: trainer.id,
       userId: `mock-user-${trainer.id}`,
@@ -474,11 +478,23 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { id: true },
+    select: {
+      id: true,
+      isActive: true,
+      capacity: true,
+    },
   });
 
   if (!trainer) {
     throw new Error("Trainer not found.");
+  }
+
+  if (!trainer.isActive && normalizedCourses.length > 0) {
+    throw new Error("Inactive trainers cannot be assigned to courses.");
+  }
+
+  if (trainer.capacity > 0 && normalizedCourses.length > trainer.capacity) {
+    throw new Error(`Trainer capacity exceeded. Maximum allowed assignments: ${trainer.capacity}.`);
   }
 
   const resolvedCourses = await resolveTrainerSelectedCourses(normalizedCourses);
