@@ -1544,7 +1544,7 @@ function SortableModuleCard({
   const [showAddStage, setShowAddStage] = useState(module.stageCount === 0);
   const [title, setTitle] = useState(module.title);
   const [description, setDescription] = useState(module.description ?? "");
-  const [completionRule, setCompletionRule] = useState(module.completionRule ?? "ALL_REQUIRED");
+  const [completionRule, setCompletionRule] = useState(module.completionRule === "ALL_REQUIRED" ? "ALL_ITEMS" : (module.completionRule ?? "ALL_ITEMS"));
   const [completionThreshold, setCompletionThreshold] = useState<string>(module.completionThreshold?.toString() ?? "");
   const [prerequisiteModuleId, setPrerequisiteModuleId] = useState<string>(module.prerequisiteModuleId ?? "");
   const [newStageTitle, setNewStageTitle] = useState("");
@@ -1553,7 +1553,7 @@ function SortableModuleCard({
   useEffect(() => {
     setTitle(module.title);
     setDescription(module.description ?? "");
-    setCompletionRule(module.completionRule ?? "ALL_REQUIRED");
+    setCompletionRule(module.completionRule === "ALL_REQUIRED" ? "ALL_ITEMS" : (module.completionRule ?? "ALL_ITEMS"));
     setCompletionThreshold(module.completionThreshold?.toString() ?? "");
     setPrerequisiteModuleId(module.prerequisiteModuleId ?? "");
   }, [module.description, module.id, module.title, module.completionRule, module.completionThreshold, module.prerequisiteModuleId]);
@@ -1684,16 +1684,15 @@ function SortableModuleCard({
                       onChange={(event) => setCompletionRule(event.target.value)}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      <option value="ALL_REQUIRED">All required items</option>
-                      <option value="ALL_ITEMS">All items (required + optional)</option>
-                      <option value="PERCENTAGE">Percentage of items</option>
-                      <option value="MIN_ITEMS">Minimum number of items</option>
+                      <option value="ALL_ITEMS">All stages completed</option>
+                      <option value="PERCENTAGE">Percentage of stages</option>
+                      <option value="MIN_ITEMS">Minimum number of stages</option>
                     </select>
                   </div>
                   {(completionRule === "PERCENTAGE" || completionRule === "MIN_ITEMS") ? (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
-                        {completionRule === "PERCENTAGE" ? "Threshold (%)" : "Min items"}
+                        {completionRule === "PERCENTAGE" ? "Threshold (%)" : "Min stages"}
                       </label>
                       <Input
                         type="number"
@@ -1728,7 +1727,7 @@ function SortableModuleCard({
                   <Button type="button" variant="secondary" disabled={disabled} onClick={() => {
                     setTitle(module.title);
                     setDescription(module.description ?? "");
-                    setCompletionRule(module.completionRule ?? "ALL_REQUIRED");
+                    setCompletionRule(module.completionRule === "ALL_REQUIRED" ? "ALL_ITEMS" : (module.completionRule ?? "ALL_ITEMS"));
                     setCompletionThreshold(module.completionThreshold?.toString() ?? "");
                     setPrerequisiteModuleId(module.prerequisiteModuleId ?? "");
                     setIsEditing(false);
