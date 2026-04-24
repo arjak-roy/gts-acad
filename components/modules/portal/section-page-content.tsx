@@ -38,9 +38,11 @@ import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet
 import { LanguageLabSection } from "@/components/modules/language-lab/language-lab-section";
 import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
 import { ScheduleSection } from "@/components/modules/schedule/schedule-section";
+import { TableColumnVisibilityMenu } from "@/components/ui/table-column-visibility-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
 import { CanAccess } from "@/components/ui/can-access";
+import { usePersistedTablePreferences } from "@/hooks/use-persisted-table-preferences";
 import { cn } from "@/lib/utils";
 import { PortalSectionContent, PortalSectionTableColumn, PortalSectionTableRow } from "@/types";
 
@@ -52,6 +54,7 @@ type SectionPageContentProps = {
 type ViewMode = "table" | "card";
 
 const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_TABLE_PAGE_SIZES = [10, 25, 50, 100];
 const MAX_FILTER_OPTIONS = 15;
 
 function deriveFilterConfigs(rows: PortalSectionTableRow[], columns: PortalSectionTableColumn[]): FilterConfig[] {
@@ -155,6 +158,34 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
       : []),
     [isEmailTemplatesSection, section.tableRows],
   );
+  const tablePreferenceKey = useMemo(() => {
+    if (isEmailTemplatesSection) {
+      return "portal:email-templates";
+    }
+
+    if (sectionKey) {
+      return `portal:${sectionKey}`;
+    }
+
+    return `portal:${section.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  }, [isEmailTemplatesSection, section.title, sectionKey]);
+  const tableColumnOptions = useMemo(
+    () => section.tableColumns.map((column) => ({ key: column.key, label: column.header })),
+    [section.tableColumns],
+  );
+  const {
+    preferences,
+    hasLoadedPreferences,
+    visibleColumnIds,
+    setPageSize: persistPageSize,
+    toggleColumnVisibility,
+    resetPreferences,
+  } = usePersistedTablePreferences({
+    tableKey: tablePreferenceKey,
+    defaultPageSize: initialPageSize,
+    pageSizes: DEFAULT_TABLE_PAGE_SIZES,
+    columnIds: tableColumnOptions.map((column) => column.key),
+  });
 
   // Auto-derive filterable columns from data
   const filterConfigs = useMemo(
@@ -235,13 +266,14 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
   const handlePageSizeChange = useCallback(
     (size: number) => {
+      persistPageSize(size);
       setPageSize(size);
       table.setPageSize(size);
       table.setPageIndex(0);
       updateUrl({ pageSize: size !== DEFAULT_PAGE_SIZE ? size : null, page: null });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [updateUrl],
+    [persistPageSize, updateUrl],
   );
 
   useEffect(() => {
@@ -519,7 +551,17 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const table = useReactTable({
     data: section.tableRows,
     columns,
-    state: { sorting, globalFilter, columnFilters },
+    state: {
+      sorting,
+      globalFilter,
+      columnFilters,
+      columnVisibility: {
+        ...Object.fromEntries(
+          tableColumnOptions.map((column) => [column.key, !preferences.hiddenColumnIds.includes(column.key)]),
+        ),
+        actions: true,
+      },
+    },
     onSortingChange: (updater) => {
       setSorting(updater);
       const next = typeof updater === "function" ? updater(sorting) : updater;
@@ -542,6 +584,14 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
+
+  useEffect(() => {
+    if (!hasLoadedPreferences || searchParams.has("pageSize") || preferences.pageSize === pageSize) {
+      return;
+    }
+
+    handlePageSizeChange(preferences.pageSize);
+  }, [handlePageSizeChange, hasLoadedPreferences, pageSize, preferences.pageSize, searchParams]);
 
   if (sectionKey === "logs-actions") {
     return <LogsActionsSection title={section.title} description={section.description} />;
@@ -630,12 +680,27 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
                 <CardTitle>{section.tableTitle}</CardTitle>
                 <CardDescription>{section.tableDescription}</CardDescription>
               </div>
-              <DataTableSearchBar
-                value={globalFilter}
-                onChange={handleSearchChange}
-                placeholder={`Search ${section.tableTitle.toLowerCase()}…`}
-                className="w-full sm:w-64"
-              />
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                <DataTableSearchBar
+                  value={globalFilter}
+                  onChange={handleSearchChange}
+                  placeholder={`Search ${section.tableTitle.toLowerCase()}…`}
+                  className="w-full sm:w-64"
+                />
+                {viewMode === "table" ? (
+                  <TableColumnVisibilityMenu
+                    columns={tableColumnOptions.map((column) => ({
+                      key: column.key,
+                      label: column.label,
+                      checked: !preferences.hiddenColumnIds.includes(column.key),
+                      disabled:
+                        !preferences.hiddenColumnIds.includes(column.key) && visibleColumnIds.length === 1,
+                    }))}
+                    onToggle={toggleColumnVisibility}
+                    onReset={resetPreferences}
+                  />
+                ) : null}
+              </div>
             </div>
             {filterConfigs.length > 0 ? (
               <div className="mt-3 space-y-2">
@@ -656,8 +721,8 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
           <CardContent className="space-y-4">
             {viewMode === "table" ? (
               <div className="overflow-hidden rounded-2xl border border-slate-100">
-                <Table>
-                  <TableHeader className="bg-slate-50/80">
+                <Table className="min-w-[960px]">
+                  <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
                     {table.getHeaderGroups().map((headerGroup) => (
                       <TableRow key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (
@@ -755,6 +820,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
               totalRows={table.getFilteredRowModel().rows.length}
               visibleRows={table.getRowModel().rows.length}
               pageSize={pageSize}
+              pageSizes={DEFAULT_TABLE_PAGE_SIZES}
               onPageChange={handlePageChange}
               onPageSizeChange={handlePageSizeChange}
             />

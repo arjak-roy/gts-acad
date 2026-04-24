@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, MoreHorizontal, Rows3 } from "lucide-react";
@@ -16,9 +16,11 @@ import { DataTableFilterBar, type FilterConfig } from "@/components/ui/data-tabl
 import { DataTableFilterChips } from "@/components/ui/data-table-filter-chips";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
+import { TableColumnVisibilityMenu } from "@/components/ui/table-column-visibility-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EnrollCandidateSheet } from "@/components/modules/learners/enroll-candidate-sheet";
 import { CanAccess } from "@/components/ui/can-access";
+import { usePersistedTablePreferences } from "@/hooks/use-persisted-table-preferences";
 import { createSearchParams } from "@/lib/utils";
 import { LearnerListItem, LearnersResponse, PlacementStatus } from "@/types";
 
@@ -57,6 +59,9 @@ const learnerFilterConfigs: FilterConfig[] = [
   },
 ];
 
+const LEARNERS_TABLE_KEY = "portal:learners";
+const LEARNERS_TABLE_PAGE_SIZES = [10, 25, 50, 100];
+
 export function LearnersTable({ response, filters }: LearnersTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -66,12 +71,35 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
   const activeDirection = filters.sortDirection === "desc" ? "desc" : "asc";
   const viewMode = searchParams.get("view") === "card" ? "card" : "table";
   const layoutPreset = parseCardLayoutPreset(searchParams.get("layout"));
+  const learnerColumnOptions = useMemo(
+    () => [
+      { key: "fullName", label: "Learner Profile" },
+      { key: "programName", label: "Program & Batch" },
+      { key: "attendancePercentage", label: "Attendance %" },
+      { key: "averageScore", label: "Average Score" },
+      { key: "placementStatus", label: "Readiness" },
+    ],
+    [],
+  );
+  const {
+    preferences,
+    hasLoadedPreferences,
+    visibleColumnIds,
+    setPageSize,
+    toggleColumnVisibility,
+    resetPreferences,
+  } = usePersistedTablePreferences({
+    tableKey: LEARNERS_TABLE_KEY,
+    defaultPageSize: response.pageSize,
+    pageSizes: LEARNERS_TABLE_PAGE_SIZES,
+    columnIds: learnerColumnOptions.map((column) => column.key),
+  });
 
   useEffect(() => {
     setSearch(filters.search);
   }, [filters.search]);
 
-  const updateUrl = (patch: Record<string, string | number | undefined>) => {
+  const updateUrl = useCallback((patch: Record<string, string | number | undefined>) => {
     const next = new URLSearchParams(searchParams.toString());
 
     Object.entries(patch).forEach(([key, value]) => {
@@ -89,7 +117,15 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
     startTransition(() => {
       router.replace(`${pathname}?${next.toString()}`, { scroll: false });
     });
-  };
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!hasLoadedPreferences || searchParams.has("pageSize") || preferences.pageSize === response.pageSize) {
+      return;
+    }
+
+    updateUrl({ pageSize: preferences.pageSize, page: 1 });
+  }, [hasLoadedPreferences, preferences.pageSize, response.pageSize, searchParams, updateUrl]);
 
   const resolveCardSpan = (index: number, preset: CardLayoutPreset) => {
     if (preset === "focus") {
@@ -218,11 +254,24 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
     [activeDirection, activeSort],
   );
 
+  const columnVisibility = useMemo(
+    () => ({
+      ...Object.fromEntries(
+        learnerColumnOptions.map((column) => [
+          column.key,
+          !preferences.hiddenColumnIds.includes(column.key),
+        ]),
+      ),
+      actions: true,
+    }),
+    [learnerColumnOptions, preferences.hiddenColumnIds],
+  );
+
   const table = useReactTable({
     data: response.items,
     columns,
     pageCount: response.pageCount,
-    state: { sorting },
+    state: { sorting, columnVisibility },
     manualPagination: true,
     manualSorting: true,
     getCoreRowModel: getCoreRowModel(),
@@ -262,6 +311,19 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
               <option value="focus">Focus layout</option>
             </select>
           ) : null}
+          {viewMode === "table" ? (
+            <TableColumnVisibilityMenu
+              columns={learnerColumnOptions.map((column) => ({
+                key: column.key,
+                label: column.label,
+                checked: !preferences.hiddenColumnIds.includes(column.key),
+                disabled:
+                  !preferences.hiddenColumnIds.includes(column.key) && visibleColumnIds.length === 1,
+              }))}
+              onToggle={toggleColumnVisibility}
+              onReset={resetPreferences}
+            />
+          ) : null}
           <Button variant="secondary">Filter Repository</Button>
           <CanAccess permission="users.create">
             <EnrollCandidateSheet />
@@ -297,8 +359,8 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
 
           {viewMode === "table" ? (
             <div className="overflow-hidden rounded-2xl border border-slate-100">
-              <Table>
-                <TableHeader className="bg-slate-50/80">
+              <Table className="min-w-[980px]">
+                <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
@@ -320,7 +382,7 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={columns.length} className="p-0">
+                      <TableCell colSpan={table.getVisibleLeafColumns().length} className="p-0">
                         <DataTableEmptyState title="No learners matched the selected filters." />
                       </TableCell>
                     </TableRow>
@@ -412,9 +474,12 @@ export function LearnersTable({ response, filters }: LearnersTableProps) {
             totalRows={response.totalCount}
             visibleRows={response.items.length}
             pageSize={response.pageSize}
-            pageSizes={[10, 25, 50, 100]}
+            pageSizes={LEARNERS_TABLE_PAGE_SIZES}
             onPageChange={(page) => updateUrl({ page: page + 1 })}
-            onPageSizeChange={(size) => updateUrl({ pageSize: size, page: 1 })}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              updateUrl({ pageSize: size, page: 1 });
+            }}
           />
         </CardContent>
       </Card>

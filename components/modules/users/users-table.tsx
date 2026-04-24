@@ -1,16 +1,19 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, MoreHorizontal, Search } from "lucide-react";
+import { MoreHorizontal, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { SortableTableHead, type SortDirection } from "@/components/ui/sortable-table-head";
+import { TableColumnVisibilityMenu } from "@/components/ui/table-column-visibility-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { usePersistedTablePreferences } from "@/hooks/use-persisted-table-preferences";
 import type { InternalUsersResponse } from "@/types";
 
 type Props = {
@@ -22,6 +25,16 @@ type Props = {
     sortDirection?: string;
   };
 };
+
+const INTERNAL_USERS_TABLE_KEY = "portal:users:internal";
+const INTERNAL_USERS_PAGE_SIZES = [10, 25, 50, 100];
+const INTERNAL_USER_COLUMN_OPTIONS = [
+  { key: "user", label: "User" },
+  { key: "roles", label: "Roles" },
+  { key: "status", label: "Status" },
+  { key: "onboarding", label: "Onboarding" },
+  { key: "lastLoginAt", label: "Last Login" },
+];
 
 function badgeVariant(status: string) {
   if (status === "sent") {
@@ -52,6 +65,19 @@ export function UsersTable({ response, filters }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(filters.search);
+  const {
+    preferences,
+    hasLoadedPreferences,
+    visibleColumnIds,
+    setPageSize,
+    toggleColumnVisibility,
+    resetPreferences,
+  } = usePersistedTablePreferences({
+    tableKey: INTERNAL_USERS_TABLE_KEY,
+    defaultPageSize: response.pageSize,
+    pageSizes: INTERNAL_USERS_PAGE_SIZES,
+    columnIds: INTERNAL_USER_COLUMN_OPTIONS.map((column) => column.key),
+  });
 
   const activeSort = filters.sortBy || "name";
   const activeDirection: SortDirection = filters.sortDirection === "desc" ? "desc" : "asc";
@@ -64,7 +90,7 @@ export function UsersTable({ response, filters }: Props) {
     setSearch(filters.search);
   }, [filters.search]);
 
-  function updateUrl(patch: Record<string, string | number | undefined>) {
+  const updateUrl = useCallback((patch: Record<string, string | number | undefined>) => {
     const next = new URLSearchParams(searchParams.toString());
 
     Object.entries(patch).forEach(([key, value]) => {
@@ -78,7 +104,15 @@ export function UsersTable({ response, filters }: Props) {
     startTransition(() => {
       router.replace(`${pathname}?${next.toString()}`, { scroll: false });
     });
-  }
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!hasLoadedPreferences || searchParams.has("pageSize") || preferences.pageSize === response.pageSize) {
+      return;
+    }
+
+    updateUrl({ pageSize: preferences.pageSize, page: 1 });
+  }, [hasLoadedPreferences, preferences.pageSize, response.pageSize, searchParams, updateUrl]);
 
   return (
     <div className="space-y-4">
@@ -98,64 +132,87 @@ export function UsersTable({ response, filters }: Props) {
                 placeholder="Search by name, email, or phone..."
               />
             </div>
-            <select
-              className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
-              value={filters.status}
-              onChange={(event) => updateUrl({ status: event.target.value || "ALL", page: 1 })}
-            >
-              <option value="ALL">All statuses</option>
-              <option value="ACTIVE">Active users</option>
-              <option value="INACTIVE">Inactive users</option>
-            </select>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+              <select
+                className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                value={filters.status}
+                onChange={(event) => updateUrl({ status: event.target.value || "ALL", page: 1 })}
+              >
+                <option value="ALL">All statuses</option>
+                <option value="ACTIVE">Active users</option>
+                <option value="INACTIVE">Inactive users</option>
+              </select>
+              <TableColumnVisibilityMenu
+                columns={INTERNAL_USER_COLUMN_OPTIONS.map((column) => ({
+                  key: column.key,
+                  label: column.label,
+                  checked: !preferences.hiddenColumnIds.includes(column.key),
+                  disabled:
+                    !preferences.hiddenColumnIds.includes(column.key) && visibleColumnIds.length === 1,
+                }))}
+                onToggle={toggleColumnVisibility}
+                onReset={resetPreferences}
+              />
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <Table>
-              <TableHeader className="bg-slate-50/80">
+            <Table className="min-w-[920px]">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
                 <TableRow>
-                  <SortableTableHead label="User" columnKey="name" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <TableHead>Roles</TableHead>
-                  <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <TableHead>Onboarding</TableHead>
-                  <SortableTableHead label="Last Login" columnKey="lastLoginAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
+                  {!preferences.hiddenColumnIds.includes("user") ? <SortableTableHead label="User" columnKey="name" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("roles") ? <TableHead>Roles</TableHead> : null}
+                  {!preferences.hiddenColumnIds.includes("status") ? <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("onboarding") ? <TableHead>Onboarding</TableHead> : null}
+                  {!preferences.hiddenColumnIds.includes("lastLoginAt") ? <SortableTableHead label="Last Login" columnKey="lastLoginAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {response.items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-sm text-slate-500">
+                    <TableCell colSpan={visibleColumnIds.length + 1} className="py-10 text-center text-sm text-slate-500">
                       No internal users matched the current filters.
                     </TableCell>
                   </TableRow>
                 ) : (
                   response.items.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-bold text-slate-900">{user.name}</p>
-                          <p className="text-xs text-slate-500">{user.email}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
-                          {user.roles.map((role) => (
-                            <Badge key={role.id} variant="info">
-                              {role.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={user.isActive ? "success" : "danger"}>{user.isActive ? "Active" : "Inactive"}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge variant={badgeVariant(user.onboardingStatus)}>{user.onboardingStatus.replace("_", " ")}</Badge>
-                          {user.requiresPasswordReset ? <Badge variant="warning">Reset Required</Badge> : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">{formatDate(user.lastLoginAt)}</TableCell>
+                      {!preferences.hiddenColumnIds.includes("user") ? (
+                        <TableCell>
+                          <div>
+                            <p className="font-bold text-slate-900">{user.name}</p>
+                            <p className="text-xs text-slate-500">{user.email}</p>
+                          </div>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("roles") ? (
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1.5">
+                            {user.roles.map((role) => (
+                              <Badge key={role.id} variant="info">
+                                {role.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("status") ? (
+                        <TableCell>
+                          <Badge variant={user.isActive ? "success" : "danger"}>{user.isActive ? "Active" : "Inactive"}</Badge>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("onboarding") ? (
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant={badgeVariant(user.onboardingStatus)}>{user.onboardingStatus.replace("_", " ")}</Badge>
+                            {user.requiresPasswordReset ? <Badge variant="warning">Reset Required</Badge> : null}
+                          </div>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("lastLoginAt") ? (
+                        <TableCell className="text-sm text-slate-600">{formatDate(user.lastLoginAt)}</TableCell>
+                      ) : null}
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -176,24 +233,19 @@ export function UsersTable({ response, filters }: Props) {
             </Table>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-slate-500">
-              Showing {response.items.length} of {response.totalCount} internal users
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" disabled={response.page <= 1} onClick={() => updateUrl({ page: response.page - 1 })}>
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <span className="text-sm font-medium text-slate-600">
-                Page {response.page} of {response.pageCount}
-              </span>
-              <Button variant="secondary" size="sm" disabled={response.page >= response.pageCount} onClick={() => updateUrl({ page: response.page + 1 })}>
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          <DataTablePagination
+            currentPage={response.page - 1}
+            pageCount={response.pageCount}
+            totalRows={response.totalCount}
+            visibleRows={response.items.length}
+            pageSize={response.pageSize}
+            pageSizes={INTERNAL_USERS_PAGE_SIZES}
+            onPageChange={(page) => updateUrl({ page: page + 1 })}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              updateUrl({ pageSize: size, page: 1 });
+            }}
+          />
         </CardContent>
       </Card>
     </div>

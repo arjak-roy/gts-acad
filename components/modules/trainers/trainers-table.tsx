@@ -1,8 +1,8 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { CanAccess } from "@/components/ui/can-access";
@@ -10,10 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTableEmptyState } from "@/components/ui/data-table-empty-state";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DataTableSearchBar } from "@/components/ui/data-table-search-bar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SortableTableHead, type SortDirection } from "@/components/ui/sortable-table-head";
+import { TableColumnVisibilityMenu } from "@/components/ui/table-column-visibility-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { usePersistedTablePreferences } from "@/hooks/use-persisted-table-preferences";
 import { TRAINER_AVAILABILITY_LABELS, type TrainerAvailabilityStatus, type TrainerOption, type TrainerRegistryResponse } from "@/services/trainers/types";
 
 import type { TrainerStatus } from "@/services/trainers/types";
@@ -44,6 +47,20 @@ type TrainersTableProps = {
   onRefresh: () => void;
 };
 
+const TRAINERS_TABLE_KEY = "portal:trainers";
+const TRAINERS_TABLE_PAGE_SIZES = [10, 25, 50, 100];
+const TRAINER_COLUMN_OPTIONS = [
+  { key: "fullName", label: "Trainer Name" },
+  { key: "employeeCode", label: "Employee ID / Code" },
+  { key: "email", label: "Email" },
+  { key: "specialization", label: "Specialization" },
+  { key: "department", label: "Department" },
+  { key: "courses", label: "Assigned Courses" },
+  { key: "status", label: "Status" },
+  { key: "availability", label: "Availability" },
+  { key: "lastUpdatedAt", label: "Last Updated" },
+];
+
 function formatDate(value: string | null) {
   if (!value) {
     return "Never";
@@ -60,6 +77,19 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
   const [search, setSearch] = useState(filters.search);
   const [statusChangeTarget, setStatusChangeTarget] = useState<{ trainer: TrainerOption; targetStatus: TrainerStatus; reason: string } | null>(null);
   const [isStatusModalSubmitting, setIsStatusModalSubmitting] = useState(false);
+  const {
+    preferences,
+    hasLoadedPreferences,
+    visibleColumnIds,
+    setPageSize,
+    toggleColumnVisibility,
+    resetPreferences,
+  } = usePersistedTablePreferences({
+    tableKey: TRAINERS_TABLE_KEY,
+    defaultPageSize: response.pageSize,
+    pageSizes: TRAINERS_TABLE_PAGE_SIZES,
+    columnIds: TRAINER_COLUMN_OPTIONS.map((column) => column.key),
+  });
 
   const activeSort = filters.sortBy;
   const activeDirection: SortDirection = filters.sortDirection;
@@ -68,7 +98,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
     setSearch(filters.search);
   }, [filters.search]);
 
-  function updateUrl(patch: Record<string, string | number | undefined | null>) {
+  const updateUrl = useCallback((patch: Record<string, string | number | undefined | null>) => {
     const next = new URLSearchParams(searchParams.toString());
 
     Object.entries(patch).forEach(([key, value]) => {
@@ -83,7 +113,15 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
       const queryString = next.toString();
       router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
     });
-  }
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!hasLoadedPreferences || searchParams.has("pageSize") || preferences.pageSize === response.pageSize) {
+      return;
+    }
+
+    updateUrl({ pageSize: preferences.pageSize, page: 1 });
+  }, [hasLoadedPreferences, preferences.pageSize, response.pageSize, searchParams, updateUrl]);
 
   function handleSort(columnKey: string, direction: "asc" | "desc") {
     updateUrl({ sortBy: columnKey, sortDirection: direction, page: 1 });
@@ -219,66 +257,96 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
             </select>
           </div>
 
+          <div className="flex justify-end">
+            <TableColumnVisibilityMenu
+              columns={TRAINER_COLUMN_OPTIONS.map((column) => ({
+                key: column.key,
+                label: column.label,
+                checked: !preferences.hiddenColumnIds.includes(column.key),
+                disabled:
+                  !preferences.hiddenColumnIds.includes(column.key) && visibleColumnIds.length === 1,
+              }))}
+              onToggle={toggleColumnVisibility}
+              onReset={resetPreferences}
+            />
+          </div>
+
           <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <Table>
-              <TableHeader className="bg-slate-50/80">
+            <Table className="min-w-[1320px]">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
                 <TableRow>
-                  <SortableTableHead label="Trainer Name" columnKey="fullName" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Employee ID / Code" columnKey="employeeCode" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Email" columnKey="email" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Specialization" columnKey="specialization" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Department" columnKey="department" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <TableHead>Assigned Courses</TableHead>
-                  <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Availability" columnKey="availabilityStatus" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Last Updated" columnKey="lastActiveAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
+                  {!preferences.hiddenColumnIds.includes("fullName") ? <SortableTableHead label="Trainer Name" columnKey="fullName" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("employeeCode") ? <SortableTableHead label="Employee ID / Code" columnKey="employeeCode" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("email") ? <SortableTableHead label="Email" columnKey="email" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("specialization") ? <SortableTableHead label="Specialization" columnKey="specialization" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("department") ? <SortableTableHead label="Department" columnKey="department" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("courses") ? <TableHead>Assigned Courses</TableHead> : null}
+                  {!preferences.hiddenColumnIds.includes("status") ? <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("availability") ? <SortableTableHead label="Availability" columnKey="availabilityStatus" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
+                  {!preferences.hiddenColumnIds.includes("lastUpdatedAt") ? <SortableTableHead label="Last Updated" columnKey="lastActiveAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {response.items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="py-10">
+                    <TableCell colSpan={visibleColumnIds.length + 1} className="py-10">
                       <DataTableEmptyState title="No trainers matched the current filters." description="Try changing the search query or one of the registry filters." />
                     </TableCell>
                   </TableRow>
                 ) : (
                   response.items.map((trainer) => (
                     <TableRow key={trainer.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-bold text-slate-900">{trainer.fullName}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium text-slate-700">{trainer.employeeCode}</TableCell>
-                      <TableCell className="text-sm text-slate-600">{trainer.email}</TableCell>
-                      <TableCell>{trainer.specialization}</TableCell>
-                      <TableCell className="text-sm text-slate-600">{trainer.department ?? <span className="text-slate-400">—</span>}</TableCell>
-                      <TableCell>
-                        {trainer.courses.length === 0 ? (
-                          <span className="text-sm text-slate-500">No courses</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {trainer.courses.slice(0, 2).map((course) => (
-                              <Badge key={course} variant="info">{course}</Badge>
-                            ))}
-                            {trainer.courses.length > 2 ? <Badge variant="default">+{trainer.courses.length - 2}</Badge> : null}
+                      {!preferences.hiddenColumnIds.includes("fullName") ? (
+                        <TableCell>
+                          <div>
+                            <p className="font-bold text-slate-900">{trainer.fullName}</p>
                           </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={trainer.trainerStatus === "ACTIVE" ? "success" : trainer.trainerStatus === "SUSPENDED" ? "warning" : "danger"}
-                        >
-                          {trainer.trainerStatus === "ACTIVE" ? "Active" : trainer.trainerStatus === "SUSPENDED" ? "Suspended" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={trainer.availabilityStatus === "AVAILABLE" ? "success" : trainer.availabilityStatus === "LIMITED" ? "warning" : trainer.availabilityStatus === "UNAVAILABLE" ? "danger" : "info"}>
-                          {TRAINER_AVAILABILITY_LABELS[trainer.availabilityStatus]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">{formatDate(trainer.lastUpdatedAt)}</TableCell>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("employeeCode") ? (
+                        <TableCell className="font-medium text-slate-700">{trainer.employeeCode}</TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("email") ? (
+                        <TableCell className="text-sm text-slate-600">{trainer.email}</TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("specialization") ? <TableCell>{trainer.specialization}</TableCell> : null}
+                      {!preferences.hiddenColumnIds.includes("department") ? (
+                        <TableCell className="text-sm text-slate-600">{trainer.department ?? <span className="text-slate-400">—</span>}</TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("courses") ? (
+                        <TableCell>
+                          {trainer.courses.length === 0 ? (
+                            <span className="text-sm text-slate-500">No courses</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {trainer.courses.slice(0, 2).map((course) => (
+                                <Badge key={course} variant="info">{course}</Badge>
+                              ))}
+                              {trainer.courses.length > 2 ? <Badge variant="default">+{trainer.courses.length - 2}</Badge> : null}
+                            </div>
+                          )}
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("status") ? (
+                        <TableCell>
+                          <Badge
+                            variant={trainer.trainerStatus === "ACTIVE" ? "success" : trainer.trainerStatus === "SUSPENDED" ? "warning" : "danger"}
+                          >
+                            {trainer.trainerStatus === "ACTIVE" ? "Active" : trainer.trainerStatus === "SUSPENDED" ? "Suspended" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("availability") ? (
+                        <TableCell>
+                          <Badge variant={trainer.availabilityStatus === "AVAILABLE" ? "success" : trainer.availabilityStatus === "LIMITED" ? "warning" : trainer.availabilityStatus === "UNAVAILABLE" ? "danger" : "info"}>
+                            {TRAINER_AVAILABILITY_LABELS[trainer.availabilityStatus]}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
+                      {!preferences.hiddenColumnIds.includes("lastUpdatedAt") ? (
+                        <TableCell className="text-sm text-slate-600">{formatDate(trainer.lastUpdatedAt)}</TableCell>
+                      ) : null}
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -331,24 +399,19 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
             </Table>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-slate-500">
-              Showing {response.items.length} of {response.totalCount} trainers
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" disabled={response.page <= 1} onClick={() => updateUrl({ page: response.page - 1 })}>
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <span className="text-sm font-medium text-slate-600">
-                Page {response.page} of {response.pageCount}
-              </span>
-              <Button variant="secondary" size="sm" disabled={response.page >= response.pageCount} onClick={() => updateUrl({ page: response.page + 1 })}>
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          <DataTablePagination
+            currentPage={response.page - 1}
+            pageCount={response.pageCount}
+            totalRows={response.totalCount}
+            visibleRows={response.items.length}
+            pageSize={response.pageSize}
+            pageSizes={TRAINERS_TABLE_PAGE_SIZES}
+            onPageChange={(page) => updateUrl({ page: page + 1 })}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              updateUrl({ pageSize: size, page: 1 });
+            }}
+          />
         </CardContent>
       </Card>
 
