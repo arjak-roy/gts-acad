@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -80,7 +80,6 @@ export function SearchCommandPalette({ open, onOpenChange }: SearchCommandPalett
   const [loading, setLoading] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const { searches: recentSearches, addSearch, removeSearch } = useRecentSearches();
-  const abortRef = useRef<AbortController | null>(null);
 
   // Search on debounced query change
   useEffect(() => {

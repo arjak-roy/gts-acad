@@ -73,16 +73,6 @@ export default function SearchPage() {
     };
   }, [query]);
 
-  // Build category counts from results
-  const categoryCounts = useMemo(() => {
-    if (!results) return new Map<DashboardSearchSection, number>();
-    const counts = new Map<DashboardSearchSection, number>();
-    for (const group of results.groups) {
-      counts.set(group.key, group.items.length);
-    }
-    return counts;
-  }, [results]);
-
   // Filter results by active category
   const filteredResults = useMemo((): DashboardSearchResult | null => {
     if (!results) return null;
