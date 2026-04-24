@@ -7,6 +7,7 @@
   --accent-orange: #f89a1c;
   --light-grey: #f6f7f9;
   --border-grey: #dde1e6;
+  --dashboard-header-height: 4rem;
   --background: 210 20% 98%;
   --foreground: 222 47% 11%;
   --border: 214 18% 88%;
@@ -44,4 +45,11 @@ a {
 ::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.5);
   border-radius: 999px;
+}
+
+@layer utilities {
+  .sticky-admin-table-header {
+    @apply sticky z-10 bg-slate-50/95 backdrop-blur-sm;
+    top: var(--dashboard-header-height);
+  }
 }

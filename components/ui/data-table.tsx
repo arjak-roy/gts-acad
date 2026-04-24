@@ -320,7 +320,7 @@ export function DataTable<TData extends Record<string, unknown>>({
             <TableHeader
               className={cn(
                 "bg-slate-50/80",
-                stickyHeader && "sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm",
+                stickyHeader && "sticky-admin-table-header",
               )}
             >
               {table.getHeaderGroups().map((headerGroup) => (

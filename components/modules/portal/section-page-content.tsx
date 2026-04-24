@@ -722,7 +722,7 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
             {viewMode === "table" ? (
               <div className="overflow-hidden rounded-2xl border border-slate-100">
                 <Table className="min-w-[960px]">
-                  <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
+                  <TableHeader className="sticky-admin-table-header">
                     {table.getHeaderGroups().map((headerGroup) => (
                       <TableRow key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (

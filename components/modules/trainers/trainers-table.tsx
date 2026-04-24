@@ -273,7 +273,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
 
           <div className="overflow-hidden rounded-2xl border border-slate-100">
             <Table className="min-w-[1320px]">
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
+              <TableHeader className="sticky-admin-table-header">
                 <TableRow>
                   {!preferences.hiddenColumnIds.includes("fullName") ? <SortableTableHead label="Trainer Name" columnKey="fullName" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
                   {!preferences.hiddenColumnIds.includes("employeeCode") ? <SortableTableHead label="Employee ID / Code" columnKey="employeeCode" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}

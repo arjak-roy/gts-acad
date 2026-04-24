@@ -204,7 +204,7 @@ export default function RolesPage() {
       ) : (
         <Card>
           <Table className="min-w-[980px]">
-            <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
+            <TableHeader className="sticky-admin-table-header">
               <TableRow>
                 {!preferences.hiddenColumnIds.includes("name") ? <SortableTableHead label="Role" columnKey="name" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="w-[200px]" /> : null}
                 {!preferences.hiddenColumnIds.includes("code") ? <SortableTableHead label="Code" columnKey="code" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} /> : null}

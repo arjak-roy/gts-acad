@@ -158,7 +158,7 @@ export function UsersTable({ response, filters }: Props) {
 
           <div className="overflow-hidden rounded-2xl border border-slate-100">
             <Table className="min-w-[920px]">
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
+              <TableHeader className="sticky-admin-table-header">
                 <TableRow>
                   {!preferences.hiddenColumnIds.includes("user") ? <SortableTableHead label="User" columnKey="name" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
                   {!preferences.hiddenColumnIds.includes("roles") ? <TableHead>Roles</TableHead> : null}

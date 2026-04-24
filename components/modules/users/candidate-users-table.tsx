@@ -147,7 +147,7 @@ export function CandidateUsersTable({ response, filters }: Props) {
 
           <div className="overflow-hidden rounded-2xl border border-slate-100">
             <Table className="min-w-[980px]">
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
+              <TableHeader className="sticky-admin-table-header">
                 <TableRow>
                   {!preferences.hiddenColumnIds.includes("candidate") ? <SortableTableHead label="Candidate" columnKey="name" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} /> : null}
                   {!preferences.hiddenColumnIds.includes("learnerCode") ? <TableHead>Learner Code</TableHead> : null}
