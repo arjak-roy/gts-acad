@@ -292,7 +292,10 @@ export async function createTrainerService(
   };
 }
 
-export async function updateTrainerService(input: UpdateTrainerInput): Promise<TrainerCreateResult> {
+export async function updateTrainerService(
+  input: UpdateTrainerInput,
+  actor: { actorUserId?: string | null } = {},
+): Promise<TrainerCreateResult> {
   const normalizedFullName = input.fullName.trim();
   const normalizedEmployeeCode = normalizeTrainerEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
@@ -402,6 +405,7 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
         isActive,
         trainerStatus,
         availabilityStatus: input.availabilityStatus,
+        updatedById: actor.actorUserId ?? null,
         courseAssignments: {
           deleteMany: {},
           create: resolvedCourses.map((course) => ({
@@ -494,6 +498,7 @@ export async function updateTrainerStatusService(
       data: {
         isActive,
         trainerStatus: newTrainerStatus,
+        updatedById: actorUserId ?? null,
         ...(isActive ? {} : { availabilityStatus: "UNAVAILABLE" }),
       },
       include: {
@@ -541,10 +546,16 @@ export async function updateTrainerStatusService(
     availabilityStatus: updated.availabilityStatus,
     courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedAt: updated.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedByName: null,
   };
 }
 
-export async function updateTrainerCoursesService(trainerId: string, input: UpdateTrainerCoursesInput): Promise<TrainerDetail> {
+export async function updateTrainerCoursesService(
+  trainerId: string,
+  input: UpdateTrainerCoursesInput,
+  actorUserId?: string | null,
+): Promise<TrainerDetail> {
   const normalizedCourses = normalizeTrainerCourseList(input.courses);
 
   if (!isDatabaseConfigured) {
@@ -579,6 +590,8 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
       availabilityStatus: trainer.availabilityStatus,
       courses: normalizedCourses,
       lastActiveAt: trainer.lastActiveAt,
+      lastUpdatedAt: trainer.lastUpdatedAt,
+      lastUpdatedByName: trainer.lastUpdatedByName,
     };
   }
 
@@ -608,6 +621,7 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
   const updated = await prisma.trainerProfile.update({
     where: { id: trainerId },
     data: {
+      updatedById: actorUserId ?? null,
       courseAssignments: {
         deleteMany: {},
         create: resolvedCourses.map((course) => ({
@@ -651,10 +665,15 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
     availabilityStatus: updated.availabilityStatus,
     courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedAt: updated.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedByName: null,
   };
 }
 
-export async function archiveTrainerService(trainerId: string): Promise<TrainerOption> {
+export async function archiveTrainerService(
+  trainerId: string,
+  actor: { actorUserId?: string | null } = {},
+): Promise<TrainerOption> {
   if (!isDatabaseConfigured) {
     const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
     if (!trainer) {
@@ -666,6 +685,8 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
       isActive: false,
       trainerStatus: "INACTIVE",
       availabilityStatus: "UNAVAILABLE",
+      lastUpdatedAt: new Date().toISOString(),
+      lastUpdatedByName: null,
     };
   }
 
@@ -685,6 +706,7 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
         isActive: false,
         trainerStatus: "INACTIVE" as TrainerProfileStatus,
         availabilityStatus: "UNAVAILABLE",
+        updatedById: actor.actorUserId ?? null,
       },
       include: {
         user: {
@@ -719,5 +741,51 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
     availabilityStatus: updated.availabilityStatus,
     courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedAt: updated.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedByName: null,
+  };
+}
+
+export async function updateTrainerProfilePhotoService(
+  trainerId: string,
+  profilePhotoUrl: string | null,
+  actorUserId?: string | null,
+): Promise<{ trainerId: string; profilePhotoUrl: string | null }> {
+  if (!isDatabaseConfigured) {
+    const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
+    if (!trainer) {
+      throw new Error("Trainer not found.");
+    }
+
+    return {
+      trainerId,
+      profilePhotoUrl,
+    };
+  }
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { id: true },
+  });
+
+  if (!trainer) {
+    throw new Error("Trainer not found.");
+  }
+
+  const updated = await prisma.trainerProfile.update({
+    where: { id: trainerId },
+    data: {
+      profilePhotoUrl,
+      updatedById: actorUserId ?? null,
+    },
+    select: {
+      id: true,
+      profilePhotoUrl: true,
+    },
+  });
+
+  return {
+    trainerId: updated.id,
+    profilePhotoUrl: updated.profilePhotoUrl,
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { type ChangeEvent, FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -71,6 +72,8 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPhotoUpdating, setIsPhotoUpdating] = useState(false);
+  const [trainerPhotoUrl, setTrainerPhotoUrl] = useState<string | null>(null);
   const [form, setForm] = useState<EditTrainerForm>(initialForm);
 
   useEffect(() => {
@@ -107,6 +110,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
         );
 
         setCourses(options);
+        setTrainerPhotoUrl(trainerPayload.data.profilePhotoUrl ?? null);
         setForm({
           fullName: trainerPayload.data.fullName,
           employeeCode: trainerPayload.data.employeeCode,
@@ -253,6 +257,101 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
     }
   };
 
+  const readFileAsDataUri = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+
+        reject(new Error("Failed to read file."));
+      };
+      reader.onerror = () => reject(new Error("Failed to read file."));
+      reader.readAsDataURL(file);
+    });
+
+  const handlePhotoFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!trainerId) {
+      return;
+    }
+
+    const file = event.target.files?.[0];
+    event.currentTarget.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
+      toast.error("Upload a PNG or JPEG image.");
+      return;
+    }
+
+    setIsPhotoUpdating(true);
+    setError(null);
+
+    try {
+      const photoDataUri = await readFileAsDataUri(file);
+      const response = await fetch(`/api/trainers/${trainerId}/photo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          photoDataUri,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: { profilePhotoUrl?: string | null }; error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to update profile photo.");
+      }
+
+      setTrainerPhotoUrl(payload?.data?.profilePhotoUrl ?? null);
+      toast.success("Profile photo updated.");
+      router.refresh();
+    } catch (photoError) {
+      const message = photoError instanceof Error ? photoError.message : "Failed to update profile photo.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsPhotoUpdating(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!trainerId) {
+      return;
+    }
+
+    setIsPhotoUpdating(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/trainers/${trainerId}/photo`, {
+        method: "DELETE",
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to remove profile photo.");
+      }
+
+      setTrainerPhotoUrl(null);
+      toast.success("Profile photo removed.");
+      router.refresh();
+    } catch (photoError) {
+      const message = photoError instanceof Error ? photoError.message : "Failed to remove profile photo.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsPhotoUpdating(false);
+    }
+  };
+
   const resetFlow = () => {
     setStep("form");
     setError(null);
@@ -281,6 +380,33 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
                 <SheetLoadingSkeleton isLoading={true} variant="form" />
               ) : (
                 <>
+              <div className="space-y-2 rounded-xl border border-[#dde1e6] bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Profile Photo</p>
+                <div className="flex items-center gap-3">
+                  {trainerPhotoUrl ? (
+                    <Image src={trainerPhotoUrl} alt="Trainer profile" width={48} height={48} className="h-12 w-12 rounded-lg object-cover" />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-500">No Photo</div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center rounded-lg border border-[#dde1e6] px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                      Upload
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg"
+                        className="hidden"
+                        disabled={isPhotoUpdating}
+                        onChange={(event) => void handlePhotoFileChange(event)}
+                      />
+                    </label>
+                    <Button type="button" variant="secondary" size="sm" disabled={!trainerPhotoUrl || isPhotoUpdating} onClick={() => void handleRemovePhoto()}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">PNG or JPEG, up to 5 MB.</p>
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Full Name</label>

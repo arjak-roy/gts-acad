@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TRAINER_IMPORT_MAX_ROWS } from "@/lib/imports/trainers";
 
 const trainerStatusSchema = z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]);
+const trainerPhotoDataUriPattern = /^data:image\/(?:png|jpeg|jpg);base64,[a-z0-9+/=\s]+$/i;
 const trainerAvailabilitySchema = z.enum(["AVAILABLE", "LIMITED", "UNAVAILABLE", "ON_LEAVE"]);
 const trainerRegistryStatusSchema = z.enum(["ALL", "ACTIVE", "INACTIVE", "SUSPENDED"]);
 const trainerRegistryAvailabilitySchema = z.enum(["ALL", "AVAILABLE", "LIMITED", "UNAVAILABLE", "ON_LEAVE"]);
@@ -67,6 +68,11 @@ export const updateTrainerCoursesSchema = z.object({
   courses: z.array(z.string().trim().min(1).max(255)).min(1, "Select at least one course."),
 });
 
+export const uploadTrainerProfilePhotoSchema = z.object({
+  fileName: z.string().trim().max(255).optional().default("trainer-photo"),
+  photoDataUri: z.string().trim().min(1, "Profile photo is required.").regex(trainerPhotoDataUriPattern, "Upload a PNG or JPEG image."),
+});
+
 export const trainerImportCommitRowSchema = createTrainerSchema
   .omit({ department: true, jobTitle: true, skills: true, certifications: true, experienceYears: true, preferredLanguage: true, timeZone: true })
   .extend({
@@ -83,5 +89,6 @@ export type GetTrainerRegistryInput = z.infer<typeof getTrainerRegistrySchema>;
 export type UpdateTrainerInput = z.infer<typeof updateTrainerSchema>;
 export type UpdateTrainerStatusInput = z.infer<typeof updateTrainerStatusSchema>;
 export type UpdateTrainerCoursesInput = z.infer<typeof updateTrainerCoursesSchema>;
+export type UploadTrainerProfilePhotoInput = z.infer<typeof uploadTrainerProfilePhotoSchema>;
 export type TrainerImportCommitRow = z.infer<typeof trainerImportCommitRowSchema>;
 export type CommitTrainerImportInput = z.infer<typeof commitTrainerImportSchema>;

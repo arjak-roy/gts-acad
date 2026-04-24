@@ -24,6 +24,8 @@ export type TrainerOption = {
   availabilityStatus: TrainerAvailabilityStatus;
   courses: string[];
   lastActiveAt: string | null;
+  lastUpdatedAt: string | null;
+  lastUpdatedByName: string | null;
 };
 
 export type TrainerRegistryResponse = {
@@ -84,6 +86,8 @@ export type TrainerDetail = {
   availabilityStatus: TrainerAvailabilityStatus;
   courses: string[];
   lastActiveAt: string | null;
+  lastUpdatedAt: string | null;
+  lastUpdatedByName: string | null;
 };
 
 export type TrainerStatusHistoryItem = {

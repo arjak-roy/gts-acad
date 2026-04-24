@@ -223,6 +223,9 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
                   <SheetDescription className="mt-1 text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
                     {trainer.specialization}
                   </SheetDescription>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Last modified {formatDate(trainer.lastUpdatedAt)}{trainer.lastUpdatedByName ? ` by ${trainer.lastUpdatedByName}` : ""}
+                  </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Badge variant={trainer.status === "ACTIVE" ? "success" : trainer.status === "SUSPENDED" ? "warning" : "danger"}>
                       {trainer.status}

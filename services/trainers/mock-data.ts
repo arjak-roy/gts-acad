@@ -13,5 +13,7 @@ export const MOCK_TRAINERS: TrainerOption[] = [
     lastActiveAt: new Date("2026-04-10T09:30:00.000Z").toISOString(),
     department: null,
     trainerStatus: "ACTIVE",
+    lastUpdatedAt: new Date("2026-04-10T09:30:00.000Z").toISOString(),
+    lastUpdatedByName: "System",
   },
 ];

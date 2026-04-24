@@ -4,6 +4,7 @@ export {
   archiveTrainerService,
   createTrainerService,
   updateTrainerCoursesService,
+  updateTrainerProfilePhotoService,
   updateTrainerService,
   updateTrainerStatusService,
 } from "@/services/trainers/commands";

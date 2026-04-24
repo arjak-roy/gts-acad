@@ -231,14 +231,14 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                   <TableHead>Assigned Courses</TableHead>
                   <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <SortableTableHead label="Availability" columnKey="availabilityStatus" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
-                  <SortableTableHead label="Last Active" columnKey="lastActiveAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
+                  <SortableTableHead label="Last Updated" columnKey="lastActiveAt" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {response.items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-10">
+                    <TableCell colSpan={10} className="py-10">
                       <DataTableEmptyState title="No trainers matched the current filters." description="Try changing the search query or one of the registry filters." />
                     </TableCell>
                   </TableRow>
@@ -278,7 +278,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                           {TRAINER_AVAILABILITY_LABELS[trainer.availabilityStatus]}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-slate-600">{formatDate(trainer.lastActiveAt)}</TableCell>
+                      <TableCell className="text-sm text-slate-600">{formatDate(trainer.lastUpdatedAt)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

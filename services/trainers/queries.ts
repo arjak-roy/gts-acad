@@ -14,6 +14,12 @@ const trainerSelect = {
       email: true,
       phone: true,
       lastLoginAt: true,
+      updatedAt: true,
+    },
+  },
+  updatedBy: {
+    select: {
+      name: true,
     },
   },
   courseAssignments: {
@@ -46,6 +52,8 @@ function mapTrainerOption(record: TrainerRecord): TrainerOption {
     availabilityStatus: record.availabilityStatus,
     courses: mapTrainerCourseNames(record),
     lastActiveAt: record.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedAt: record.user.updatedAt?.toISOString() ?? null,
+    lastUpdatedByName: record.updatedBy?.name ?? null,
   };
 }
 
@@ -409,6 +417,8 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
       availabilityStatus: trainer.availabilityStatus,
       courses: trainer.courses,
       lastActiveAt: trainer.lastActiveAt,
+      lastUpdatedAt: trainer.lastUpdatedAt,
+      lastUpdatedByName: trainer.lastUpdatedByName,
     };
   }
 
@@ -443,6 +453,8 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
     availabilityStatus: trainer.availabilityStatus,
     courses: mapTrainerCourseNames(trainer as TrainerRecord),
     lastActiveAt: trainer.user.lastLoginAt?.toISOString() ?? null,
+    lastUpdatedAt: trainer.user.updatedAt?.toISOString() ?? null,
+    lastUpdatedByName: trainer.updatedBy?.name ?? null,
   };
 }
 

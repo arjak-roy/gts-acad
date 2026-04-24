@@ -19,7 +19,7 @@ ALTER TABLE trainers
   ADD COLUMN IF NOT EXISTS preferred_language      VARCHAR(100),
   ADD COLUMN IF NOT EXISTS time_zone               VARCHAR(100),
   ADD COLUMN IF NOT EXISTS profile_photo_url       TEXT,
-  ADD COLUMN IF NOT EXISTS updated_by_user_id      UUID REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS updated_by_user_id      UUID REFERENCES users(user_id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS trainer_status          trainer_profile_status NOT NULL DEFAULT 'active';
 
 -- 3. Back-fill trainer_status from existing is_active column
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS trainer_status_history (
   old_status          trainer_profile_status NOT NULL,
   new_status          trainer_profile_status NOT NULL,
   reason              VARCHAR(500),
-  changed_by_user_id  UUID        REFERENCES users(id) ON DELETE SET NULL,
+  changed_by_user_id  UUID        REFERENCES users(user_id) ON DELETE SET NULL,
   changed_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
