@@ -4,7 +4,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { trainerIdSchema, uploadTrainerProfilePhotoSchema } from "@/lib/validation-schemas/trainers";
-import { deleteStoredUploadAsset, storeUploadedCandidateProfilePhotoAsset, validateUploadedFileAgainstGlobalSettings } from "@/services/file-upload";
+import { deleteStoredUploadAsset, getStoredUploadAssetUrl, storeUploadedCandidateProfilePhotoAsset, validateUploadedFileAgainstGlobalSettings } from "@/services/file-upload";
 import { updateTrainerProfilePhotoService } from "@/services/trainers-service";
 
 export const runtime = "nodejs";
@@ -16,6 +16,19 @@ type RouteContext = {
     trainerId: string;
   };
 };
+
+function resolveTrainerPhotoUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/")) {
+    return value;
+  }
+
+  const storageProvider = value.startsWith("candidate-profile-photos/") ? "S3" : "LOCAL_PUBLIC";
+  return getStoredUploadAssetUrl({ storageProvider, storagePath: value });
+}
 
 function getMimeTypeExtension(mimeType: string) {
   switch (mimeType) {
@@ -107,7 +120,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         });
       }
 
-      return apiSuccess(result);
+      return apiSuccess({
+        ...result,
+        profilePhotoUrl: resolveTrainerPhotoUrl(result.profilePhotoUrl),
+      });
     } catch (error) {
       await deleteStoredUploadAsset({
         storageProvider: asset.storageProvider,
@@ -135,7 +151,10 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       });
     }
 
-    return apiSuccess(result);
+    return apiSuccess({
+      ...result,
+      profilePhotoUrl: resolveTrainerPhotoUrl(result.profilePhotoUrl),
+    });
   } catch (error) {
     return apiError(error);
   }

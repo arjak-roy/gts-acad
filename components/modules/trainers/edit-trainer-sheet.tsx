@@ -74,7 +74,16 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPhotoUpdating, setIsPhotoUpdating] = useState(false);
   const [trainerPhotoUrl, setTrainerPhotoUrl] = useState<string | null>(null);
+  const [trainerMeta, setTrainerMeta] = useState<{ fullName: string; status: TrainerStatus; lastUpdatedAt: string | null; lastUpdatedByName: string | null } | null>(null);
   const [form, setForm] = useState<EditTrainerForm>(initialForm);
+
+  const formatDate = (value: string | null) => {
+    if (!value) {
+      return "Never";
+    }
+
+    return new Date(value).toLocaleString();
+  };
 
   useEffect(() => {
     if (!open || !trainerId) {
@@ -111,6 +120,12 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
 
         setCourses(options);
         setTrainerPhotoUrl(trainerPayload.data.profilePhotoUrl ?? null);
+        setTrainerMeta({
+          fullName: trainerPayload.data.fullName,
+          status: trainerPayload.data.status,
+          lastUpdatedAt: trainerPayload.data.lastUpdatedAt,
+          lastUpdatedByName: trainerPayload.data.lastUpdatedByName,
+        });
         setForm({
           fullName: trainerPayload.data.fullName,
           employeeCode: trainerPayload.data.employeeCode,
@@ -355,6 +370,8 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
   const resetFlow = () => {
     setStep("form");
     setError(null);
+    setTrainerMeta(null);
+    setTrainerPhotoUrl(null);
     setForm(initialForm);
   };
 
@@ -380,6 +397,35 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
                 <SheetLoadingSkeleton isLoading={true} variant="form" />
               ) : (
                 <>
+              <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    {trainerPhotoUrl ? (
+                      <Image src={trainerPhotoUrl} alt="Trainer profile" width={56} height={56} className="h-14 w-14 rounded-xl object-cover ring-2 ring-white" />
+                    ) : (
+                      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-200 text-sm font-black text-slate-600">
+                        {(trainerMeta?.fullName ?? form.fullName ?? "TR").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{trainerMeta?.fullName ?? form.fullName ?? "Trainer"}</p>
+                      <p className="text-xs text-slate-500">
+                        Last modified {formatDate(trainerMeta?.lastUpdatedAt ?? null)}{trainerMeta?.lastUpdatedByName ? ` by ${trainerMeta.lastUpdatedByName}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    (trainerMeta?.status ?? form.status) === "ACTIVE"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : (trainerMeta?.status ?? form.status) === "SUSPENDED"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-rose-100 text-rose-800"
+                  }`}>
+                    {trainerMeta?.status ?? form.status}
+                  </span>
+                </div>
+              </div>
+
               <div className="space-y-2 rounded-xl border border-[#dde1e6] bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Profile Photo</p>
                 <div className="flex items-center gap-3">

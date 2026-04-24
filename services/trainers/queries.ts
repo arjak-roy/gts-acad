@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import type { GetTrainerRegistryInput } from "@/lib/validation-schemas/trainers";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { getStoredUploadAssetUrl } from "@/services/file-upload";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { mapTrainerCourseNames } from "@/services/trainers/course-assignment-helpers";
 import { TrainerDetail, TrainerOption, TrainerRegistryResponse, TrainerStatus, TrainerStatusHistoryItem } from "@/services/trainers/types";
@@ -38,6 +39,19 @@ const trainerSelect = {
 type TrainerRecord = Prisma.TrainerProfileGetPayload<{
   include: typeof trainerSelect;
 }>;
+
+function resolveTrainerPhotoUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/")) {
+    return value;
+  }
+
+  const storageProvider = value.startsWith("candidate-profile-photos/") ? "S3" : "LOCAL_PUBLIC";
+  return getStoredUploadAssetUrl({ storageProvider, storagePath: value });
+}
 
 function mapTrainerOption(record: TrainerRecord): TrainerOption {
   return {
@@ -446,7 +460,7 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
     experienceYears: trainer.experienceYears,
     preferredLanguage: trainer.preferredLanguage,
     timeZone: trainer.timeZone,
-    profilePhotoUrl: trainer.profilePhotoUrl,
+    profilePhotoUrl: resolveTrainerPhotoUrl(trainer.profilePhotoUrl),
     bio: trainer.bio,
     capacity: trainer.capacity,
     status: trainer.trainerStatus as TrainerStatus,

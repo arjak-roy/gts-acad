@@ -6,6 +6,7 @@ import { buildPendingAccountActivationMetadata } from "@/lib/auth/account-metada
 import { hashPassword } from "@/lib/auth/password";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { TRAINER_ROLE_CODE } from "@/lib/users/constants";
+import { getStoredUploadAssetUrl } from "@/services/file-upload";
 import { sendAccountActivationEmail } from "@/services/auth/account-activation";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { invalidateUserPermissionCache } from "@/services/rbac-service";
@@ -19,6 +20,19 @@ import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { TrainerCreateResult, TrainerDetail, TrainerOption, TrainerStatus } from "@/services/trainers/types";
 import { CreateTrainerInput, UpdateTrainerCoursesInput, UpdateTrainerInput } from "@/lib/validation-schemas/trainers";
 import { sendInternalUserWelcomeEmail, updateInternalUserMetadata } from "@/services/users/internal-helpers";
+
+function resolveTrainerPhotoUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/")) {
+    return value;
+  }
+
+  const storageProvider = value.startsWith("candidate-profile-photos/") ? "S3" : "LOCAL_PUBLIC";
+  return getStoredUploadAssetUrl({ storageProvider, storagePath: value });
+}
 
 const trainerCourseAssignmentsInclude = {
   courseAssignments: {
@@ -282,7 +296,7 @@ export async function createTrainerService(
     experienceYears: trainer.profile.experienceYears,
     preferredLanguage: trainer.profile.preferredLanguage,
     timeZone: trainer.profile.timeZone,
-    profilePhotoUrl: trainer.profile.profilePhotoUrl,
+    profilePhotoUrl: resolveTrainerPhotoUrl(trainer.profile.profilePhotoUrl),
     bio: trainer.profile.bio,
     capacity: trainer.profile.capacity,
     status: trainer.profile.trainerStatus as TrainerStatus,
@@ -450,7 +464,7 @@ export async function updateTrainerService(
     experienceYears: updated.profile.experienceYears,
     preferredLanguage: updated.profile.preferredLanguage,
     timeZone: updated.profile.timeZone,
-    profilePhotoUrl: updated.profile.profilePhotoUrl,
+    profilePhotoUrl: resolveTrainerPhotoUrl(updated.profile.profilePhotoUrl),
     bio: updated.profile.bio,
     capacity: updated.profile.capacity,
     status: updated.profile.trainerStatus as TrainerStatus,
