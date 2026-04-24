@@ -21,7 +21,14 @@ type EditTrainerForm = {
   employeeCode: string;
   email: string;
   phone: string;
+  department: string;
+  jobTitle: string;
   specialization: string;
+  skills: string[];
+  certifications: string[];
+  experienceYears: string;
+  preferredLanguage: string;
+  timeZone: string;
   capacity: string;
   status: TrainerStatus;
   availabilityStatus: TrainerAvailabilityStatus;
@@ -34,7 +41,14 @@ const initialForm: EditTrainerForm = {
   employeeCode: "",
   email: "",
   phone: "",
+  department: "",
+  jobTitle: "",
   specialization: "",
+  skills: [],
+  certifications: [],
+  experienceYears: "",
+  preferredLanguage: "",
+  timeZone: "",
   capacity: "0",
   status: "ACTIVE",
   availabilityStatus: "AVAILABLE",
@@ -98,7 +112,14 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
           employeeCode: trainerPayload.data.employeeCode,
           email: trainerPayload.data.email,
           phone: trainerPayload.data.phone ?? "",
+          department: trainerPayload.data.department ?? "",
+          jobTitle: trainerPayload.data.jobTitle ?? "",
           specialization: trainerPayload.data.specialization,
+          skills: trainerPayload.data.skills ?? [],
+          certifications: trainerPayload.data.certifications ?? [],
+          experienceYears: trainerPayload.data.experienceYears != null ? String(trainerPayload.data.experienceYears) : "",
+          preferredLanguage: trainerPayload.data.preferredLanguage ?? "",
+          timeZone: trainerPayload.data.timeZone ?? "",
           capacity: String(trainerPayload.data.capacity),
           status: trainerPayload.data.status,
           availabilityStatus: trainerPayload.data.availabilityStatus,
@@ -167,7 +188,14 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
           employeeCode: form.employeeCode,
           email: form.email,
           phone: form.phone,
+          department: form.department,
+          jobTitle: form.jobTitle,
           specialization: form.specialization,
+          skills: form.skills,
+          certifications: form.certifications,
+          experienceYears: form.experienceYears ? Number(form.experienceYears) : undefined,
+          preferredLanguage: form.preferredLanguage,
+          timeZone: form.timeZone,
           capacity: Number(form.capacity),
           status: form.status,
           availabilityStatus: form.availabilityStatus,
@@ -275,6 +303,18 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
                   <Input value={form.specialization} onChange={(event) => setForm((prev) => ({ ...prev, specialization: event.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Department</label>
+                  <Input value={form.department} placeholder="Language Training" onChange={(event) => setForm((prev) => ({ ...prev, department: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Job Title</label>
+                  <Input value={form.jobTitle} placeholder="Senior Language Trainer" onChange={(event) => setForm((prev) => ({ ...prev, jobTitle: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Experience (years)</label>
+                  <Input type="number" min={0} max={60} value={form.experienceYears} placeholder="5" onChange={(event) => setForm((prev) => ({ ...prev, experienceYears: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Capacity</label>
                   <Input type="number" min={0} value={form.capacity} onChange={(event) => setForm((prev) => ({ ...prev, capacity: event.target.value }))} />
                 </div>
@@ -287,6 +327,7 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
                   >
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
+                    <option value="SUSPENDED">Suspended</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -325,18 +366,40 @@ export function EditTrainerSheet({ trainerId, open, onOpenChange, onUpdated, onA
                           )}
                           aria-pressed={selected}
                         >
-                            <div className="space-y-1">
-                              <p className="text-sm font-semibold">{course.name}</p>
-                              {!course.isActive ? (
-                                <p className="text-[11px] font-medium text-amber-700">
-                                  {course.source === "legacy" ? "Saved assignment not found in the course catalog." : "Inactive course retained from the current assignment."}
-                                </p>
-                              ) : null}
-                            </div>
+                          <p className="text-sm font-semibold">{course.name}</p>
                         </button>
                       );
                     })
                   )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Skills <span className="normal-case font-normal text-slate-400">(comma-separated)</span></label>
+                <Input
+                  value={form.skills.join(", ")}
+                  placeholder="Public Speaking, Grammar, Pronunciation"
+                  onChange={(event) => setForm((prev) => ({ ...prev, skills: event.target.value.split(",").map((s) => s.trim()).filter(Boolean) }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Certifications <span className="normal-case font-normal text-slate-400">(comma-separated)</span></label>
+                <Input
+                  value={form.certifications.join(", ")}
+                  placeholder="CELTA, TestDaF, TOEIC"
+                  onChange={(event) => setForm((prev) => ({ ...prev, certifications: event.target.value.split(",").map((s) => s.trim()).filter(Boolean) }))}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Preferred Language</label>
+                  <Input value={form.preferredLanguage} placeholder="English" onChange={(event) => setForm((prev) => ({ ...prev, preferredLanguage: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Time Zone</label>
+                  <Input value={form.timeZone} placeholder="Asia/Kolkata" onChange={(event) => setForm((prev) => ({ ...prev, timeZone: event.target.value }))} />
                 </div>
               </div>
 

@@ -13,11 +13,11 @@ type RouteContext = {
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    await requirePermission(request, "trainers.edit");
+    const session = await requirePermission(request, "trainers.status.manage");
     const { trainerId } = trainerIdSchema.parse(params);
     const body = await request.json();
     const input = updateTrainerStatusSchema.parse(body);
-    const trainer = await updateTrainerStatusService(trainerId, input.status);
+    const trainer = await updateTrainerStatusService(trainerId, input.status, input.reason, session.userId);
     return apiSuccess(trainer);
   } catch (error) {
     return apiError(error);

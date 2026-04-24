@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, TrainerProfileStatus } from "@prisma/client";
 
 import { buildPendingAccountActivationMetadata } from "@/lib/auth/account-metadata";
 import { hashPassword } from "@/lib/auth/password";
@@ -65,10 +65,15 @@ export async function createTrainerService(
   const normalizedEmployeeCode = normalizeTrainerEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.trim() || null;
+  const normalizedDepartment = input.department?.trim() || null;
+  const normalizedJobTitle = input.jobTitle?.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
   const normalizedBio = input.bio.trim() || null;
+  const normalizedPreferredLanguage = input.preferredLanguage?.trim() || null;
+  const normalizedTimeZone = input.timeZone?.trim() || null;
   const normalizedCourses = normalizeTrainerCourseList(input.courses);
-  const isActive = input.status === "ACTIVE";
+  const isActive = input.status !== "INACTIVE" && input.status !== "SUSPENDED";
+  const trainerStatus = (input.status ?? "ACTIVE") as TrainerProfileStatus;
 
   if (!isDatabaseConfigured) {
     const mockId = `mock-${Date.now()}`;
@@ -79,7 +84,15 @@ export async function createTrainerService(
       employeeCode: normalizedEmployeeCode,
       email: normalizedEmail,
       phone: normalizedPhone,
+      department: normalizedDepartment,
+      jobTitle: normalizedJobTitle,
       specialization: normalizedSpecialization,
+      skills: input.skills ?? [],
+      certifications: input.certifications ?? [],
+      experienceYears: input.experienceYears ?? null,
+      preferredLanguage: normalizedPreferredLanguage,
+      timeZone: normalizedTimeZone,
+      profilePhotoUrl: null,
       bio: normalizedBio,
       capacity: input.capacity,
       status: input.status,
@@ -157,10 +170,18 @@ export async function createTrainerService(
       data: {
         userId: user.id,
         employeeCode: normalizedEmployeeCode,
+        department: normalizedDepartment,
+        jobTitle: normalizedJobTitle,
         specialization: normalizedSpecialization,
         bio: normalizedBio,
+        skills: input.skills ?? [],
+        certifications: input.certifications ?? [],
+        experienceYears: input.experienceYears ?? null,
+        preferredLanguage: normalizedPreferredLanguage,
+        timeZone: normalizedTimeZone,
         capacity: input.capacity,
         isActive,
+        trainerStatus,
         availabilityStatus: input.availabilityStatus,
         courseAssignments: {
           create: resolvedCourses.map((course) => ({
@@ -170,10 +191,19 @@ export async function createTrainerService(
       },
       select: {
         id: true,
+        department: true,
+        jobTitle: true,
         specialization: true,
         bio: true,
+        skills: true,
+        certifications: true,
+        experienceYears: true,
+        preferredLanguage: true,
+        timeZone: true,
+        profilePhotoUrl: true,
         capacity: true,
         isActive: true,
+        trainerStatus: true,
         availabilityStatus: true,
       },
     });
@@ -244,10 +274,18 @@ export async function createTrainerService(
     employeeCode: normalizedEmployeeCode,
     email: trainer.user.email,
     phone: trainer.user.phone,
+    department: trainer.profile.department,
+    jobTitle: trainer.profile.jobTitle,
     specialization: trainer.profile.specialization,
+    skills: trainer.profile.skills,
+    certifications: trainer.profile.certifications,
+    experienceYears: trainer.profile.experienceYears,
+    preferredLanguage: trainer.profile.preferredLanguage,
+    timeZone: trainer.profile.timeZone,
+    profilePhotoUrl: trainer.profile.profilePhotoUrl,
     bio: trainer.profile.bio,
     capacity: trainer.profile.capacity,
-    status: trainer.profile.isActive ? "ACTIVE" : "INACTIVE",
+    status: trainer.profile.trainerStatus as TrainerStatus,
     availabilityStatus: trainer.profile.availabilityStatus,
     courses: resolvedCourses.map((course) => course.name),
     lastActiveAt: null,
@@ -259,10 +297,15 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
   const normalizedEmployeeCode = normalizeTrainerEmployeeCode(input.employeeCode);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.trim() || null;
+  const normalizedDepartment = input.department?.trim() || null;
+  const normalizedJobTitle = input.jobTitle?.trim() || null;
   const normalizedSpecialization = input.specialization.trim();
   const normalizedBio = input.bio.trim() || null;
+  const normalizedPreferredLanguage = input.preferredLanguage?.trim() || null;
+  const normalizedTimeZone = input.timeZone?.trim() || null;
   const normalizedCourses = normalizeTrainerCourseList(input.courses);
-  const isActive = input.status === "ACTIVE";
+  const isActive = input.status !== "INACTIVE" && input.status !== "SUSPENDED";
+  const trainerStatus = (input.status ?? "ACTIVE") as TrainerProfileStatus;
 
   if (!isDatabaseConfigured) {
     return {
@@ -272,7 +315,15 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       employeeCode: normalizedEmployeeCode,
       email: normalizedEmail,
       phone: normalizedPhone,
+      department: normalizedDepartment,
+      jobTitle: normalizedJobTitle,
       specialization: normalizedSpecialization,
+      skills: input.skills ?? [],
+      certifications: input.certifications ?? [],
+      experienceYears: input.experienceYears ?? null,
+      preferredLanguage: normalizedPreferredLanguage,
+      timeZone: normalizedTimeZone,
+      profilePhotoUrl: null,
       bio: normalizedBio,
       capacity: input.capacity,
       status: input.status,
@@ -338,10 +389,18 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       where: { id: input.trainerId },
       data: {
         employeeCode: normalizedEmployeeCode,
+        department: normalizedDepartment,
+        jobTitle: normalizedJobTitle,
         specialization: normalizedSpecialization,
         bio: normalizedBio,
+        skills: input.skills ?? [],
+        certifications: input.certifications ?? [],
+        experienceYears: input.experienceYears ?? null,
+        preferredLanguage: normalizedPreferredLanguage,
+        timeZone: normalizedTimeZone,
         capacity: input.capacity,
         isActive,
+        trainerStatus,
         availabilityStatus: input.availabilityStatus,
         courseAssignments: {
           deleteMany: {},
@@ -352,10 +411,19 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
       },
       select: {
         id: true,
+        department: true,
+        jobTitle: true,
         specialization: true,
         bio: true,
+        skills: true,
+        certifications: true,
+        experienceYears: true,
+        preferredLanguage: true,
+        timeZone: true,
+        profilePhotoUrl: true,
         capacity: true,
         isActive: true,
+        trainerStatus: true,
         availabilityStatus: true,
       },
     });
@@ -370,18 +438,32 @@ export async function updateTrainerService(input: UpdateTrainerInput): Promise<T
     employeeCode: normalizedEmployeeCode,
     email: updated.user.email,
     phone: updated.user.phone,
+    department: updated.profile.department,
+    jobTitle: updated.profile.jobTitle,
     specialization: updated.profile.specialization,
+    skills: updated.profile.skills,
+    certifications: updated.profile.certifications,
+    experienceYears: updated.profile.experienceYears,
+    preferredLanguage: updated.profile.preferredLanguage,
+    timeZone: updated.profile.timeZone,
+    profilePhotoUrl: updated.profile.profilePhotoUrl,
     bio: updated.profile.bio,
     capacity: updated.profile.capacity,
-    status: updated.profile.isActive ? "ACTIVE" : "INACTIVE",
+    status: updated.profile.trainerStatus as TrainerStatus,
     availabilityStatus: updated.profile.availabilityStatus,
     courses: resolvedCourses.map((course) => course.name),
     lastActiveAt: null,
   };
 }
 
-export async function updateTrainerStatusService(trainerId: string, status: TrainerStatus): Promise<TrainerOption> {
+export async function updateTrainerStatusService(
+  trainerId: string,
+  status: TrainerStatus,
+  reason?: string,
+  actorUserId?: string | null,
+): Promise<TrainerOption> {
   const isActive = status === "ACTIVE";
+  const newTrainerStatus = status as TrainerProfileStatus;
 
   if (!isDatabaseConfigured) {
     const trainer = MOCK_TRAINERS.find((item) => item.id === trainerId);
@@ -392,13 +474,14 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
     return {
       ...trainer,
       isActive,
+      trainerStatus: status,
       availabilityStatus: isActive ? trainer.availabilityStatus : "UNAVAILABLE",
     };
   }
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { userId: true },
+    select: { userId: true, trainerStatus: true },
   });
 
   if (!trainer) {
@@ -410,6 +493,7 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
       where: { id: trainerId },
       data: {
         isActive,
+        trainerStatus: newTrainerStatus,
         ...(isActive ? {} : { availabilityStatus: "UNAVAILABLE" }),
       },
       include: {
@@ -430,6 +514,18 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
       data: { isActive },
     });
 
+    if (trainer.trainerStatus !== newTrainerStatus) {
+      await tx.trainerStatusHistory.create({
+        data: {
+          trainerId,
+          oldStatus: trainer.trainerStatus,
+          newStatus: newTrainerStatus,
+          reason: reason?.trim() || null,
+          changedById: actorUserId ?? null,
+        },
+      });
+    }
+
     return profile;
   });
 
@@ -438,8 +534,10 @@ export async function updateTrainerStatusService(trainerId: string, status: Trai
     fullName: updated.user.name,
     employeeCode: updated.employeeCode,
     email: updated.user.email,
+    department: null,
     specialization: updated.specialization,
     isActive: updated.isActive,
+    trainerStatus: updated.trainerStatus as TrainerStatus,
     availabilityStatus: updated.availabilityStatus,
     courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,
@@ -466,7 +564,15 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
       employeeCode: trainer.employeeCode,
       email: trainer.email,
       phone: null,
+      department: null,
+      jobTitle: null,
       specialization: trainer.specialization,
+      skills: [],
+      certifications: [],
+      experienceYears: null,
+      preferredLanguage: null,
+      timeZone: null,
+      profilePhotoUrl: null,
       bio: null,
       capacity: 0,
       status: trainer.isActive ? "ACTIVE" : "INACTIVE",
@@ -530,7 +636,15 @@ export async function updateTrainerCoursesService(trainerId: string, input: Upda
     employeeCode: updated.employeeCode,
     email: updated.user.email,
     phone: updated.user.phone,
+    department: null,
+    jobTitle: null,
     specialization: updated.specialization,
+    skills: [],
+    certifications: [],
+    experienceYears: null,
+    preferredLanguage: null,
+    timeZone: null,
+    profilePhotoUrl: null,
     bio: updated.bio,
     capacity: updated.capacity,
     status: updated.isActive ? "ACTIVE" : "INACTIVE",
@@ -550,6 +664,7 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
     return {
       ...trainer,
       isActive: false,
+      trainerStatus: "INACTIVE",
       availabilityStatus: "UNAVAILABLE",
     };
   }
@@ -568,6 +683,7 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
       where: { id: trainerId },
       data: {
         isActive: false,
+        trainerStatus: "INACTIVE" as TrainerProfileStatus,
         availabilityStatus: "UNAVAILABLE",
       },
       include: {
@@ -596,8 +712,10 @@ export async function archiveTrainerService(trainerId: string): Promise<TrainerO
     fullName: updated.user.name,
     employeeCode: updated.employeeCode,
     email: updated.user.email,
+    department: null,
     specialization: updated.specialization,
     isActive: updated.isActive,
+    trainerStatus: updated.trainerStatus as TrainerStatus,
     availabilityStatus: updated.availabilityStatus,
     courses: mapTrainerCourseNames(updated),
     lastActiveAt: updated.user.lastLoginAt?.toISOString() ?? null,

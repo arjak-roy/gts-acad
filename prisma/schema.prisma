@@ -159,6 +159,14 @@ enum TrainerAvailabilityStatus {
   @@map("trainer_availability_status")
 }
 
+enum TrainerProfileStatus {
+  ACTIVE    @map("active")
+  INACTIVE  @map("inactive")
+  SUSPENDED @map("suspended")
+
+  @@map("trainer_profile_status")
+}
+
 enum AssessmentType {
   DIAGNOSTIC @map("diagnostic")
   MODULE     @map("module")
@@ -613,6 +621,8 @@ model User {
   createdCertificateTemplates CertificateTemplate[] @relation("CertificateTemplateCreatedBy")
   issuedCertificates       Certificate[]            @relation("CertificateIssuedBy")
   revokedCertificates      Certificate[]            @relation("CertificateRevokedBy")
+  updatedTrainerProfiles   TrainerProfile[]         @relation("TrainerUpdatedBy")
+  trainerStatusChanges     TrainerStatusHistory[]   @relation("TrainerStatusChangedBy")
 
   @@map("users")
 }
@@ -1019,27 +1029,56 @@ model UserActivityLog {
 }
 
 model TrainerProfile {
-  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("trainer_id")
-  userId         String         @unique @db.Uuid @map("user_id")
-  employeeCode   String         @unique(map: "trainers_employee_code_key") @map("employee_code") @db.VarChar(50)
-  specialization String         @db.VarChar(255)
-  bio            String?
-  rating         Decimal        @default(0) @map("rating_avg") @db.Decimal(3, 2)
-  capacity       Int            @default(0)
-  isActive       Boolean        @default(true) @map("is_active")
-  availabilityStatus TrainerAvailabilityStatus @default(AVAILABLE) @map("availability_status")
-  joinedAt       DateTime       @default(now()) @map("joined_at") @db.Date
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  leadBatches    Batch[]        @relation("BatchLeadTrainer")
-  batches        Batch[]        @relation("BatchTrainers")
-  courseAssignments TrainerCourseAssignment[]
+  id                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("trainer_id")
+  userId              String                    @unique @db.Uuid @map("user_id")
+  employeeCode        String                    @unique(map: "trainers_employee_code_key") @map("employee_code") @db.VarChar(50)
+  department          String?                   @db.VarChar(255)
+  specialization      String                    @db.VarChar(255)
+  jobTitle            String?                   @map("job_title") @db.VarChar(255)
+  bio                 String?
+  skills              String[]                  @default([])
+  certifications      String[]                  @default([])
+  experienceYears     Int?                      @map("experience_years")
+  preferredLanguage   String?                   @map("preferred_language") @db.VarChar(100)
+  timeZone            String?                   @map("time_zone") @db.VarChar(100)
+  profilePhotoUrl     String?                   @map("profile_photo_url")
+  rating              Decimal                   @default(0) @map("rating_avg") @db.Decimal(3, 2)
+  capacity            Int                       @default(0)
+  isActive            Boolean                   @default(true) @map("is_active")
+  trainerStatus       TrainerProfileStatus      @default(ACTIVE) @map("trainer_status")
+  availabilityStatus  TrainerAvailabilityStatus  @default(AVAILABLE) @map("availability_status")
+  joinedAt            DateTime                  @default(now()) @map("joined_at") @db.Date
+  updatedById         String?                   @db.Uuid @map("updated_by_user_id")
+  user                User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedBy           User?                     @relation("TrainerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  leadBatches         Batch[]                   @relation("BatchLeadTrainer")
+  batches             Batch[]                   @relation("BatchTrainers")
+  courseAssignments   TrainerCourseAssignment[]
   assessmentAssignments TrainerAssessmentAssignment[]
-  roleplays      Roleplay[]
-  trainerPmsLogs TrainerPmsLog[]
+  statusHistory       TrainerStatusHistory[]
+  roleplays           Roleplay[]
+  trainerPmsLogs      TrainerPmsLog[]
 
   @@index([userId], map: "idx_trainers_user")
   @@index([availabilityStatus], map: "idx_trainers_availability_status")
+  @@index([trainerStatus], map: "idx_trainers_trainer_status")
+  @@index([department], map: "idx_trainers_department")
   @@map("trainers")
+}
+
+model TrainerStatusHistory {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("history_id")
+  trainerId   String               @db.Uuid @map("trainer_id")
+  oldStatus   TrainerProfileStatus @map("old_status")
+  newStatus   TrainerProfileStatus @map("new_status")
+  reason      String?              @db.VarChar(500)
+  changedById String?              @db.Uuid @map("changed_by_user_id")
+  changedAt   DateTime             @default(now()) @map("changed_at") @db.Timestamptz(6)
+  trainer     TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  changedBy   User?                @relation("TrainerStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([trainerId, changedAt], map: "idx_trainer_status_history_trainer")
+  @@map("trainer_status_history")
 }
 
 model Course {

@@ -102,6 +102,7 @@ const EMPTY_TRAINER_RESPONSE: TrainerRegistryResponse = {
   pageCount: 1,
   filterOptions: {
     specializations: [],
+    departments: [],
   },
 };
 

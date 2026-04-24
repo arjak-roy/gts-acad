@@ -24,6 +24,7 @@ const EMPTY_RESPONSE: TrainerRegistryResponse = {
   pageCount: 1,
   filterOptions: {
     specializations: [],
+    departments: [],
   },
 };
 
@@ -48,11 +49,12 @@ export default function TrainersPage() {
   const assigningCourseTrainerId = searchParams.get("assignCourseId");
   const assigningQuizTrainerId = searchParams.get("assignQuizId");
   const search = searchParams.get("search") ?? "";
-  const status = (searchParams.get("status") as "ALL" | "ACTIVE" | "INACTIVE" | null) ?? "ALL";
+  const status = (searchParams.get("status") as "ALL" | "ACTIVE" | "INACTIVE" | "SUSPENDED" | null) ?? "ALL";
   const availability = (searchParams.get("availability") as "ALL" | "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "ON_LEAVE" | null) ?? "ALL";
   const specialization = searchParams.get("specialization") ?? "";
+  const department = searchParams.get("department") ?? "";
   const courseId = searchParams.get("courseId") ?? "";
-  const sortBy = (searchParams.get("sortBy") as "fullName" | "employeeCode" | "email" | "specialization" | "status" | "availabilityStatus" | "lastActiveAt" | null) ?? "fullName";
+  const sortBy = (searchParams.get("sortBy") as "fullName" | "employeeCode" | "email" | "specialization" | "department" | "status" | "availabilityStatus" | "lastActiveAt" | null) ?? "fullName";
   const sortDirection = (searchParams.get("sortDirection") as "asc" | "desc" | null) ?? "asc";
 
   useEffect(() => {
@@ -200,7 +202,7 @@ export default function TrainersPage() {
         <TrainersTable
           response={response}
           courseOptions={courses}
-          filters={{ search, status, availability, specialization, courseId, sortBy, sortDirection }}
+          filters={{ search, status, availability, specialization, department, courseId, sortBy, sortDirection }}
           onRefresh={refreshTrainers}
         />
       )}

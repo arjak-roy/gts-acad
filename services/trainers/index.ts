@@ -11,6 +11,7 @@ export {
   getTrainerByIdService,
   getTrainerRegistryService,
   getTrainersForCourseService,
+  getTrainerStatusHistoryService,
   listTrainersService,
   searchTrainersService,
 } from "@/services/trainers/queries";
@@ -36,4 +37,5 @@ export type {
   TrainerActivityType,
   TrainerRegistryResponse,
   TrainerStatus,
+  TrainerStatusHistoryItem,
 } from "@/services/trainers/types";

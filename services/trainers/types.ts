@@ -10,15 +10,17 @@ export const TRAINER_AVAILABILITY_LABELS: Record<TrainerAvailabilityStatus, stri
 };
 
 export type TrainerAvailabilityStatus = (typeof TRAINER_AVAILABILITY_STATUSES)[number];
-export type TrainerStatus = "ACTIVE" | "INACTIVE";
+export type TrainerStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED";
 
 export type TrainerOption = {
   id: string;
   fullName: string;
   employeeCode: string;
   email: string;
+  department: string | null;
   specialization: string;
   isActive: boolean;
+  trainerStatus: TrainerStatus;
   availabilityStatus: TrainerAvailabilityStatus;
   courses: string[];
   lastActiveAt: string | null;
@@ -32,6 +34,7 @@ export type TrainerRegistryResponse = {
   pageCount: number;
   filterOptions: {
     specializations: string[];
+    departments: string[];
   };
 };
 
@@ -42,7 +45,15 @@ export type TrainerCreateResult = {
   employeeCode: string;
   email: string;
   phone: string | null;
+  department: string | null;
+  jobTitle: string | null;
   specialization: string;
+  skills: string[];
+  certifications: string[];
+  experienceYears: number | null;
+  preferredLanguage: string | null;
+  timeZone: string | null;
+  profilePhotoUrl: string | null;
   bio: string | null;
   capacity: number;
   status: TrainerStatus;
@@ -58,13 +69,31 @@ export type TrainerDetail = {
   employeeCode: string;
   email: string;
   phone: string | null;
+  department: string | null;
+  jobTitle: string | null;
   specialization: string;
+  skills: string[];
+  certifications: string[];
+  experienceYears: number | null;
+  preferredLanguage: string | null;
+  timeZone: string | null;
+  profilePhotoUrl: string | null;
   bio: string | null;
   capacity: number;
   status: TrainerStatus;
   availabilityStatus: TrainerAvailabilityStatus;
   courses: string[];
   lastActiveAt: string | null;
+};
+
+export type TrainerStatusHistoryItem = {
+  id: string;
+  oldStatus: TrainerStatus;
+  newStatus: TrainerStatus;
+  reason: string | null;
+  changedById: string | null;
+  changedByName: string | null;
+  changedAt: string;
 };
 
 export type TrainerImportIssue = CsvImportIssue;

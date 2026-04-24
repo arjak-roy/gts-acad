@@ -456,7 +456,18 @@ export async function commitTrainerImportService(
 
   for (const row of input.rows) {
     try {
-      await createTrainerService(row, { actorUserId: options?.actorUserId ?? undefined });
+      await createTrainerService(
+        {
+          department: "",
+          jobTitle: "",
+          skills: [],
+          certifications: [],
+          preferredLanguage: "",
+          timeZone: "",
+          ...row,
+        },
+        { actorUserId: options?.actorUserId ?? undefined },
+      );
       createdCount += 1;
     } catch (error) {
       throw new Error(`Row ${row.rowNumber}: ${error instanceof Error ? error.message : "Unable to create trainer."}`);

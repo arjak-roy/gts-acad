@@ -4,7 +4,7 @@ import type { GetTrainerRegistryInput } from "@/lib/validation-schemas/trainers"
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { MOCK_TRAINERS } from "@/services/trainers/mock-data";
 import { mapTrainerCourseNames } from "@/services/trainers/course-assignment-helpers";
-import { TrainerDetail, TrainerOption, TrainerRegistryResponse } from "@/services/trainers/types";
+import { TrainerDetail, TrainerOption, TrainerRegistryResponse, TrainerStatus, TrainerStatusHistoryItem } from "@/services/trainers/types";
 
 const trainerSelect = {
   user: {
@@ -39,8 +39,10 @@ function mapTrainerOption(record: TrainerRecord): TrainerOption {
     fullName: record.user.name,
     employeeCode: record.employeeCode,
     email: record.user.email,
+    department: record.department,
     specialization: record.specialization,
     isActive: record.isActive,
+    trainerStatus: record.trainerStatus as TrainerStatus,
     availabilityStatus: record.availabilityStatus,
     courses: mapTrainerCourseNames(record),
     lastActiveAt: record.user.lastLoginAt?.toISOString() ?? null,
@@ -55,8 +57,8 @@ function sortMockTrainers(
   const direction = sortDirection === "asc" ? 1 : -1;
 
   return [...items].sort((left, right) => {
-    const statusLeft = left.isActive ? "ACTIVE" : "INACTIVE";
-    const statusRight = right.isActive ? "ACTIVE" : "INACTIVE";
+    const statusLeft = left.trainerStatus ?? (left.isActive ? "ACTIVE" : "INACTIVE");
+    const statusRight = right.trainerStatus ?? (right.isActive ? "ACTIVE" : "INACTIVE");
     const leftValue =
       sortBy === "fullName"
         ? left.fullName
@@ -64,13 +66,15 @@ function sortMockTrainers(
           ? left.employeeCode
           : sortBy === "email"
             ? left.email
-            : sortBy === "specialization"
-              ? left.specialization
-              : sortBy === "status"
-                ? statusLeft
-                : sortBy === "availabilityStatus"
-                  ? left.availabilityStatus
-                  : left.lastActiveAt ?? "";
+            : sortBy === "department"
+              ? left.department ?? ""
+              : sortBy === "specialization"
+                ? left.specialization
+                : sortBy === "status"
+                  ? statusLeft
+                  : sortBy === "availabilityStatus"
+                    ? left.availabilityStatus
+                    : left.lastActiveAt ?? "";
 
     const rightValue =
       sortBy === "fullName"
@@ -79,13 +83,15 @@ function sortMockTrainers(
           ? right.employeeCode
           : sortBy === "email"
             ? right.email
-            : sortBy === "specialization"
-              ? right.specialization
-              : sortBy === "status"
-                ? statusRight
-                : sortBy === "availabilityStatus"
-                  ? right.availabilityStatus
-                  : right.lastActiveAt ?? "";
+            : sortBy === "department"
+              ? right.department ?? ""
+              : sortBy === "specialization"
+                ? right.specialization
+                : sortBy === "status"
+                  ? statusRight
+                  : sortBy === "availabilityStatus"
+                    ? right.availabilityStatus
+                    : right.lastActiveAt ?? "";
 
     return leftValue.localeCompare(rightValue) * direction;
   });
@@ -94,13 +100,12 @@ function sortMockTrainers(
 function filterMockTrainers(input: GetTrainerRegistryInput): TrainerOption[] {
   const normalizedSearch = input.search.trim().toLowerCase();
   const normalizedSpecialization = input.specialization.trim().toLowerCase();
+  const normalizedDepartment = input.department?.trim().toLowerCase() ?? "";
 
   const filtered = MOCK_TRAINERS.filter((trainer) => {
-    if (input.status === "ACTIVE" && !trainer.isActive) {
-      return false;
-    }
+    const trainerStatus = trainer.trainerStatus ?? (trainer.isActive ? "ACTIVE" : "INACTIVE");
 
-    if (input.status === "INACTIVE" && trainer.isActive) {
+    if (input.status !== "ALL" && trainerStatus !== input.status) {
       return false;
     }
 
@@ -109,6 +114,10 @@ function filterMockTrainers(input: GetTrainerRegistryInput): TrainerOption[] {
     }
 
     if (normalizedSpecialization && trainer.specialization.trim().toLowerCase() !== normalizedSpecialization) {
+      return false;
+    }
+
+    if (normalizedDepartment && (trainer.department ?? "").trim().toLowerCase() !== normalizedDepartment) {
       return false;
     }
 
@@ -186,18 +195,26 @@ export async function getTrainerRegistryService(input: GetTrainerRegistryInput):
       pageCount: Math.max(1, Math.ceil(totalCount / input.pageSize)),
       filterOptions: {
         specializations: Array.from(new Set(MOCK_TRAINERS.map((trainer) => trainer.specialization))).sort((left, right) => left.localeCompare(right)),
+        departments: [],
       },
     };
   }
 
   const where: Prisma.TrainerProfileWhereInput = {
-    ...(input.status === "ACTIVE" ? { isActive: true } : {}),
-    ...(input.status === "INACTIVE" ? { isActive: false } : {}),
+    ...(input.status !== "ALL" ? { trainerStatus: input.status.toLowerCase() as Prisma.EnumTrainerProfileStatusFilter } : {}),
     ...(input.availability !== "ALL" ? { availabilityStatus: input.availability } : {}),
     ...(input.specialization
       ? {
           specialization: {
             equals: input.specialization,
+            mode: "insensitive",
+          },
+        }
+      : {}),
+    ...(input.department
+      ? {
+          department: {
+            equals: input.department,
             mode: "insensitive",
           },
         }
@@ -239,13 +256,14 @@ export async function getTrainerRegistryService(input: GetTrainerRegistryInput):
     fullName: { user: { name: input.sortDirection } },
     employeeCode: { employeeCode: input.sortDirection },
     email: { user: { email: input.sortDirection } },
+    department: { department: input.sortDirection },
     specialization: { specialization: input.sortDirection },
-    status: { isActive: input.sortDirection },
+    status: { trainerStatus: input.sortDirection },
     availabilityStatus: { availabilityStatus: input.sortDirection },
     lastActiveAt: { user: { lastLoginAt: input.sortDirection } },
   };
 
-  const [totalCount, trainers, specializationRecords] = await prisma.$transaction([
+  const [totalCount, trainers, specializationRecords, departmentRecords] = await prisma.$transaction([
     prisma.trainerProfile.count({ where }),
     prisma.trainerProfile.findMany({
       where,
@@ -259,6 +277,12 @@ export async function getTrainerRegistryService(input: GetTrainerRegistryInput):
       distinct: ["specialization"],
       orderBy: { specialization: "asc" },
     }),
+    prisma.trainerProfile.findMany({
+      where: { department: { not: null } },
+      select: { department: true },
+      distinct: ["department"],
+      orderBy: { department: "asc" },
+    }),
   ]);
 
   return {
@@ -269,6 +293,7 @@ export async function getTrainerRegistryService(input: GetTrainerRegistryInput):
     pageCount: Math.max(1, Math.ceil(totalCount / input.pageSize)),
     filterOptions: {
       specializations: specializationRecords.map((record) => record.specialization).filter(Boolean),
+      departments: departmentRecords.map((record) => record.department).filter((d): d is string => Boolean(d)),
     },
   };
 }
@@ -369,10 +394,18 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
       employeeCode: trainer.employeeCode,
       email: trainer.email,
       phone: null,
+      department: trainer.department ?? null,
+      jobTitle: null,
       specialization: trainer.specialization,
+      skills: [],
+      certifications: [],
+      experienceYears: null,
+      preferredLanguage: null,
+      timeZone: null,
+      profilePhotoUrl: null,
       bio: null,
       capacity: 0,
-      status: trainer.isActive ? "ACTIVE" : "INACTIVE",
+      status: trainer.trainerStatus ?? (trainer.isActive ? "ACTIVE" : "INACTIVE"),
       availabilityStatus: trainer.availabilityStatus,
       courses: trainer.courses,
       lastActiveAt: trainer.lastActiveAt,
@@ -395,10 +428,18 @@ export async function getTrainerByIdService(trainerId: string): Promise<TrainerD
     employeeCode: trainer.employeeCode,
     email: trainer.user.email,
     phone: trainer.user.phone,
+    department: trainer.department,
+    jobTitle: trainer.jobTitle,
     specialization: trainer.specialization,
+    skills: trainer.skills,
+    certifications: trainer.certifications,
+    experienceYears: trainer.experienceYears,
+    preferredLanguage: trainer.preferredLanguage,
+    timeZone: trainer.timeZone,
+    profilePhotoUrl: trainer.profilePhotoUrl,
     bio: trainer.bio,
     capacity: trainer.capacity,
-    status: trainer.isActive ? "ACTIVE" : "INACTIVE",
+    status: trainer.trainerStatus as TrainerStatus,
     availabilityStatus: trainer.availabilityStatus,
     courses: mapTrainerCourseNames(trainer as TrainerRecord),
     lastActiveAt: trainer.user.lastLoginAt?.toISOString() ?? null,
@@ -432,4 +473,31 @@ export async function getTrainersForCourseService(courseName: string): Promise<T
   });
 
   return trainers.map((trainer) => mapTrainerOption(trainer as TrainerRecord));
+}
+
+export async function getTrainerStatusHistoryService(trainerId: string): Promise<TrainerStatusHistoryItem[]> {
+  if (!isDatabaseConfigured) {
+    return [];
+  }
+
+  const records = await prisma.trainerStatusHistory.findMany({
+    where: { trainerId },
+    orderBy: { changedAt: "desc" },
+    take: 50,
+    include: {
+      changedBy: {
+        select: { id: true, name: true },
+      },
+    },
+  });
+
+  return records.map((record) => ({
+    id: record.id,
+    oldStatus: record.oldStatus as TrainerStatus,
+    newStatus: record.newStatus as TrainerStatus,
+    reason: record.reason,
+    changedById: record.changedById,
+    changedByName: record.changedBy?.name ?? null,
+    changedAt: record.changedAt.toISOString(),
+  }));
 }

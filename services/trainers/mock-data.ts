@@ -11,5 +11,7 @@ export const MOCK_TRAINERS: TrainerOption[] = [
     availabilityStatus: "AVAILABLE",
     courses: ["German Language"],
     lastActiveAt: new Date("2026-04-10T09:30:00.000Z").toISOString(),
+    department: null,
+    trainerStatus: "ACTIVE",
   },
 ];

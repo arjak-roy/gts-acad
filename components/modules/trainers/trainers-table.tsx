@@ -16,9 +16,11 @@ import { SortableTableHead, type SortDirection } from "@/components/ui/sortable-
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TRAINER_AVAILABILITY_LABELS, type TrainerAvailabilityStatus, type TrainerOption, type TrainerRegistryResponse } from "@/services/trainers/types";
 
-type TrainerRegistryStatus = "ALL" | "ACTIVE" | "INACTIVE";
+import type { TrainerStatus } from "@/services/trainers/types";
+
+type TrainerRegistryStatus = "ALL" | "ACTIVE" | "INACTIVE" | "SUSPENDED";
 type TrainerRegistryAvailability = "ALL" | TrainerAvailabilityStatus;
-type TrainerRegistrySort = "fullName" | "employeeCode" | "email" | "specialization" | "status" | "availabilityStatus" | "lastActiveAt";
+type TrainerRegistrySort = "fullName" | "employeeCode" | "email" | "specialization" | "department" | "status" | "availabilityStatus" | "lastActiveAt";
 
 type CourseOption = {
   id: string;
@@ -34,6 +36,7 @@ type TrainersTableProps = {
     status: TrainerRegistryStatus;
     availability: TrainerRegistryAvailability;
     specialization: string;
+    department: string;
     courseId: string;
     sortBy: TrainerRegistrySort;
     sortDirection: "asc" | "desc";
@@ -71,6 +74,8 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
   const searchParams = useSearchParams();
   const [isUpdatingId, setIsUpdatingId] = useState<string | null>(null);
   const [search, setSearch] = useState(filters.search);
+  const [statusChangeTarget, setStatusChangeTarget] = useState<{ trainer: TrainerOption; targetStatus: TrainerStatus; reason: string } | null>(null);
+  const [isStatusModalSubmitting, setIsStatusModalSubmitting] = useState(false);
 
   const activeSort = filters.sortBy;
   const activeDirection: SortDirection = filters.sortDirection;
@@ -100,17 +105,23 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
     updateUrl({ sortBy: columnKey, sortDirection: direction, page: 1 });
   }
 
-  async function handleStatusToggle(trainer: TrainerOption) {
-    setIsUpdatingId(trainer.id);
+  function openStatusModal(trainer: TrainerOption, targetStatus: TrainerStatus) {
+    setStatusChangeTarget({ trainer, targetStatus, reason: "" });
+  }
+
+  async function handleStatusChangeConfirm() {
+    if (!statusChangeTarget) {
+      return;
+    }
+
+    setIsStatusModalSubmitting(true);
+    setIsUpdatingId(statusChangeTarget.trainer.id);
 
     try {
-      const nextStatus = trainer.isActive ? "INACTIVE" : "ACTIVE";
-      const response = await fetch(`/api/trainers/${trainer.id}/status`, {
+      const response = await fetch(`/api/trainers/${statusChangeTarget.trainer.id}/status`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status: nextStatus }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: statusChangeTarget.targetStatus, reason: statusChangeTarget.reason }),
       });
 
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -118,13 +129,16 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
         throw new Error(payload?.error || "Failed to update trainer status.");
       }
 
-      toast.success(nextStatus === "ACTIVE" ? "Trainer activated successfully." : "Trainer deactivated successfully.");
+      const statusLabels: Record<TrainerStatus, string> = { ACTIVE: "activated", INACTIVE: "deactivated", SUSPENDED: "suspended" };
+      toast.success(`Trainer ${statusLabels[statusChangeTarget.targetStatus]} successfully.`);
+      setStatusChangeTarget(null);
       onRefresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to update trainer status.";
       toast.error(message);
     } finally {
       setIsUpdatingId(null);
+      setIsStatusModalSubmitting(false);
     }
   }
 
@@ -160,7 +174,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
     <div className="space-y-4">
       <Card>
         <CardContent className="space-y-4 p-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px_220px_220px]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px_160px_180px_200px_200px]">
             <DataTableSearchBar
               value={search}
               onChange={(value) => {
@@ -177,6 +191,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
               <option value="ALL">All statuses</option>
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
+              <option value="SUSPENDED">Suspended</option>
             </select>
             <select
               className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
@@ -188,6 +203,16 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
+              <select
+                className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                value={filters.department}
+                onChange={(event) => updateUrl({ department: event.target.value, page: 1 })}
+              >
+                <option value="">All departments</option>
+                {(response.filterOptions.departments ?? []).map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
             <select
               className="h-10 rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
               value={filters.specialization}
@@ -218,6 +243,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                   <SortableTableHead label="Employee ID / Code" columnKey="employeeCode" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <SortableTableHead label="Email" columnKey="email" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <SortableTableHead label="Specialization" columnKey="specialization" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
+                  <SortableTableHead label="Department" columnKey="department" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <TableHead>Assigned Courses</TableHead>
                   <SortableTableHead label="Status" columnKey="status" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
                   <SortableTableHead label="Availability" columnKey="availabilityStatus" activeSort={activeSort} activeDirection={activeDirection} onSort={handleSort} />
@@ -243,6 +269,7 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                       <TableCell className="font-medium text-slate-700">{trainer.employeeCode}</TableCell>
                       <TableCell className="text-sm text-slate-600">{trainer.email}</TableCell>
                       <TableCell>{trainer.specialization}</TableCell>
+                      <TableCell className="text-sm text-slate-600">{trainer.department ?? <span className="text-slate-400">—</span>}</TableCell>
                       <TableCell>
                         {trainer.courses.length === 0 ? (
                           <span className="text-sm text-slate-500">No courses</span>
@@ -256,10 +283,14 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={trainer.isActive ? "success" : "danger"}>{trainer.isActive ? "Active" : "Inactive"}</Badge>
+                        <Badge
+                          variant={trainer.trainerStatus === "ACTIVE" ? "success" : trainer.trainerStatus === "SUSPENDED" ? "warning" : "danger"}
+                        >
+                          {trainer.trainerStatus === "ACTIVE" ? "Active" : trainer.trainerStatus === "SUSPENDED" ? "Suspended" : "Inactive"}
+                        </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getAvailabilityVariant(trainer.availabilityStatus)}>
+                        <Badge variant={trainer.availabilityStatus === "AVAILABLE" ? "success" : trainer.availabilityStatus === "LIMITED" ? "warning" : trainer.availabilityStatus === "UNAVAILABLE" ? "danger" : "info"}>
                           {TRAINER_AVAILABILITY_LABELS[trainer.availabilityStatus]}
                         </Badge>
                       </TableCell>
@@ -277,13 +308,16 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
                             <CanAccess permission="trainers.edit">
                               <DropdownMenuItem onSelect={() => updateUrl({ id: null, editId: trainer.id, assignCourseId: null, assignQuizId: null })}>Edit</DropdownMenuItem>
                             </CanAccess>
-                            <CanAccess permission="trainers.edit">
-                              <DropdownMenuItem onSelect={(event) => {
-                                event.preventDefault();
-                                void handleStatusToggle(trainer);
-                              }}>
-                                {trainer.isActive ? "Deactivate" : "Activate"}
-                              </DropdownMenuItem>
+                            <CanAccess permission="trainers.status.manage">
+                              {trainer.trainerStatus !== "ACTIVE" ? (
+                                <DropdownMenuItem onSelect={() => openStatusModal(trainer, "ACTIVE")}>Activate</DropdownMenuItem>
+                              ) : null}
+                              {trainer.trainerStatus !== "INACTIVE" ? (
+                                <DropdownMenuItem onSelect={() => openStatusModal(trainer, "INACTIVE")}>Deactivate</DropdownMenuItem>
+                              ) : null}
+                              {trainer.trainerStatus !== "SUSPENDED" ? (
+                                <DropdownMenuItem className="text-amber-700 focus:bg-amber-50 focus:text-amber-800" onSelect={() => openStatusModal(trainer, "SUSPENDED")}>Suspend</DropdownMenuItem>
+                              ) : null}
                             </CanAccess>
                             <CanAccess permission="trainers.edit">
                               <DropdownMenuItem onSelect={() => updateUrl({ id: null, editId: null, assignCourseId: trainer.id, assignQuizId: null })}>Assign Course</DropdownMenuItem>
@@ -333,6 +367,42 @@ export function TrainersTable({ response, courseOptions, filters, onRefresh }: T
           </div>
         </CardContent>
       </Card>
+
+      {statusChangeTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-base font-bold text-slate-900">Change Trainer Status</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Change status of <span className="font-semibold">{statusChangeTarget.trainer.fullName}</span> from{" "}
+              <span className="font-semibold">{statusChangeTarget.trainer.trainerStatus}</span> to{" "}
+              <span className="font-semibold">{statusChangeTarget.targetStatus}</span>.
+            </p>
+
+            <div className="mt-4 space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Reason (optional)</label>
+              <textarea
+                className="min-h-[80px] w-full rounded-xl border border-[#dde1e6] px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                placeholder="Add a reason for this status change..."
+                value={statusChangeTarget.reason}
+                onChange={(event) => setStatusChangeTarget((prev) => prev ? { ...prev, reason: event.target.value } : null)}
+              />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" type="button" disabled={isStatusModalSubmitting} onClick={() => setStatusChangeTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isStatusModalSubmitting}
+                onClick={() => void handleStatusChangeConfirm()}
+              >
+                {isStatusModalSubmitting ? "Updating..." : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -28,7 +28,14 @@ type AddTrainerForm = {
   employeeCode: string;
   email: string;
   phone: string;
+  department: string;
+  jobTitle: string;
   specialization: string;
+  skills: string[];
+  certifications: string[];
+  experienceYears: string;
+  preferredLanguage: string;
+  timeZone: string;
   capacity: string;
   status: TrainerStatus;
   availabilityStatus: TrainerAvailabilityStatus;
@@ -41,7 +48,14 @@ const initialForm: AddTrainerForm = {
   employeeCode: "",
   email: "",
   phone: "",
+  department: "",
+  jobTitle: "",
   specialization: "",
+  skills: [],
+  certifications: [],
+  experienceYears: "",
+  preferredLanguage: "",
+  timeZone: "",
   capacity: "0",
   status: "ACTIVE",
   availabilityStatus: "AVAILABLE",
@@ -180,7 +194,14 @@ export function AddTrainerSheet({
           employeeCode: form.employeeCode,
           email: form.email,
           phone: form.phone,
+          department: form.department,
+          jobTitle: form.jobTitle,
           specialization: form.specialization,
+          skills: form.skills,
+          certifications: form.certifications,
+          experienceYears: form.experienceYears ? Number(form.experienceYears) : undefined,
+          preferredLanguage: form.preferredLanguage,
+          timeZone: form.timeZone,
           capacity: Number(form.capacity),
           status: form.status,
           availabilityStatus: form.availabilityStatus,
@@ -243,6 +264,18 @@ export function AddTrainerSheet({
                   <Input value={form.specialization} placeholder="German Language" onChange={(event) => setForm((prev) => ({ ...prev, specialization: event.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Department</label>
+                  <Input value={form.department} placeholder="Language Training" onChange={(event) => setForm((prev) => ({ ...prev, department: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Job Title</label>
+                  <Input value={form.jobTitle} placeholder="Senior Language Trainer" onChange={(event) => setForm((prev) => ({ ...prev, jobTitle: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Experience (years)</label>
+                  <Input type="number" min={0} max={60} value={form.experienceYears} placeholder="5" onChange={(event) => setForm((prev) => ({ ...prev, experienceYears: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Capacity</label>
                   <Input type="number" min={0} value={form.capacity} onChange={(event) => setForm((prev) => ({ ...prev, capacity: event.target.value }))} />
                 </div>
@@ -255,6 +288,7 @@ export function AddTrainerSheet({
                   >
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
+                    <option value="SUSPENDED">Suspended</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -311,6 +345,35 @@ export function AddTrainerSheet({
               </div>
 
               <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Skills <span className="normal-case font-normal text-slate-400">(comma-separated)</span></label>
+                <Input
+                  value={form.skills.join(", ")}
+                  placeholder="Public Speaking, Grammar, Pronunciation"
+                  onChange={(event) => setForm((prev) => ({ ...prev, skills: event.target.value.split(",").map((s) => s.trim()).filter(Boolean) }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Certifications <span className="normal-case font-normal text-slate-400">(comma-separated)</span></label>
+                <Input
+                  value={form.certifications.join(", ")}
+                  placeholder="CELTA, TestDaF, TOEIC"
+                  onChange={(event) => setForm((prev) => ({ ...prev, certifications: event.target.value.split(",").map((s) => s.trim()).filter(Boolean) }))}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Preferred Language</label>
+                  <Input value={form.preferredLanguage} placeholder="English" onChange={(event) => setForm((prev) => ({ ...prev, preferredLanguage: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Time Zone</label>
+                  <Input value={form.timeZone} placeholder="Asia/Kolkata" onChange={(event) => setForm((prev) => ({ ...prev, timeZone: event.target.value }))} />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Bio</label>
                 <textarea
                   className="min-h-28 w-full rounded-xl border border-[#dde1e6] px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
@@ -351,6 +414,11 @@ export function AddTrainerSheet({
               <p>
                 <span className="font-semibold text-slate-900">Email:</span> {form.email.trim().toLowerCase()}
               </p>
+              {form.department ? (
+                <p>
+                  <span className="font-semibold text-slate-900">Department:</span> {form.department.trim()}
+                </p>
+              ) : null}
               <p>
                 <span className="font-semibold text-slate-900">Specialization:</span> {form.specialization.trim()}
               </p>
