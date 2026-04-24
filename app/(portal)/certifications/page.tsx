@@ -1124,7 +1124,7 @@ function IssueCertificateDialog({
           {/* Course */}
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Course
-            <select className={selectClassName + " mt-1"} value={courseId} onChange={(e) => handleCourseChange(e.target.value)}>
+            <select className="mt-1 flex h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50" value={courseId} onChange={(e) => handleCourseChange(e.target.value)}>
               <option value="">Select course…</option>
               {courses.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -1136,7 +1136,7 @@ function IssueCertificateDialog({
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Program
             <select
-              className={selectClassName + " mt-1"}
+              className="mt-1 flex h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50"
               value={programId}
               onChange={(e) => handleProgramChange(e.target.value)}
               disabled={!courseId || isLoadingPrograms}
@@ -1152,7 +1152,7 @@ function IssueCertificateDialog({
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Batch
             <select
-              className={selectClassName + " mt-1"}
+              className="mt-1 flex h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50"
               value={batchId}
               onChange={(e) => handleBatchChange(e.target.value)}
               disabled={!programId || isLoadingBatches}
@@ -1223,7 +1223,7 @@ function IssueCertificateDialog({
           {/* Template */}
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Template
-            <select className={selectClassName + " mt-1"} value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={!courseId}>
+            <select className="mt-1 flex h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50" value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={!courseId}>
               <option value="">Select template…</option>
               {courseTemplates.map((t) => (
                 <option key={t.id} value={t.id}>{t.title}{t.isDefault ? " (default)" : ""}</option>
@@ -1694,8 +1694,8 @@ function CreateBaseTemplateDialog({
         <div className="space-y-3 py-2">
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Title
-            <input
-              className={inputClassName + " mt-1"}
+            <Input
+              className="mt-1"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Standard Landscape Certificate"
@@ -1704,7 +1704,7 @@ function CreateBaseTemplateDialog({
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Description
             <textarea
-              className={inputClassName + " mt-1 min-h-[60px] resize-y"}
+              className="mt-1 flex min-h-[60px] w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50 resize-y"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description…"

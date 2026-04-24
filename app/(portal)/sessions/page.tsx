@@ -9,7 +9,6 @@ import { CanAccess } from "@/components/ui/can-access";
 import { Button } from "@/components/ui/button";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { sortByAccessor, type ActiveSortDirection } from "@/lib/table-sorting";
 
 type SessionRecord = {
@@ -154,10 +153,10 @@ export default function SessionsPage() {
         </div>
         <CanAccess permission="sessions.manage">
           <Button
-            variant="destructive"
+            variant="default"
             onClick={() => logoutAllMutation.mutate()}
             disabled={logoutAllMutation.isPending}
-            className="h-11 rounded-xl px-5 text-sm font-bold"
+            className="h-11 rounded-xl px-5 text-sm font-bold bg-rose-600 text-white hover:bg-rose-700"
           >
             {logoutAllMutation.isPending ? "Logging out..." : "Logout from all devices"}
           </Button>
@@ -186,11 +185,11 @@ export default function SessionsPage() {
           <Table className="min-w-full">
             <TableHeader>
               <TableRow>
-                <SortableTableHead label="Device" columnKey="device" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
-                <SortableTableHead label="Browser" columnKey="browser" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden md:table-cell" />
-                <SortableTableHead label="Login Time" columnKey="loginTime" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden lg:table-cell" />
-                <SortableTableHead label="IP Address" columnKey="ipAddress" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden lg:table-cell" />
-                <SortableTableHead label="Status" columnKey="status" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                <SortableTableHead label="Device" columnKey="device" activeSort={sortState.column} activeDirection={sortState.direction} onSort={(c, d) => handleSort(c as SessionSortKey, d)} />
+                <SortableTableHead label="Browser" columnKey="browser" activeSort={sortState.column} activeDirection={sortState.direction} onSort={(c, d) => handleSort(c as SessionSortKey, d)} className="hidden md:table-cell" />
+                <SortableTableHead label="Login Time" columnKey="loginTime" activeSort={sortState.column} activeDirection={sortState.direction} onSort={(c, d) => handleSort(c as SessionSortKey, d)} className="hidden lg:table-cell" />
+                <SortableTableHead label="IP Address" columnKey="ipAddress" activeSort={sortState.column} activeDirection={sortState.direction} onSort={(c, d) => handleSort(c as SessionSortKey, d)} className="hidden lg:table-cell" />
+                <SortableTableHead label="Status" columnKey="status" activeSort={sortState.column} activeDirection={sortState.direction} onSort={(c, d) => handleSort(c as SessionSortKey, d)} />
                 <TableCell className="text-right font-medium">Action</TableCell>
               </TableRow>
             </TableHeader>
@@ -216,17 +215,22 @@ export default function SessionsPage() {
                     </TableCell>
                     <TableCell className="align-top text-sm text-slate-600 hidden lg:table-cell">{session.ipAddress ?? "Unknown"}</TableCell>
                     <TableCell className="align-top">
-                      <Badge variant={session.isCurrent ? "success" : "secondary"}>
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                          session.isCurrent ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
                         {session.isCurrent ? "Current" : session.status}
-                      </Badge>
+                      </span>
                     </TableCell>
                     <TableCell className="align-top text-right">
                       <CanAccess permission="sessions.manage">
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={() => terminateSessionMutation.mutate(session.id)}
                           disabled={isPendingAction}
+                          className="border border-slate-200 transition-colors hover:border-rose-200 hover:text-rose-600 bg-white"
                         >
                           {isPendingAction ? "Terminating..." : session.isCurrent ? "End session" : "Terminate"}
                         </Button>
