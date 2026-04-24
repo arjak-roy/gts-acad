@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { KeyRound, ShieldCheck, UserCog, Users } from "lucide-react";
 
@@ -33,7 +33,7 @@ const EMPTY_CANDIDATE_RESPONSE: CandidateUsersResponse = {
 
 type UserTab = "internal" | "candidates";
 
-export default function UsersPage() {
+function UsersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<UserTab>((searchParams.get("tab") as UserTab) || "internal");
@@ -240,5 +240,13 @@ function UsersPageSkeleton() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <Suspense fallback={<UsersPageSkeleton />}>
+      <UsersPageContent />
+    </Suspense>
   );
 }

@@ -3,10 +3,13 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { CanAccess } from "@/components/ui/can-access";
+import { Button } from "@/components/ui/button";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { sortByAccessor, type ActiveSortDirection } from "@/lib/table-sorting";
 
 type SessionRecord = {
@@ -54,42 +57,6 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function SessionTableHeader({
-  label,
-  columnKey,
-  activeSort,
-  activeDirection,
-  onSort,
-}: {
-  label: string;
-  columnKey: SessionSortKey;
-  activeSort: SessionSortKey;
-  activeDirection: ActiveSortDirection;
-  onSort: (columnKey: SessionSortKey, direction: ActiveSortDirection) => void;
-}) {
-  const isActive = activeSort === columnKey;
-  const nextDirection = isActive && activeDirection === "asc" ? "desc" : "asc";
-
-  return (
-    <th className="px-6 py-4">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 hover:text-slate-600"
-        onClick={() => onSort(columnKey, nextDirection)}
-      >
-        {label}
-        {isActive && activeDirection === "asc" ? (
-          <ArrowUp className="h-3 w-3" />
-        ) : isActive && activeDirection === "desc" ? (
-          <ArrowDown className="h-3 w-3" />
-        ) : (
-          <ArrowUpDown className="h-3 w-3 opacity-40" />
-        )}
-      </button>
-    </th>
-  );
 }
 
 export default function SessionsPage() {
@@ -186,14 +153,14 @@ export default function SessionsPage() {
           </p>
         </div>
         <CanAccess permission="sessions.manage">
-          <button
-            type="button"
+          <Button
+            variant="destructive"
             onClick={() => logoutAllMutation.mutate()}
             disabled={logoutAllMutation.isPending}
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-rose-600 px-5 text-sm font-bold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+            className="h-11 rounded-xl px-5 text-sm font-bold"
           >
             {logoutAllMutation.isPending ? "Logging out..." : "Logout from all devices"}
-          </button>
+          </Button>
         </CanAccess>
       </div>
 
@@ -216,65 +183,60 @@ export default function SessionsPage() {
         ) : sessions.length === 0 ? (
           <div className="px-6 py-10 text-sm text-slate-500">No active sessions were found for this account.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
-                  <SessionTableHeader label="Device" columnKey="device" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
-                  <SessionTableHeader label="Browser" columnKey="browser" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
-                  <SessionTableHeader label="Login Time" columnKey="loginTime" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
-                  <SessionTableHeader label="IP Address" columnKey="ipAddress" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
-                  <SessionTableHeader label="Status" columnKey="status" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedSessions.map((session) => {
-                  const isPendingAction = terminateSessionMutation.isPending && pendingSessionId === session.id;
+          <Table className="min-w-full">
+            <TableHeader>
+              <TableRow>
+                <SortableTableHead label="Device" columnKey="device" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                <SortableTableHead label="Browser" columnKey="browser" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden md:table-cell" />
+                <SortableTableHead label="Login Time" columnKey="loginTime" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden lg:table-cell" />
+                <SortableTableHead label="IP Address" columnKey="ipAddress" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="hidden lg:table-cell" />
+                <SortableTableHead label="Status" columnKey="status" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} />
+                <TableCell className="text-right font-medium">Action</TableCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedSessions.map((session) => {
+                const isPendingAction = terminateSessionMutation.isPending && pendingSessionId === session.id;
 
-                  return (
-                    <tr key={session.id} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-6 py-5 align-top">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-slate-900">{session.device ?? "Unknown device"}</p>
-                          <p className="text-xs text-slate-400">{session.rememberMe ? "Remembered session" : "Standard session"}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top text-sm text-slate-600">{session.browser ?? "Unknown browser"}</td>
-                      <td className="px-6 py-5 align-top">
-                        <div className="space-y-1 text-sm text-slate-600">
-                          <p>{formatDateTime(session.loginTime)}</p>
-                          <p className="text-xs text-slate-400">Last active {formatDateTime(session.lastActivityAt)}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top text-sm text-slate-600">{session.ipAddress ?? "Unknown"}</td>
-                      <td className="px-6 py-5 align-top">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
-                            session.isCurrent ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
-                          }`}
+                return (
+                  <TableRow key={session.id}>
+                    <TableCell className="align-top">
+                      <div className="space-y-1">
+                        <p className="font-medium text-slate-900">{session.device ?? "Unknown device"}</p>
+                        <p className="text-xs text-slate-500 md:hidden">{session.browser ?? "Unknown browser"}</p>
+                        <p className="text-xs text-slate-400">{session.rememberMe ? "Remembered session" : "Standard session"}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-sm text-slate-600 hidden md:table-cell">{session.browser ?? "Unknown browser"}</TableCell>
+                    <TableCell className="align-top hidden lg:table-cell">
+                      <div className="space-y-1 text-sm text-slate-600">
+                        <p>{formatDateTime(session.loginTime)}</p>
+                        <p className="text-xs text-slate-400">Last active {formatDateTime(session.lastActivityAt)}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-sm text-slate-600 hidden lg:table-cell">{session.ipAddress ?? "Unknown"}</TableCell>
+                    <TableCell className="align-top">
+                      <Badge variant={session.isCurrent ? "success" : "secondary"}>
+                        {session.isCurrent ? "Current" : session.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="align-top text-right">
+                      <CanAccess permission="sessions.manage">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => terminateSessionMutation.mutate(session.id)}
+                          disabled={isPendingAction}
                         >
-                          {session.isCurrent ? "Current" : session.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 align-top text-right">
-                        <CanAccess permission="sessions.manage">
-                          <button
-                            type="button"
-                            onClick={() => terminateSessionMutation.mutate(session.id)}
-                            disabled={isPendingAction}
-                            className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition-colors hover:border-rose-200 hover:text-rose-600 disabled:opacity-50"
-                          >
-                            {isPendingAction ? "Terminating..." : session.isCurrent ? "End this session" : "Terminate"}
-                          </button>
-                        </CanAccess>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          {isPendingAction ? "Terminating..." : session.isCurrent ? "End session" : "Terminate"}
+                        </Button>
+                      </CanAccess>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
       </div>
     </div>

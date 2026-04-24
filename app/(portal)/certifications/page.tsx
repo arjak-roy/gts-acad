@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
@@ -64,11 +65,6 @@ import type {
 } from "@/services/certifications/types";
 
 // ── Style constants ──────────────────────────────────────────────────────────
-
-const selectClassName =
-  "block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
-const inputClassName =
-  "block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]";
 
 type CourseOption = { id: string; name: string };
 type Tab = "templates" | "library" | "issued";
@@ -452,7 +448,7 @@ export default function CertificationsPage() {
 
             {tab !== "library" && (
               <select
-                className={selectClassName + " max-w-xs"}
+                className="flex h-10 w-full max-w-xs rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50"
                 value={selectedCourseId}
                 onChange={(e) => setSelectedCourseId(e.target.value)}
                 disabled={isLoadingCourses}
@@ -513,8 +509,8 @@ export default function CertificationsPage() {
           <div className="space-y-3 py-2">
             <label className="text-xs font-semibold text-slate-500 uppercase">
               Title
-              <input
-                className={inputClassName + " mt-1"}
+              <Input
+                className="mt-1"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g. Default Landscape Certificate"
@@ -541,7 +537,7 @@ export default function CertificationsPage() {
           <label className="text-xs font-semibold text-slate-500 uppercase">
             Reason
             <textarea
-              className={inputClassName + " mt-1 min-h-[80px] resize-y"}
+              className="mt-1 flex min-h-[80px] w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84] disabled:cursor-not-allowed disabled:opacity-50 resize-y"
               value={revokeReason}
               onChange={(e) => setRevokeReason(e.target.value)}
               placeholder="Enter revocation reason…"
@@ -1343,8 +1339,7 @@ function BrandingImageUpload({
         </button>
         <span className="text-[10px] text-slate-400">or paste URL below</span>
       </div>
-      <input
-        className={inputClassName}
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="https://… or upload above"
@@ -1419,8 +1414,7 @@ function BrandingSheet({
                   onChange={(e) => update("backgroundColor", e.target.value)}
                   className="h-8 w-8 cursor-pointer rounded border border-slate-200"
                 />
-                <input
-                  className={inputClassName}
+                <Input
                   value={form.backgroundColor}
                   onChange={(e) => update("backgroundColor", e.target.value)}
                 />
@@ -1447,11 +1441,11 @@ function BrandingSheet({
             <div className="grid grid-cols-2 gap-3">
               <label className="text-xs text-slate-500">
                 Name
-                <input className={inputClassName + " mt-1"} value={form.signatory1Name} onChange={(e) => update("signatory1Name", e.target.value)} />
+                <Input className="mt-1" value={form.signatory1Name} onChange={(e) => update("signatory1Name", e.target.value)} />
               </label>
               <label className="text-xs text-slate-500">
                 Title
-                <input className={inputClassName + " mt-1"} value={form.signatory1Title} onChange={(e) => update("signatory1Title", e.target.value)} />
+                <Input className="mt-1" value={form.signatory1Title} onChange={(e) => update("signatory1Title", e.target.value)} />
               </label>
             </div>
             <BrandingImageUpload
@@ -1467,11 +1461,11 @@ function BrandingSheet({
             <div className="grid grid-cols-2 gap-3">
               <label className="text-xs text-slate-500">
                 Name
-                <input className={inputClassName + " mt-1"} value={form.signatory2Name} onChange={(e) => update("signatory2Name", e.target.value)} />
+                <Input className="mt-1" value={form.signatory2Name} onChange={(e) => update("signatory2Name", e.target.value)} />
               </label>
               <label className="text-xs text-slate-500">
                 Title
-                <input className={inputClassName + " mt-1"} value={form.signatory2Title} onChange={(e) => update("signatory2Title", e.target.value)} />
+                <Input className="mt-1" value={form.signatory2Title} onChange={(e) => update("signatory2Title", e.target.value)} />
               </label>
             </div>
             <BrandingImageUpload

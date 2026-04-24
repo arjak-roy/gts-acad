@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, Users, Lock } from "lucide-react";
 
@@ -50,7 +50,7 @@ const ROLE_COLUMN_OPTIONS = [
   { key: "status", label: "Status" },
 ];
 
-export default function RolesPage() {
+function RolesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [roles, setRoles] = useState<RoleListItem[]>([]);
@@ -203,7 +203,7 @@ export default function RolesPage() {
         <RolesTableSkeleton />
       ) : (
         <Card>
-          <Table className="min-w-[980px]">
+          <Table className="min-w-full">
             <TableHeader className="sticky-admin-table-header">
               <TableRow>
                 {!preferences.hiddenColumnIds.includes("name") ? <SortableTableHead label="Role" columnKey="name" activeSort={sortState.column} activeDirection={sortState.direction} onSort={handleSort} className="w-[200px]" /> : null}
@@ -308,5 +308,23 @@ function RolesTableSkeleton() {
         ))}
       </div>
     </Card>
+  );
+}
+
+export default function RolesPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-[250px]" />
+        <div className="grid gap-4 md:grid-cols-3">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+        </div>
+        <RolesTableSkeleton />
+      </div>
+    }>
+      <RolesPageContent />
+    </Suspense>
   );
 }

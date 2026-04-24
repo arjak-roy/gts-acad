@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,14 +30,28 @@ type Props = {
   onCreated: () => void;
 };
 
+const formSchema = z.object({
+  name: z.string().min(1, "Role Name is required"),
+  code: z.string().min(1, "Code is required").regex(/^[A-Z0-9_]+$/, "Code can only contain uppercase letters, numbers, and underscores"),
+  description: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
 export function AddRoleSheet({ onCreated }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [allPermissions, setAllPermissions] = useState<PermissionGroup[]>([]);
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
-  const [form, setForm] = useState({ name: "", code: "", description: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { name: "", code: "", description: "" },
+  });
+
+  const nameValue = watch("name");
 
   const fetchPermissions = useCallback(async () => {
     try {
@@ -53,22 +70,23 @@ export function AddRoleSheet({ onCreated }: Props) {
   useEffect(() => {
     if (open) {
       fetchPermissions();
-      setForm({ name: "", code: "", description: "" });
+      reset();
       setSelectedPermissionIds(new Set());
       setError(null);
     }
-  }, [open, fetchPermissions]);
+  }, [open, fetchPermissions, reset]);
 
   // Auto-generate code from name
   useEffect(() => {
-    const code = form.name
+    if (!nameValue) return;
+    const nextCode = nameValue
       .trim()
       .toUpperCase()
       .replace(/[^A-Z0-9\s]/g, "")
       .replace(/\s+/g, "_")
       .slice(0, 50);
-    setForm((f) => ({ ...f, code }));
-  }, [form.name]);
+    setValue("code", nextCode, { shouldValidate: true });
+  }, [nameValue, setValue]);
 
   const handlePermissionToggle = (permId: string) => {
     setSelectedPermissionIds((prev) => {
@@ -91,8 +109,7 @@ export function AddRoleSheet({ onCreated }: Props) {
     });
   };
 
-  const handleSubmit = async () => {
-    if (!form.name.trim() || !form.code.trim()) return;
+  const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     setError(null);
     try {
@@ -100,9 +117,9 @@ export function AddRoleSheet({ onCreated }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name.trim(),
-          code: form.code.trim(),
-          description: form.description.trim() || null,
+          name: values.name.trim(),
+          code: values.code.trim(),
+          description: values.description?.trim() || null,
           permissionIds: Array.from(selectedPermissionIds),
         }),
       });
@@ -148,17 +165,18 @@ export function AddRoleSheet({ onCreated }: Props) {
                 <label className="mb-1 block text-xs font-medium text-slate-500">Role Name</label>
                 <Input
                   placeholder="e.g. Regional Manager"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  {...register("name")}
                 />
+                {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Code</label>
                 <Input
                   placeholder="AUTO_GENERATED"
-                  value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                  {...register("code")}
+                  onChange={(e) => setValue("code", e.target.value.toUpperCase(), { shouldValidate: true })}
                 />
+                {errors.code && <p className="mt-1 text-xs text-red-500">{errors.code.message}</p>}
                 <p className="mt-1 text-[10px] text-slate-400">
                   Auto-generated from name. Must be unique and alphanumeric with underscores.
                 </p>
@@ -167,8 +185,7 @@ export function AddRoleSheet({ onCreated }: Props) {
                 <label className="mb-1 block text-xs font-medium text-slate-500">Description</label>
                 <Input
                   placeholder="Optional description"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  {...register("description")}
                 />
               </div>
             </div>
@@ -222,7 +239,7 @@ export function AddRoleSheet({ onCreated }: Props) {
             <Button variant="secondary" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={isSubmitting || !form.name.trim() || !form.code.trim()}>
+            <Button onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
               Create Role
             </Button>

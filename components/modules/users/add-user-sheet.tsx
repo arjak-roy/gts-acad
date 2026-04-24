@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,15 +26,27 @@ type Props = {
   onCreated: () => void;
 };
 
+const formSchema = z.object({
+  name: z.string().min(1, "Full Name is required"),
+  email: z.string().min(1, "Email is required").email("Please enter a valid email address"),
+  phone: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
 export function AddUserSheet({ onCreated }: Props) {
   const { hasRole } = useRbac();
   const [open, setOpen] = useState(false);
   const [roles, setRoles] = useState<RoleOption[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [isLoadingRoles, setIsLoadingRoles] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { name: "", email: "", phone: "" },
+  });
 
   const canAssignSuperAdmin = hasRole(SUPER_ADMIN_ROLE_CODE);
   const availableRoles = roles.filter(
@@ -80,17 +95,22 @@ export function AddUserSheet({ onCreated }: Props) {
 
   useEffect(() => {
     if (!open) {
-      setForm({ name: "", email: "", phone: "" });
+      reset();
       setSelectedRoleIds([]);
       setError(null);
     }
-  }, [open]);
+  }, [open, reset]);
 
   function toggleRole(roleId: string) {
     setSelectedRoleIds((current) => (current.includes(roleId) ? current.filter((value) => value !== roleId) : [...current, roleId]));
   }
 
-  async function handleSubmit() {
+  async function onSubmit(values: FormValues) {
+    if (selectedRoleIds.length === 0) {
+      setError("Please select at least one role.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -101,9 +121,9 @@ export function AddUserSheet({ onCreated }: Props) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          phone: form.phone,
+          name: values.name,
+          email: values.email,
+          phone: values.phone,
           roleIds: selectedRoleIds,
         }),
       });
@@ -145,15 +165,18 @@ export function AddUserSheet({ onCreated }: Props) {
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Full Name</label>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Aisha Sharma" />
+              <Input {...register("name")} placeholder="Aisha Sharma" />
+              {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Email</label>
-              <Input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="aisha@gts-academy.app" />
+              <Input {...register("email")} placeholder="aisha@gts-academy.app" />
+              {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Phone</label>
-              <Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Optional phone number" />
+              <Input {...register("phone")} placeholder="Optional phone number" />
+              {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone.message}</p>}
             </div>
           </div>
 
@@ -193,7 +216,7 @@ export function AddUserSheet({ onCreated }: Props) {
               <Button variant="secondary" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} disabled={isSubmitting || !form.name.trim() || !form.email.trim() || selectedRoleIds.length === 0}>
+              <Button onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Create User
               </Button>
