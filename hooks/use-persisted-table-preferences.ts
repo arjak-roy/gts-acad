@@ -30,15 +30,28 @@ export function usePersistedTablePreferences({
   columnIds = EMPTY_COLUMN_IDS,
   lockedColumnIds = EMPTY_COLUMN_IDS,
 }: UsePersistedTablePreferencesOptions) {
+  const stablePageSizes = useMemo(
+    () => pageSizes,
+    [pageSizes?.join(",")],
+  );
+  const stableColumnIds = useMemo(
+    () => columnIds,
+    [columnIds.join("\u001f")],
+  );
+  const stableLockedColumnIds = useMemo(
+    () => lockedColumnIds,
+    [lockedColumnIds.join("\u001f")],
+  );
+
   const resolvePreference = useCallback(
     (value: StoredTablePreference | undefined) =>
       resolveStoredTablePreference(value, {
         defaultPageSize,
-        pageSizes,
-        columnIds,
-        lockedColumnIds,
+        pageSizes: stablePageSizes,
+        columnIds: stableColumnIds,
+        lockedColumnIds: stableLockedColumnIds,
       }),
-    [columnIds, defaultPageSize, lockedColumnIds, pageSizes],
+    [defaultPageSize, stableColumnIds, stableLockedColumnIds, stablePageSizes],
   );
 
   const [preferences, setPreferences] = useState<ResolvedTablePreference>(() =>
@@ -138,7 +151,7 @@ export function usePersistedTablePreferences({
 
   const toggleColumnVisibility = useCallback(
     (columnId: string) => {
-      if (lockedColumnIds.includes(columnId)) {
+      if (stableLockedColumnIds.includes(columnId)) {
         return;
       }
 
@@ -156,7 +169,7 @@ export function usePersistedTablePreferences({
         return nextPreference;
       });
     },
-    [lockedColumnIds, persistPreferencePatch, resolvePreference],
+    [persistPreferencePatch, resolvePreference, stableLockedColumnIds],
   );
 
   const resetPreferences = useCallback(() => {
@@ -166,8 +179,8 @@ export function usePersistedTablePreferences({
   }, [persistPreferencePatch, resolvePreference]);
 
   const visibleColumnIds = useMemo(
-    () => columnIds.filter((columnId) => !preferences.hiddenColumnIds.includes(columnId)),
-    [columnIds, preferences.hiddenColumnIds],
+    () => stableColumnIds.filter((columnId) => !preferences.hiddenColumnIds.includes(columnId)),
+    [preferences.hiddenColumnIds, stableColumnIds],
   );
 
   return {
