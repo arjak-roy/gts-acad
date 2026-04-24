@@ -7,7 +7,8 @@ export {
   sendInternalUserPasswordResetService,
   updateInternalUserService,
 } from "@/services/users/commands";
-export { getInternalUserRolesService, getUserByIdService, getUsersService } from "@/services/users/queries";
+export { getInternalUserRolesService, getUserByIdService, getUsersService, searchUsersService } from "@/services/users/queries";
+export type { UserSearchItem } from "@/services/users/queries";
 
 export {
   onboardCandidateService,

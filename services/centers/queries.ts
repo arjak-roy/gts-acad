@@ -66,6 +66,57 @@ function mapCenterRecord(center: {
   };
 }
 
+export type CentreSearchItem = {
+  id: string;
+  name: string;
+  addressSummary: string;
+  complianceStatus: string;
+  isActive: boolean;
+};
+
+export async function searchCentresService(query: string, limit: number): Promise<CentreSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const centres = await prisma.trainingCentre.findMany({
+      where: {
+        OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { addressLine1: { contains: query, mode: "insensitive" } },
+          { postalCode: { contains: query, mode: "insensitive" } },
+          { location: { name: { contains: query, mode: "insensitive" } } },
+          { location: { state: { name: { contains: query, mode: "insensitive" } } } },
+        ],
+      },
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      take: limit,
+      include: {
+        location: {
+          include: {
+            state: { include: { country: true } },
+          },
+        },
+      },
+    });
+
+    return centres.map((c) => ({
+      id: c.id,
+      name: c.name,
+      addressSummary: buildAddressSummary([
+        c.addressLine1,
+        c.location?.name,
+        c.location?.state.name,
+        c.location?.state.country.name,
+      ]),
+      complianceStatus: c.complianceStatus ?? "pending",
+      isActive: c.isActive,
+    }));
+  } catch (error) {
+    console.warn("Centre search fallback activated", error);
+    return [];
+  }
+}
+
 export async function listCentersService(): Promise<CenterListItem[]> {
   if (!isDatabaseConfigured) {
     return MOCK_CENTERS.map((center) => center);

@@ -8,7 +8,9 @@ export {
   listCitiesService,
   listCountriesService,
   listStatesService,
+  searchCentresService,
 } from "@/services/centers/queries";
+export type { CentreSearchItem } from "@/services/centers/queries";
 
 export type {
   CenterCreateResult,

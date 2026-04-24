@@ -501,6 +501,50 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
   };
 }
 
+export type CurriculumSearchItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  courseName: string;
+};
+
+export async function searchCurriculumService(query: string, limit: number): Promise<CurriculumSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const curricula = await prisma.curriculum.findMany({
+      where: {
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+          { course: { name: { contains: query, mode: "insensitive" } } },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        course: { select: { name: true } },
+      },
+    });
+
+    return curricula.map((c) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      status: c.status,
+      courseName: c.course.name,
+    }));
+  } catch (error) {
+    console.warn("Curriculum search fallback activated", error);
+    return [];
+  }
+}
+
 export async function listCurriculaByCourseService(courseId: string): Promise<CurriculumSummary[]> {
   if (!isDatabaseConfigured) {
     return [];

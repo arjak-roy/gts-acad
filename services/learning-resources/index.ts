@@ -19,7 +19,9 @@ export {
   listLearningResourceLookupsService,
   listLearningResourcesService,
   listLearningResourceVersionsService,
+  searchLearningResourcesService,
 } from "@/services/learning-resources/queries";
+export type { LearningResourceSearchItem } from "@/services/learning-resources/queries";
 export type {
   LearningResourceAssignmentItem,
   LearningResourceAttachmentItem,

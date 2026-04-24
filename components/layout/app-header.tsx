@@ -1,8 +1,8 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Bell, Menu, Plus, Search, User } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -10,26 +10,31 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CanAccess } from "@/components/ui/can-access";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { SearchCommandPalette } from "@/components/layout/search-command-palette";
 import { useDashboardUI } from "@/hooks/use-dashboard-ui";
-import { useDebounce } from "@/hooks/use-debounce";
 import { useRbac } from "@/lib/rbac-context";
 
 export function AppHeader() {
-  const shouldRedirectFromHeader = useRef(false);
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const toggleSidebar = useDashboardUI((state) => state.toggleSidebar);
   const toggleMobileSidebar = useDashboardUI((state) => state.toggleMobileSidebar);
   const queryClient = useQueryClient();
   const { user, roles } = useRbac();
   const primaryRole = roles[0];
-  const isDashboardPage = pathname === "/dashboard";
-  const isSearchPage = pathname === "/search";
-  const initialQuery = isDashboardPage ? searchParams.get("query") ?? "" : isSearchPage ? searchParams.get("q") ?? "" : "";
-  const [search, setSearch] = useState(initialQuery);
-  const debouncedSearch = useDebounce(search, 300);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Global Ctrl+K / Cmd+K keyboard shortcut
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -40,57 +45,6 @@ export function AppHeader() {
       router.refresh();
     }
   };
-
-  useEffect(() => {
-    shouldRedirectFromHeader.current = false;
-    setSearch(initialQuery);
-  }, [initialQuery, pathname]);
-
-  useEffect(() => {
-    const normalizedSearch = debouncedSearch.trim();
-
-    // Skip if we're on dashboard and the value hasn't changed
-    if (isDashboardPage && debouncedSearch === initialQuery) {
-      return;
-    }
-
-    // Skip if we're not on dashboard/search and haven't triggered a redirect
-    if (!isDashboardPage && !isSearchPage) {
-      if (!shouldRedirectFromHeader.current || normalizedSearch.length < 2) {
-        return;
-      }
-    }
-
-    // Route to search page for dedicated search experience
-    if (!isSearchPage && normalizedSearch.length >= 2) {
-      const params = new URLSearchParams();
-      params.set("q", normalizedSearch);
-      startTransition(() => {
-        router.replace(`/search?${params.toString()}`, { scroll: false });
-      });
-      shouldRedirectFromHeader.current = false;
-      return;
-    }
-
-    // Clear search when too short or empty on search page
-    if (isSearchPage && normalizedSearch.length < 2) {
-      startTransition(() => {
-        router.replace("/search", { scroll: false });
-      });
-      return;
-    }
-
-    // Update url param on search page
-    if (isSearchPage && normalizedSearch.length >= 2) {
-      const params = new URLSearchParams();
-      params.set("q", normalizedSearch);
-      startTransition(() => {
-        router.replace(`/search?${params.toString()}`, { scroll: false });
-      });
-      return;
-    }
-
-  }, [debouncedSearch, initialQuery, isDashboardPage, isSearchPage, router, searchParams]);
 
   return (
     <header className="sticky top-0 z-20 border-b border-[#dde1e6] bg-white/90 backdrop-blur">
@@ -104,21 +58,17 @@ export function AppHeader() {
           </Button>
         </div>
 
-        <div className="relative mx-1 min-w-0 max-w-2xl flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            value={search}
-            onChange={(event) => {
-              shouldRedirectFromHeader.current = true;
-              setSearch(event.target.value);
-            }}
-            className="rounded-full border-slate-200 bg-slate-50 pl-10 pr-10 md:pr-16"
-            placeholder="Search learners, batches, trainers, certificates..."
-          />
-          <span className="absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 md:inline-flex">
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="relative mx-1 flex min-w-0 max-w-2xl flex-1 cursor-pointer items-center rounded-full border border-slate-200 bg-slate-50 px-4 py-2 transition-colors hover:border-slate-300 hover:bg-slate-100"
+        >
+          <Search className="mr-3 h-4 w-4 shrink-0 text-slate-400" />
+          <span className="truncate text-sm text-slate-400">Search learners, batches, trainers, assessments...</span>
+          <span className="ml-auto hidden shrink-0 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 md:inline-flex">
             Ctrl+K
           </span>
-        </div>
+        </button>
+        <SearchCommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
         <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
           <Button variant="ghost" size="icon" className="relative h-9 w-9 md:h-10 md:w-10">

@@ -59,6 +59,56 @@ export async function listAssessmentPoolsService(filters?: {
   }));
 }
 
+export type AssessmentPoolSearchItem = {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  questionType: string;
+  difficultyLevel: string;
+  status: string;
+};
+
+export async function searchAssessmentPoolsService(query: string, limit: number): Promise<AssessmentPoolSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const pools = await prisma.assessmentPool.findMany({
+      where: {
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { code: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        description: true,
+        questionType: true,
+        difficultyLevel: true,
+        status: true,
+      },
+    });
+
+    return pools.map((p) => ({
+      id: p.id,
+      code: p.code,
+      title: p.title,
+      description: p.description,
+      questionType: p.questionType,
+      difficultyLevel: p.difficultyLevel,
+      status: p.status,
+    }));
+  } catch (error) {
+    console.warn("Assessment pool search fallback activated", error);
+    return [];
+  }
+}
+
 export async function getAssessmentPoolByIdService(poolId: string): Promise<AssessmentPoolDetail | null> {
   if (!isDatabaseConfigured) {
     return null;

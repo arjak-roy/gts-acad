@@ -53,6 +53,46 @@ export async function getUsersService(input: GetUsersInput): Promise<InternalUse
   };
 }
 
+export type UserSearchItem = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+};
+
+export async function searchUsersService(query: string, limit: number): Promise<UserSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { email: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      orderBy: [{ name: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true,
+      },
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      isActive: u.isActive,
+    }));
+  } catch (error) {
+    console.warn("User search fallback activated", error);
+    return [];
+  }
+}
+
 export async function getUserByIdService(userId: string): Promise<InternalUserDetail | null> {
   if (!isDatabaseConfigured) {
     return null;

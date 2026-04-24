@@ -5,7 +5,9 @@ export {
   getAssessmentPoolByIdService,
   listQuestionsService,
   getQuestionByIdService,
+  searchAssessmentPoolsService,
 } from "@/services/assessment-pool/queries";
+export type { AssessmentPoolSearchItem } from "@/services/assessment-pool/queries";
 
 export {
   generateAssessmentPoolCode,

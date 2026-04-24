@@ -427,6 +427,50 @@ function buildRoleplayScores(
   };
 }
 
+export type LanguageLabWordSearchItem = {
+  id: string;
+  word: string;
+  englishMeaning: string | null;
+  difficulty: number;
+  isActive: boolean;
+};
+
+export async function searchLanguageLabWordsService(query: string, limit: number): Promise<LanguageLabWordSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const words = await prisma.languageLabWord.findMany({
+      where: {
+        OR: [
+          { word: { contains: query, mode: "insensitive" } },
+          { englishMeaning: { contains: query, mode: "insensitive" } },
+          { phonetic: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      orderBy: [{ word: "asc" }],
+      take: limit,
+      select: {
+        id: true,
+        word: true,
+        englishMeaning: true,
+        difficulty: true,
+        isActive: true,
+      },
+    });
+
+    return words.map((w) => ({
+      id: w.id,
+      word: w.word,
+      englishMeaning: w.englishMeaning,
+      difficulty: w.difficulty,
+      isActive: w.isActive,
+    }));
+  } catch (error) {
+    console.warn("Language lab word search fallback activated", error);
+    return [];
+  }
+}
+
 export async function listLanguageLabWordsService(
   filters: ListLanguageLabWordsInput = { search: "" },
 ): Promise<LanguageLabWordItem[]> {

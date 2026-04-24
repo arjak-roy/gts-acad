@@ -129,6 +129,57 @@ function mapTags(tags: Array<{ id: string; name: string; slug: string }>): Learn
   return tags.map((tag) => ({ id: tag.id, name: tag.name, slug: tag.slug }));
 }
 
+export type LearningResourceSearchItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  contentType: string;
+  status: string;
+  visibility: string;
+  categoryName: string | null;
+};
+
+export async function searchLearningResourcesService(query: string, limit: number): Promise<LearningResourceSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const resources = await prisma.learningResource.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+          { category: { name: { contains: query, mode: "insensitive" } } },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        contentType: true,
+        status: true,
+        visibility: true,
+        category: { select: { name: true } },
+      },
+    });
+
+    return resources.map((r) => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      contentType: r.contentType,
+      status: r.status,
+      visibility: r.visibility,
+      categoryName: r.category?.name ?? null,
+    }));
+  } catch (error) {
+    console.warn("Learning resource search fallback activated", error);
+    return [];
+  }
+}
+
 export async function listLearningResourcesService(
   filters: ListLearningResourcesQueryInput = {
     page: 1,

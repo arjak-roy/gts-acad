@@ -28,6 +28,7 @@ export {
 export {
 	getCandidateCurriculaForBatchService,
 	getCurriculaForBatchService,
+	searchCurriculumService,
 	getCurriculumHealthReportService,
 	getCurriculumBatchMappingsService,
 	getCurriculumByIdService,
@@ -66,3 +67,4 @@ export type {
 	CurriculumStageSummary,
 	CurriculumSummary,
 } from "@/services/curriculum/types";
+export type { CurriculumSearchItem } from "@/services/curriculum/queries";

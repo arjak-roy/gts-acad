@@ -198,7 +198,20 @@ export type DashboardStats = {
   trends: DashboardTrendPoint[];
 };
 
-export type DashboardSearchSection = "insights" | "learners" | "batches" | "trainers" | "programs" | "courses";
+export type DashboardSearchSection =
+  | "insights"
+  | "learners"
+  | "batches"
+  | "trainers"
+  | "programs"
+  | "courses"
+  | "assessments"
+  | "curriculum"
+  | "centres"
+  | "course_content"
+  | "users"
+  | "learning_resources"
+  | "language_lab";
 
 export type DashboardSearchItem = {
   id: string;
@@ -206,6 +219,8 @@ export type DashboardSearchItem = {
   title: string;
   description: string;
   href: string;
+  icon?: string;
+  metadata?: Record<string, string>;
 };
 
 export type DashboardSearchGroup = {

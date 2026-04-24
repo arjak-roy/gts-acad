@@ -169,6 +169,57 @@ export async function resolveCandidateCurriculumContentContextsService(options: 
   return dedupeCandidateContentContexts(contexts).sort(compareCandidateContentContext);
 }
 
+export type CourseContentSearchItem = {
+  id: string;
+  courseId: string;
+  title: string;
+  description: string | null;
+  contentType: string;
+  status: string;
+  courseName: string;
+};
+
+export async function searchCourseContentService(query: string, limit: number): Promise<CourseContentSearchItem[]> {
+  if (!isDatabaseConfigured) return [];
+
+  try {
+    const items = await prisma.courseContent.findMany({
+      where: {
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+          { excerpt: { contains: query, mode: "insensitive" } },
+          { course: { name: { contains: query, mode: "insensitive" } } },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        courseId: true,
+        title: true,
+        description: true,
+        contentType: true,
+        status: true,
+        course: { select: { name: true } },
+      },
+    });
+
+    return items.map((item) => ({
+      id: item.id,
+      courseId: item.courseId,
+      title: item.title,
+      description: item.description,
+      contentType: item.contentType,
+      status: item.status,
+      courseName: item.course.name,
+    }));
+  } catch (error) {
+    console.warn("Course content search fallback activated", error);
+    return [];
+  }
+}
+
 export async function listCourseContentService(courseId?: string, folderId?: string): Promise<ContentListItem[]> {
   if (!isDatabaseConfigured) {
     return [];
