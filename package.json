@@ -65,7 +65,8 @@
     "db:test:seed": "node scripts/run-seed.mjs TEST_DATABASE_URL",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "swagger:generate": "node scripts/generate-swagger-doc.mjs"
   },
   "dependencies": {
     "@100mslive/react-sdk": "^0.11.3",
