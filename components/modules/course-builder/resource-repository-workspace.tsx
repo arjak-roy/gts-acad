@@ -747,7 +747,7 @@ export function ResourceRepositoryWorkspace({ lookups }: { lookups: LearningReso
                       <div className="space-y-1 pb-2 pl-10 pr-2">
                         {filteredRepositoryRootContents.map((content) => (
                           <button
-                            key={content.id}
+                            key={content.isSharedAssignment ? `${content.id}-shared` : content.id}
                             type="button"
                             className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm text-slate-600 transition-colors hover:bg-slate-50"
                             onClick={() => {

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ImportQuestionBankDialog } from "@/components/modules/question-bank/import-question-bank-dialog";
 import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 
 type AssessmentDetail = {
@@ -119,6 +120,7 @@ export default function AssessmentBuilderPage() {
   const [editingMeta, setEditingMeta] = useState(false);
   const [metaForm, setMetaForm] = useState({ title: "", description: "", totalMarks: 100, passingMarks: 40, timeLimitMinutes: null as number | null });
   const [randomization, setRandomization] = useState({ shuffleQuestions: false, shuffleOptions: false, randomSubsetCount: null as number | null });
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   const assessmentId = params.assessmentId;
 
@@ -377,6 +379,13 @@ export default function AssessmentBuilderPage() {
             <Button
               variant="secondary"
               size="sm"
+              onClick={() => setImportDialogOpen(true)}
+            >
+              Import from Question Bank
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => router.push(`/assessments/questions/new?poolId=${assessmentId}&context=assessment`)}
             >
               + Add Question
@@ -444,6 +453,18 @@ export default function AssessmentBuilderPage() {
           </div>
         )}
       </div>
+
+      <ImportQuestionBankDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        assessmentPoolId={detail.id}
+        courseId={null}
+        defaultQuestionType={detail.questionType}
+        onImported={() => {
+          setImportDialogOpen(false);
+          void loadDetail();
+        }}
+      />
     </div>
   );
 }

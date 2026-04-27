@@ -188,7 +188,7 @@ export function CourseContentTab({
             };
 
             return (
-              <div key={content.id} className={[
+              <div key={content.isSharedAssignment ? `${content.id}-shared` : content.id} className={[
                 "flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/50",
                 isDragging ? "bg-primary/[0.04] opacity-60" : "",
               ].filter(Boolean).join(" ")}>

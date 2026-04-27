@@ -185,7 +185,7 @@ export default function AssessmentsPage() {
             key={`pool-${selectedCourseId}-${refreshKey}`}
             courseId={selectedCourseId || undefined}
             onAddAssessment={() => setAddSheetOpen(true)}
-            onSelectAssessment={(poolId) => router.push(`/assessments/${poolId}`)}
+            onSelectAssessment={(poolId) => setDetailPoolId(poolId)}
             onAiGenerate={() => {
               toast.info(
                 "AI-powered assessment generation is coming soon. This feature will use tool calling to automatically create questions based on your prompt.",
