@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 
 interface AnalyticsFilterBarProps {
   courses: { id: string; name: string }[];

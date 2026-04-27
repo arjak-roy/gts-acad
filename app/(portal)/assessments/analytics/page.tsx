@@ -2,17 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, FileText, TrendingUp, Users } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AnalyticsFilterBar, type AnalyticsFilterState } from "@/components/modules/assessment-analytics/analytics-filter-bar";
 import { AnalyticsStatsGrid } from "@/components/modules/assessment-analytics/analytics-stats-grid";
 import { ExportDropdown } from "@/components/modules/assessment-analytics/export-dropdown";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Skeleton } from "@/components/ui/skeleton";
 
 type SummaryRow = {
   assessmentPoolId: string;
@@ -139,7 +137,7 @@ export default function AssessmentAnalyticsPage() {
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [passFailStats, setPassFailStats] = useState<PassFailStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [metaLoading, setMetaLoading] = useState(true);
+  const [, setMetaLoading] = useState(true);
 
   // Load filter metadata
   useEffect(() => {
@@ -215,7 +213,6 @@ export default function AssessmentAnalyticsPage() {
     [router],
   );
 
-  const filterParams = buildFilterQueryString(filters);
   const filterRecord: Record<string, string> = {};
   for (const [key, value] of Object.entries(filters)) {
     if (value) filterRecord[key] = value;
