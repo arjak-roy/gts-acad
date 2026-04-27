@@ -216,48 +216,6 @@ export function resolveCurriculumStageItemAvailability(
     }
   }
 
-  if (release.releaseType === "STAGE_COMPLETION") {
-    if (input.prerequisiteProgressStatus !== "COMPLETED") {
-      const prerequisiteTitle = release.prerequisiteTitle ?? "the previous stage";
-      return {
-        availabilityStatus: "LOCKED",
-        availabilityReason: buildAvailabilityReason({
-          type: "WAITING_FOR_PREREQUISITE_STAGE",
-          message: `Complete ${JSON.stringify(prerequisiteTitle)} to unlock this item.`,
-          unlocksAt: null,
-          prerequisiteStageItemId: null,
-          prerequisiteStageId: null, // Depending on if it's stored in prerequisites
-          prerequisiteModuleId: null,
-          prerequisiteTitle,
-          requiredScorePercent: null,
-          batchOffsetDays: null,
-        }),
-        release,
-      };
-    }
-  }
-
-  if (release.releaseType === "MODULE_COMPLETION") {
-    if (input.prerequisiteProgressStatus !== "COMPLETED") {
-      const prerequisiteTitle = release.prerequisiteTitle ?? "the previous module";
-      return {
-        availabilityStatus: "LOCKED",
-        availabilityReason: buildAvailabilityReason({
-          type: "WAITING_FOR_PREREQUISITE_MODULE",
-          message: `Complete ${JSON.stringify(prerequisiteTitle)} to unlock this item.`,
-          unlocksAt: null,
-          prerequisiteStageItemId: null,
-          prerequisiteStageId: null,
-          prerequisiteModuleId: null, // Depending on if it's stored in prerequisites
-          prerequisiteTitle,
-          requiredScorePercent: null,
-          batchOffsetDays: null,
-        }),
-        release,
-      };
-    }
-  }
-
   if (release.releaseType === "MANUAL") {
     if (!input.manualReleaseAt) {
       return {

@@ -450,8 +450,6 @@ enum CurriculumItemReleaseType {
   BATCH_RELATIVE           @map("batch_relative")
   PREVIOUS_ITEM_COMPLETION @map("previous_item_completion")
   PREVIOUS_ITEM_SCORE      @map("previous_item_score")
-  STAGE_COMPLETION         @map("stage_completion")
-  MODULE_COMPLETION        @map("module_completion")
   MANUAL                   @map("manual")
 
   @@map("curriculum_item_release_type")

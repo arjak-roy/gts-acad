@@ -93,7 +93,7 @@ type CurriculumDetailRecord = {
         sortOrder: number;
         isRequired: boolean;
         releaseConfig: {
-          releaseType: "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "STAGE_COMPLETION" | "MODULE_COMPLETION" | "MANUAL";
+          releaseType: "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "MANUAL";
           releaseAt: Date | null;
           releaseOffsetDays: number | null;
           prerequisiteStageItemId: string | null;
