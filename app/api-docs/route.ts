@@ -1,4 +1,3 @@
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 const swaggerUiHtml = `<!doctype html>
@@ -43,7 +42,7 @@ const swaggerUiHtml = `<!doctype html>
 </html>
 `;
 
-export function GET(_request: NextRequest) {
+export function GET() {
   return new NextResponse(swaggerUiHtml, {
     status: 200,
     headers: {
