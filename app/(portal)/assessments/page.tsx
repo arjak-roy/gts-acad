@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, ClipboardList, ExternalLink } from "lucide-react";
+import { BarChart3, BookOpen, ClipboardList, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddAssessmentSheet } from "@/components/modules/assessment-pool/add-assessment-sheet";
@@ -115,7 +115,7 @@ export default function AssessmentsPage() {
               </div>
 
               <div className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 p-3 xl:max-w-3xl">
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-end">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] md:items-end">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Show linked course</label>
                     <select
@@ -145,6 +145,14 @@ export default function AssessmentsPage() {
                       Content Library
                     </Link>
                   </Button>
+                  <CanAccess permission="assessment_reports.view">
+                    <Button asChild variant="ghost">
+                      <Link href="/assessments/analytics">
+                        <BarChart3 className="h-4 w-4" />
+                        Analytics
+                      </Link>
+                    </Button>
+                  </CanAccess>
                   <CanAccess permission="assessment_reviews.view">
                     <Button asChild variant="ghost">
                       <Link href="/assessments/reviews">
