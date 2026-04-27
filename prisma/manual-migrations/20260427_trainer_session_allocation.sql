@@ -42,9 +42,9 @@ CREATE TABLE IF NOT EXISTS "trainer_session_assignments" (
   "trainer_id"         UUID NOT NULL REFERENCES "trainers"("trainer_id") ON DELETE CASCADE,
   "role"               "trainer_session_role" NOT NULL DEFAULT 'primary',
   "assigned_at"        TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(),
-  "assigned_by_id"     UUID REFERENCES "users"("id") ON DELETE SET NULL,
+  "assigned_by_id"     UUID REFERENCES "users"("user_id") ON DELETE SET NULL,
   "removed_at"         TIMESTAMPTZ(6),
-  "removed_by_id"      UUID REFERENCES "users"("id") ON DELETE SET NULL
+  "removed_by_id"      UUID REFERENCES "users"("user_id") ON DELETE SET NULL
 );
 
 -- Unique constraint: one active assignment per trainer per event
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS "session_history" (
   "history_id"         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "schedule_event_id"  UUID NOT NULL REFERENCES "batch_schedule_events"("event_id") ON DELETE CASCADE,
   "action"             "session_history_action" NOT NULL,
-  "actor_user_id"      UUID REFERENCES "users"("id") ON DELETE SET NULL,
+  "actor_user_id"      UUID REFERENCES "users"("user_id") ON DELETE SET NULL,
   "details"            JSONB NOT NULL DEFAULT '{}',
   "created_at"         TIMESTAMPTZ(6) NOT NULL DEFAULT NOW()
 );

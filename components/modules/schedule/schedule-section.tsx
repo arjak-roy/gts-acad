@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 
@@ -74,6 +74,24 @@ type ScheduleEvent = {
   occurrenceIndex: number;
   isRecurring: boolean;
 };
+
+type EventActionHandlers = {
+  openEdit: (event: ScheduleEvent) => void;
+  openReschedule: (event: ScheduleEvent) => void;
+  openComplete: (event: ScheduleEvent) => void;
+  handleStartLiveClass: (event: ScheduleEvent) => Promise<void>;
+  handleJoinLiveClass: (event: ScheduleEvent) => Promise<void>;
+  handleEndLiveClass: (event: ScheduleEvent) => Promise<void>;
+  openCancelWithReason: (event: ScheduleEvent) => void;
+  cancelEvent: (event: ScheduleEvent) => Promise<void>;
+  openHistory: (event: ScheduleEvent) => Promise<void>;
+};
+
+type EventActionsRenderOptions = {
+  compact?: boolean;
+};
+
+type EventActionsRenderer = (event: ScheduleEvent, options?: EventActionsRenderOptions) => ReactNode;
 
 type BatchOption = {
   id: string;
@@ -402,6 +420,75 @@ function CalendarLegend() {
   );
 }
 
+function EventActionsMenu({
+  event,
+  handlers,
+  compact,
+}: {
+  event: ScheduleEvent;
+  handlers: EventActionHandlers;
+  compact?: boolean;
+}) {
+  const triggerClassName = compact ? "h-6 w-6" : "h-9 w-9";
+  const iconClassName = compact ? "h-3.5 w-3.5" : "h-5 w-5";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={triggerClassName}
+          onClick={(eventClick) => eventClick.stopPropagation()}
+        >
+          <MoreHorizontal className={iconClassName} />
+          <span className="sr-only">Open actions</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(eventClick) => eventClick.stopPropagation()}>
+        <CanAccess permission="schedule.edit">
+          <DropdownMenuItem onSelect={() => handlers.openEdit(event)}>Edit</DropdownMenuItem>
+        </CanAccess>
+        {event.status === "SCHEDULED" || event.status === "RESCHEDULED" ? (
+          <CanAccess permission="schedule.edit">
+            <DropdownMenuItem onSelect={() => handlers.openReschedule(event)}>Reschedule</DropdownMenuItem>
+          </CanAccess>
+        ) : null}
+        {event.status === "SCHEDULED" || event.status === "RESCHEDULED" ? (
+          <CanAccess permission="schedule.edit">
+            <DropdownMenuItem onSelect={() => handlers.openComplete(event)}>Mark Complete</DropdownMenuItem>
+          </CanAccess>
+        ) : null}
+        {event.liveProvider === "HMS" && event.status === "SCHEDULED" ? (
+          <CanAccess permission="schedule.edit">
+            <DropdownMenuItem onSelect={() => void handlers.handleStartLiveClass(event)}>Start Live Class</DropdownMenuItem>
+          </CanAccess>
+        ) : null}
+        {event.liveProvider === "HMS" && event.status === "IN_PROGRESS" ? (
+          <CanAccess permission="schedule.edit">
+            <DropdownMenuItem onSelect={() => void handlers.handleJoinLiveClass(event)}>Join as Host</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void handlers.handleEndLiveClass(event)}>End Live Class</DropdownMenuItem>
+          </CanAccess>
+        ) : null}
+        {event.status !== "CANCELLED" && event.status !== "COMPLETED" ? (
+          <CanAccess permission="schedule.edit">
+            <DropdownMenuItem onSelect={() => handlers.openCancelWithReason(event)}>Cancel with Reason</DropdownMenuItem>
+          </CanAccess>
+        ) : null}
+        {event.status !== "CANCELLED" ? (
+          <CanAccess permission="schedule.delete">
+            <DropdownMenuItem onSelect={() => void handlers.cancelEvent(event)}>Cancel</DropdownMenuItem>
+          </CanAccess>
+        ) : null}
+        <CanAccess permission="schedule.view">
+          <DropdownMenuItem onSelect={() => void handlers.openHistory(event)}>View History</DropdownMenuItem>
+        </CanAccess>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 // ── Month Calendar ────────────────────────────────────────────────────────────
 
 const DOW_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -411,11 +498,13 @@ function MonthCalendarView({
   baseDate,
   onEventClick,
   onDayClick,
+  renderEventActions,
 }: {
   events: ScheduleEvent[];
   baseDate: Date;
   onEventClick?: (event: ScheduleEvent) => void;
   onDayClick?: (date: Date) => void;
+  renderEventActions?: EventActionsRenderer;
 }) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -494,21 +583,29 @@ function MonthCalendarView({
                 {dayEvents.slice(0, 3).map((event) => {
                   const style = getEventTypeStyle(event.type);
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={event.id}
-                      onClick={onEventClick ? (e) => { e.stopPropagation(); onEventClick(event); } : (e) => e.stopPropagation()}
+                      onClick={(eventClick) => eventClick.stopPropagation()}
                       className={cn(
-                        "block w-full truncate rounded px-1 py-[2px] text-left text-[10px] font-semibold leading-[14px] transition-opacity",
-                        onEventClick ? "hover:opacity-75" : "cursor-default",
+                        "flex w-full items-center gap-1 rounded px-1 py-[2px] transition-opacity",
                         style.bg,
                         style.text,
                         event.status === "CANCELLED" && "line-through opacity-40",
                       )}
                     >
-                      <span className="mr-0.5 opacity-60">{formatTime(event.startsAt)}</span>
-                      {event.title}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={onEventClick ? (eventClick) => { eventClick.stopPropagation(); onEventClick(event); } : (eventClick) => eventClick.stopPropagation()}
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-left text-[10px] font-semibold leading-[14px]",
+                          onEventClick ? "hover:opacity-75" : "cursor-default",
+                        )}
+                      >
+                        <span className="mr-0.5 opacity-60">{formatTime(event.startsAt)}</span>
+                        {event.title}
+                      </button>
+                      {renderEventActions ? <div className="shrink-0">{renderEventActions(event, { compact: true })}</div> : null}
+                    </div>
                   );
                 })}
                 {overflow > 0 && (
@@ -530,11 +627,13 @@ function WeekCalendarView({
   baseDate,
   onEventClick,
   onDayClick,
+  renderEventActions,
 }: {
   events: ScheduleEvent[];
   baseDate: Date;
   onEventClick?: (event: ScheduleEvent) => void;
   onDayClick?: (date: Date) => void;
+  renderEventActions?: EventActionsRenderer;
 }) {
   const today = new Date();
   const dow = baseDate.getDay();
@@ -606,25 +705,32 @@ function WeekCalendarView({
                   {dayEvents.map((event) => {
                     const style = getEventTypeStyle(event.type);
                     return (
-                      <button
-                        type="button"
+                      <div
                         key={event.id}
-                        onClick={onEventClick ? (e) => { e.stopPropagation(); onEventClick(event); } : (e) => e.stopPropagation()}
+                        onClick={(eventClick) => eventClick.stopPropagation()}
                         className={cn(
-                          "w-full rounded-lg border p-1.5 text-left transition-all",
-                          onEventClick && "hover:shadow-sm",
+                          "w-full rounded-lg border p-1.5 transition-all",
                           style.bg,
                           style.border,
                           event.status === "CANCELLED" && "opacity-40",
                         )}
                       >
-                        <p className={cn("truncate text-[11px] font-bold leading-snug", style.text)}>
-                          {event.title}
-                        </p>
-                        <p className={cn("mt-0.5 text-[10px] font-medium opacity-60", style.text)}>
-                          {formatTime(event.startsAt)}
-                        </p>
-                      </button>
+                        <div className="flex items-start gap-1">
+                          <button
+                            type="button"
+                            onClick={onEventClick ? (eventClick) => { eventClick.stopPropagation(); onEventClick(event); } : (eventClick) => eventClick.stopPropagation()}
+                            className={cn("min-w-0 flex-1 text-left", onEventClick && "hover:opacity-75")}
+                          >
+                            <p className={cn("truncate text-[11px] font-bold leading-snug", style.text)}>
+                              {event.title}
+                            </p>
+                            <p className={cn("mt-0.5 text-[10px] font-medium opacity-60", style.text)}>
+                              {formatTime(event.startsAt)}
+                            </p>
+                          </button>
+                          {renderEventActions ? <div className="shrink-0">{renderEventActions(event, { compact: true })}</div> : null}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -646,11 +752,13 @@ function DayCalendarView({
   baseDate,
   onEventClick,
   onCreateAtTime,
+  renderEventActions,
 }: {
   events: ScheduleEvent[];
   baseDate: Date;
   onEventClick?: (event: ScheduleEvent) => void;
   onCreateAtTime?: (date: Date, hour: number) => void;
+  renderEventActions?: EventActionsRenderer;
 }) {
   const today = new Date();
   const isToday = isSameDay(baseDate, today);
@@ -726,55 +834,60 @@ function DayCalendarView({
                 {hourEvents.map((event) => {
                   const style = getEventTypeStyle(event.type);
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={event.id}
-                      onClick={onEventClick ? (e) => { e.stopPropagation(); onEventClick(event); } : (e) => e.stopPropagation()}
+                      onClick={(eventClick) => eventClick.stopPropagation()}
                       className={cn(
-                        "w-full rounded-xl border px-4 py-2.5 text-left transition-all",
-                        onEventClick && "hover:shadow-md",
+                        "w-full rounded-xl border px-4 py-2.5 transition-all",
                         style.bg,
                         style.border,
                         event.status === "CANCELLED" && "opacity-40",
                       )}
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className={cn("truncate font-bold text-sm", style.text)}>{event.title}</p>
-                          <div className={cn("mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-medium opacity-70", style.text)}>
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {formatTime(event.startsAt)}
-                              {event.endsAt ? ` – ${formatTime(event.endsAt)}` : ""}
-                            </span>
-                            {event.batchCode && <span>· {event.batchCode}</span>}
-                            {event.location && (
+                          <button
+                            type="button"
+                            onClick={onEventClick ? (eventClick) => { eventClick.stopPropagation(); onEventClick(event); } : (eventClick) => eventClick.stopPropagation()}
+                            className={cn("w-full text-left", onEventClick && "hover:opacity-80")}
+                          >
+                            <p className={cn("truncate font-bold text-sm", style.text)}>{event.title}</p>
+                            <div className={cn("mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-medium opacity-70", style.text)}>
                               <span className="flex items-center gap-1">
-                                <MapPin className="h-3 w-3" />
-                                {event.location}
+                                <Clock className="h-3 w-3" />
+                                {formatTime(event.startsAt)}
+                                {event.endsAt ? ` – ${formatTime(event.endsAt)}` : ""}
                               </span>
-                            )}
-                            {event.meetingUrl && (
-                              <span className="flex items-center gap-1">
-                                <Video className="h-3 w-3" />
-                                Online
-                              </span>
-                            )}
-                            {event.liveProvider === "HMS" && (
-                              <span className="flex items-center gap-1">
-                                <Video className="h-3 w-3" />
-                                {event.status === "IN_PROGRESS" ? "Live Now" : "100ms"}
-                              </span>
-                            )}
-                            {event.linkedAssessmentPoolCode || event.linkedAssessmentPoolTitle ? (
-                              <span className="flex items-center gap-1">
-                                <ClipboardList className="h-3 w-3" />
-                                {event.linkedAssessmentPoolCode ?? event.linkedAssessmentPoolTitle}
-                              </span>
-                            ) : null}
-                          </div>
+                              {event.batchCode && <span>· {event.batchCode}</span>}
+                              {event.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3 w-3" />
+                                  {event.location}
+                                </span>
+                              )}
+                              {event.meetingUrl && (
+                                <span className="flex items-center gap-1">
+                                  <Video className="h-3 w-3" />
+                                  Online
+                                </span>
+                              )}
+                              {event.liveProvider === "HMS" && (
+                                <span className="flex items-center gap-1">
+                                  <Video className="h-3 w-3" />
+                                  {event.status === "IN_PROGRESS" ? "Live Now" : "100ms"}
+                                </span>
+                              )}
+                              {event.linkedAssessmentPoolCode || event.linkedAssessmentPoolTitle ? (
+                                <span className="flex items-center gap-1">
+                                  <ClipboardList className="h-3 w-3" />
+                                  {event.linkedAssessmentPoolCode ?? event.linkedAssessmentPoolTitle}
+                                </span>
+                              ) : null}
+                            </div>
+                          </button>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
+                          {renderEventActions ? renderEventActions(event) : null}
                           <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", style.bg, style.text)}>
                             {getEventTypeLabel(event.type)}
                           </span>
@@ -783,7 +896,7 @@ function DayCalendarView({
                           </span>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -1360,6 +1473,22 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     }
   };
 
+  const eventActionHandlers: EventActionHandlers = {
+    openEdit,
+    openReschedule,
+    openComplete,
+    handleStartLiveClass,
+    handleJoinLiveClass,
+    handleEndLiveClass,
+    openCancelWithReason,
+    cancelEvent,
+    openHistory,
+  };
+
+  const renderEventActions: EventActionsRenderer = (event, options) => (
+    <EventActionsMenu event={event} handlers={eventActionHandlers} compact={options?.compact} />
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -1513,6 +1642,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               baseDate={baseDate}
               onEventClick={canEdit ? openEdit : undefined}
               onDayClick={canCreateInCurrentView ? (date) => openCreate(date) : undefined}
+              renderEventActions={renderEventActions}
             />
           ) : viewMode === "week" ? (
             <WeekCalendarView
@@ -1520,6 +1650,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               baseDate={baseDate}
               onEventClick={canEdit ? openEdit : undefined}
               onDayClick={canCreateInCurrentView ? (date) => openCreate(date) : undefined}
+              renderEventActions={renderEventActions}
             />
           ) : viewMode === "day" ? (
             <DayCalendarView
@@ -1527,6 +1658,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
               baseDate={baseDate}
               onEventClick={canEdit ? openEdit : undefined}
               onCreateAtTime={canCreateInCurrentView ? (date, hour) => openCreate(date, hour) : undefined}
+              renderEventActions={renderEventActions}
             />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -1581,53 +1713,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9">
-                                    <MoreHorizontal className="h-5 w-5" />
-                                    <span className="sr-only">Open actions</span>
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <CanAccess permission="schedule.edit">
-                                    <DropdownMenuItem onSelect={() => openEdit(event)}>Edit</DropdownMenuItem>
-                                  </CanAccess>
-                                  {event.status === "SCHEDULED" || event.status === "RESCHEDULED" ? (
-                                    <CanAccess permission="schedule.edit">
-                                      <DropdownMenuItem onSelect={() => openReschedule(event)}>Reschedule</DropdownMenuItem>
-                                    </CanAccess>
-                                  ) : null}
-                                  {event.status === "SCHEDULED" || event.status === "RESCHEDULED" ? (
-                                    <CanAccess permission="schedule.edit">
-                                      <DropdownMenuItem onSelect={() => openComplete(event)}>Mark Complete</DropdownMenuItem>
-                                    </CanAccess>
-                                  ) : null}
-                                  {event.liveProvider === "HMS" && event.status === "SCHEDULED" ? (
-                                    <CanAccess permission="schedule.edit">
-                                      <DropdownMenuItem onSelect={() => void handleStartLiveClass(event)}>Start Live Class</DropdownMenuItem>
-                                    </CanAccess>
-                                  ) : null}
-                                  {event.liveProvider === "HMS" && event.status === "IN_PROGRESS" ? (
-                                    <CanAccess permission="schedule.edit">
-                                      <DropdownMenuItem onSelect={() => void handleJoinLiveClass(event)}>Join as Host</DropdownMenuItem>
-                                      <DropdownMenuItem onSelect={() => void handleEndLiveClass(event)}>End Live Class</DropdownMenuItem>
-                                    </CanAccess>
-                                  ) : null}
-                                  {event.status !== "CANCELLED" && event.status !== "COMPLETED" ? (
-                                    <CanAccess permission="schedule.edit">
-                                      <DropdownMenuItem onSelect={() => openCancelWithReason(event)}>Cancel with Reason</DropdownMenuItem>
-                                    </CanAccess>
-                                  ) : null}
-                                  {event.status !== "CANCELLED" ? (
-                                    <CanAccess permission="schedule.delete">
-                                      <DropdownMenuItem onSelect={() => void cancelEvent(event)}>Cancel</DropdownMenuItem>
-                                    </CanAccess>
-                                  ) : null}
-                                  <CanAccess permission="schedule.view">
-                                    <DropdownMenuItem onSelect={() => void openHistory(event)}>View History</DropdownMenuItem>
-                                  </CanAccess>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              {renderEventActions(event)}
                             </div>
                           </TableCell>
                         </TableRow>
