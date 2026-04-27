@@ -317,12 +317,7 @@ export function DataTable<TData extends Record<string, unknown>>({
       <div className="overflow-hidden rounded-2xl border border-slate-100">
         <div className="relative w-full overflow-auto">
           <table className="w-full caption-bottom text-sm">
-            <TableHeader
-              className={cn(
-                "bg-slate-50/80",
-                stickyHeader && "sticky-admin-table-header",
-              )}
-            >
+            <TableHeader className="bg-slate-50/80">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
@@ -333,6 +328,7 @@ export function DataTable<TData extends Record<string, unknown>>({
                       <TableHead
                         key={header.id}
                         className={cn(
+                          stickyHeader && "sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm",
                           alignClass(meta?.align as "left" | "center" | "right"),
                           meta?.className,
                         )}
