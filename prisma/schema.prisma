@@ -191,6 +191,37 @@ enum ScheduleEventType {
   @@map("schedule_event_type")
 }
 
+enum TrainerSessionRole {
+  PRIMARY    @map("primary")
+  CO_TRAINER @map("co_trainer")
+  REVIEWER   @map("reviewer")
+
+  @@map("trainer_session_role")
+}
+
+enum SessionType {
+  COURSE_SESSION    @map("course_session")
+  REVIEW_SESSION    @map("review_session")
+  ASSESSMENT_REVIEW @map("assessment_review")
+  WORKSHOP          @map("workshop")
+  WEBINAR           @map("webinar")
+
+  @@map("session_type")
+}
+
+enum SessionHistoryAction {
+  CREATED              @map("created")
+  UPDATED              @map("updated")
+  TRAINER_ASSIGNED     @map("trainer_assigned")
+  TRAINER_REMOVED      @map("trainer_removed")
+  TRAINER_ROLE_CHANGED @map("trainer_role_changed")
+  RESCHEDULED          @map("rescheduled")
+  CANCELLED            @map("cancelled")
+  COMPLETED            @map("completed")
+
+  @@map("session_history_action")
+}
+
 enum LiveClassProvider {
   MANUAL @map("manual")
   HMS    @map("hms")
@@ -638,6 +669,9 @@ model User {
   updatedTrainerProfiles       TrainerProfile[]              @relation("TrainerUpdatedBy")
   trainerStatusChanges         TrainerStatusHistory[]        @relation("TrainerStatusChangedBy")
   grantedRetakes               AssessmentRetakeGrant[]       @relation("RetakeGrantedBy")
+  assignedTrainerSessions      TrainerSessionAssignment[]    @relation("TrainerSessionAssignedBy")
+  removedTrainerSessions       TrainerSessionAssignment[]    @relation("TrainerSessionRemovedBy")
+  sessionHistoryActions        SessionHistory[]              @relation("SessionHistoryActor")
 
   @@map("users")
 }
@@ -1068,11 +1102,12 @@ model TrainerProfile {
   updatedBy             User?                         @relation("TrainerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   leadBatches           Batch[]                       @relation("BatchLeadTrainer")
   batches               Batch[]                       @relation("BatchTrainers")
-  courseAssignments     TrainerCourseAssignment[]
-  assessmentAssignments TrainerAssessmentAssignment[]
-  statusHistory         TrainerStatusHistory[]
-  roleplays             Roleplay[]
-  trainerPmsLogs        TrainerPmsLog[]
+  courseAssignments      TrainerCourseAssignment[]
+  assessmentAssignments  TrainerAssessmentAssignment[]
+  sessionAssignments     TrainerSessionAssignment[]
+  statusHistory          TrainerStatusHistory[]
+  roleplays              Roleplay[]
+  trainerPmsLogs         TrainerPmsLog[]
 
   @@index([userId], map: "idx_trainers_user")
   @@index([availabilityStatus], map: "idx_trainers_availability_status")
@@ -1459,6 +1494,12 @@ model BatchScheduleEvent {
   liveStartedAt          DateTime?          @map("live_started_at") @db.Timestamptz(6)
   liveEndedAt            DateTime?          @map("live_ended_at") @db.Timestamptz(6)
   recurrenceRule         Json               @default("{}") @map("recurrence_rule")
+  sessionType            SessionType?       @map("session_type")
+  rescheduleReason       String?            @map("reschedule_reason")
+  cancellationReason     String?            @map("cancellation_reason")
+  completedAt            DateTime?          @map("completed_at") @db.Timestamptz(6)
+  completionNotes        String?            @map("completion_notes")
+  attendanceCount        Int?               @map("attendance_count")
   createdById            String?            @map("created_by_user_id") @db.Uuid
   createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1467,6 +1508,8 @@ model BatchScheduleEvent {
   linkedAssessmentPool   AssessmentPool?    @relation("ScheduleEventAssessmentPool", fields: [linkedAssessmentPoolId], references: [id], onDelete: SetNull)
   attendanceSession      AttendanceSession? @relation("ScheduleEventAttendanceSession")
   createdBy              User?              @relation("ScheduleEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  trainerAssignments     TrainerSessionAssignment[]
+  sessionHistory         SessionHistory[]
 
   @@index([batchId, startsAt], map: "idx_batch_schedule_events_batch_starts_at")
   @@index([linkedAssessmentPoolId], map: "idx_batch_schedule_events_linked_assessment_pool")
@@ -2476,4 +2519,39 @@ model AiAssessmentJob {
 
   @@index([status], map: "idx_ai_assessment_jobs_status")
   @@map("ai_assessment_jobs")
+}
+
+model TrainerSessionAssignment {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @map("assignment_id") @db.Uuid
+  scheduleEventId  String             @map("schedule_event_id") @db.Uuid
+  trainerProfileId String             @map("trainer_id") @db.Uuid
+  role             TrainerSessionRole @default(PRIMARY)
+  assignedAt       DateTime           @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedById     String?            @map("assigned_by_id") @db.Uuid
+  removedAt        DateTime?          @map("removed_at") @db.Timestamptz(6)
+  removedById      String?            @map("removed_by_id") @db.Uuid
+  scheduleEvent    BatchScheduleEvent @relation(fields: [scheduleEventId], references: [id], onDelete: Cascade)
+  trainerProfile   TrainerProfile     @relation(fields: [trainerProfileId], references: [id], onDelete: Cascade)
+  assignedBy       User?              @relation("TrainerSessionAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  removedBy        User?              @relation("TrainerSessionRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+
+  @@unique([scheduleEventId, trainerProfileId], map: "uq_trainer_session_active")
+  @@index([trainerProfileId], map: "idx_trainer_session_assignments_trainer")
+  @@index([scheduleEventId], map: "idx_trainer_session_assignments_event")
+  @@map("trainer_session_assignments")
+}
+
+model SessionHistory {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @map("history_id") @db.Uuid
+  scheduleEventId String               @map("schedule_event_id") @db.Uuid
+  action          SessionHistoryAction
+  actorUserId     String?              @map("actor_user_id") @db.Uuid
+  details         Json                 @default("{}") @db.JsonB
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  scheduleEvent   BatchScheduleEvent   @relation(fields: [scheduleEventId], references: [id], onDelete: Cascade)
+  actor           User?                @relation("SessionHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([scheduleEventId, createdAt(sort: Desc)], map: "idx_session_history_event")
+  @@index([actorUserId], map: "idx_session_history_actor")
+  @@map("session_history")
 }

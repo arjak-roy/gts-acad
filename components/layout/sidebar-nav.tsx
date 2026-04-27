@@ -58,6 +58,7 @@ const navGroups: NavGroup[] = [
       { href: "/course-builder", label: "Resource Repository", icon: FolderKanban, requiredPermission: routePermissionMap["/course-builder"] },
       { href: "/curriculum-builder", label: "Curriculum Builder", icon: Layers, requiredPermission: routePermissionMap["/curriculum-builder"] },
       { href: "/schedule", label: "Schedule", icon: CalendarCheck, requiredPermission: routePermissionMap["/schedule"] },
+      { href: "/trainer-sessions", label: "Trainer Sessions", icon: CalendarCheck, requiredPermission: routePermissionMap["/trainer-sessions"] },
       { href: "/attendance", label: "Attendance", icon: CalendarCheck, requiredPermission: routePermissionMap["/attendance"] },
       { href: "/assessments", label: "Assessments", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments"] },
       { href: "/assessments/reviews", label: "Assessment Reviews", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments/reviews"] },

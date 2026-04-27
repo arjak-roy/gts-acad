@@ -24,6 +24,28 @@ type ClassMode = "ONLINE" | "OFFLINE";
 type LiveClassProvider = "MANUAL" | "HMS";
 type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY";
 type ScheduleContextType = "batch" | "learner" | "trainer";
+type SessionType = "COURSE_SESSION" | "REVIEW_SESSION" | "ASSESSMENT_REVIEW" | "WORKSHOP" | "WEBINAR";
+type TrainerSessionRole = "PRIMARY" | "CO_TRAINER" | "REVIEWER";
+
+const SESSION_TYPE_OPTIONS: { label: string; value: SessionType }[] = [
+  { label: "Course Session", value: "COURSE_SESSION" },
+  { label: "Review Session", value: "REVIEW_SESSION" },
+  { label: "Assessment Review", value: "ASSESSMENT_REVIEW" },
+  { label: "Workshop", value: "WORKSHOP" },
+  { label: "Webinar", value: "WEBINAR" },
+];
+
+const TRAINER_ROLE_OPTIONS: { label: string; value: TrainerSessionRole }[] = [
+  { label: "Primary", value: "PRIMARY" },
+  { label: "Co-Trainer", value: "CO_TRAINER" },
+  { label: "Reviewer", value: "REVIEWER" },
+];
+
+type TrainerAssignmentFormItem = {
+  trainerProfileId: string;
+  role: TrainerSessionRole;
+  label: string;
+};
 
 type ScheduleEvent = {
   id: string;
@@ -145,6 +167,8 @@ type EventFormState = {
   meetingUrl: string;
   liveProvider: LiveClassProvider;
   linkedAssessmentPoolId: string;
+  sessionType: SessionType | "";
+  trainers: TrainerAssignmentFormItem[];
   isRecurring: boolean;
   frequency: RecurrenceFrequency;
   interval: number;
@@ -166,6 +190,8 @@ const DEFAULT_FORM: EventFormState = {
   meetingUrl: "",
   liveProvider: "MANUAL" as LiveClassProvider,
   linkedAssessmentPoolId: "",
+  sessionType: "",
+  trainers: [],
   isRecurring: false,
   frequency: "WEEKLY",
   interval: 1,
@@ -293,6 +319,8 @@ function buildEventPayload(form: EventFormState) {
     meetingUrl: form.meetingUrl,
     liveProvider: form.type === "CLASS" && form.classMode === "ONLINE" ? form.liveProvider : "MANUAL",
     linkedAssessmentPoolId: eventTypeSupportsCourseBuilderAssessment(form.type) ? form.linkedAssessmentPoolId || null : null,
+    sessionType: form.sessionType || null,
+    trainers: form.trainers.map((t) => ({ trainerProfileId: t.trainerProfileId, role: t.role })),
   };
 
   if (form.type === "CLASS") {
@@ -802,6 +830,20 @@ export function ScheduleSection({ title, description }: { title: string; descrip
     endsAt: toLocalDateTimeInput(new Date(Date.now() + 2 * 60 * 60 * 1000)),
   }));
 
+  // ── Session action dialog state ──
+  const [rescheduleTarget, setRescheduleTarget] = useState<ScheduleEvent | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ startsAt: "", endsAt: "", reason: "" });
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const [cancelReasonTarget, setCancelReasonTarget] = useState<ScheduleEvent | null>(null);
+  const [cancelReasonText, setCancelReasonText] = useState("");
+  const [cancelReasonSubmitting, setCancelReasonSubmitting] = useState(false);
+  const [completeTarget, setCompleteTarget] = useState<ScheduleEvent | null>(null);
+  const [completeForm, setCompleteForm] = useState({ completionNotes: "", attendanceCount: "" });
+  const [completeSubmitting, setCompleteSubmitting] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<ScheduleEvent | null>(null);
+  const [historyItems, setHistoryItems] = useState<Array<{ id: string; action: string; details: Record<string, unknown> | null; createdAt: string; actor: { name: string | null } | null }>>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const range = useMemo(() => getRangeForView(baseDate, viewMode), [baseDate, viewMode]);
   const rangeFromTime = range.from.getTime();
   const rangeToTime = range.to.getTime();
@@ -1049,6 +1091,8 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       meetingUrl: event.meetingUrl ?? "",
       liveProvider: event.liveProvider ?? "MANUAL",
       linkedAssessmentPoolId: event.linkedAssessmentPoolId ?? "",
+      sessionType: (event as any).sessionType ?? "",
+      trainers: [],
       isRecurring: false,
       frequency: "WEEKLY",
       interval: 1,
@@ -1200,6 +1244,119 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       const message = cancelError instanceof Error ? cancelError.message : "Failed to cancel event.";
       setError(message);
       toast.error(message);
+    }
+  };
+
+  // ── Session action handlers ──
+
+  const openReschedule = (event: ScheduleEvent) => {
+    setRescheduleTarget(event);
+    setRescheduleForm({
+      startsAt: toLocalDateTimeInput(new Date(event.startsAt)),
+      endsAt: event.endsAt ? toLocalDateTimeInput(new Date(event.endsAt)) : "",
+      reason: "",
+    });
+  };
+
+  const submitReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleForm.reason.trim() || !rescheduleForm.startsAt) return;
+    setRescheduleSubmitting(true);
+    try {
+      const response = await fetch(`/api/schedule/${rescheduleTarget.id}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startsAt: new Date(rescheduleForm.startsAt).toISOString(),
+          endsAt: rescheduleForm.endsAt ? new Date(rescheduleForm.endsAt).toISOString() : null,
+          reason: rescheduleForm.reason.trim(),
+        }),
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? "Failed to reschedule.");
+      }
+      setRescheduleTarget(null);
+      await loadEvents();
+      toast.success("Session rescheduled.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reschedule.");
+    } finally {
+      setRescheduleSubmitting(false);
+    }
+  };
+
+  const openCancelWithReason = (event: ScheduleEvent) => {
+    setCancelReasonTarget(event);
+    setCancelReasonText("");
+  };
+
+  const submitCancelWithReason = async () => {
+    if (!cancelReasonTarget || !cancelReasonText.trim()) return;
+    setCancelReasonSubmitting(true);
+    try {
+      const response = await fetch(`/api/schedule/${cancelReasonTarget.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: cancelReasonText.trim() }),
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? "Failed to cancel session.");
+      }
+      setCancelReasonTarget(null);
+      await loadEvents();
+      toast.success("Session cancelled.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel session.");
+    } finally {
+      setCancelReasonSubmitting(false);
+    }
+  };
+
+  const openComplete = (event: ScheduleEvent) => {
+    setCompleteTarget(event);
+    setCompleteForm({ completionNotes: "", attendanceCount: "" });
+  };
+
+  const submitComplete = async () => {
+    if (!completeTarget) return;
+    setCompleteSubmitting(true);
+    try {
+      const response = await fetch(`/api/schedule/${completeTarget.id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          completionNotes: completeForm.completionNotes.trim() || null,
+          attendanceCount: completeForm.attendanceCount ? Number(completeForm.attendanceCount) : null,
+        }),
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? "Failed to complete session.");
+      }
+      setCompleteTarget(null);
+      await loadEvents();
+      toast.success("Session marked as completed.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to complete session.");
+    } finally {
+      setCompleteSubmitting(false);
+    }
+  };
+
+  const openHistory = async (event: ScheduleEvent) => {
+    setHistoryTarget(event);
+    setHistoryLoading(true);
+    setHistoryItems([]);
+    try {
+      const response = await fetch(`/api/schedule/${event.id}/history`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Failed to load history.");
+      const payload = await response.json();
+      setHistoryItems(payload.data ?? []);
+    } catch {
+      toast.error("Failed to load session history.");
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -1435,6 +1592,16 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                                   <CanAccess permission="schedule.edit">
                                     <DropdownMenuItem onSelect={() => openEdit(event)}>Edit</DropdownMenuItem>
                                   </CanAccess>
+                                  {event.status === "SCHEDULED" || event.status === "RESCHEDULED" ? (
+                                    <CanAccess permission="schedule.edit">
+                                      <DropdownMenuItem onSelect={() => openReschedule(event)}>Reschedule</DropdownMenuItem>
+                                    </CanAccess>
+                                  ) : null}
+                                  {event.status === "SCHEDULED" || event.status === "RESCHEDULED" ? (
+                                    <CanAccess permission="schedule.edit">
+                                      <DropdownMenuItem onSelect={() => openComplete(event)}>Mark Complete</DropdownMenuItem>
+                                    </CanAccess>
+                                  ) : null}
                                   {event.liveProvider === "HMS" && event.status === "SCHEDULED" ? (
                                     <CanAccess permission="schedule.edit">
                                       <DropdownMenuItem onSelect={() => void handleStartLiveClass(event)}>Start Live Class</DropdownMenuItem>
@@ -1446,11 +1613,19 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                                       <DropdownMenuItem onSelect={() => void handleEndLiveClass(event)}>End Live Class</DropdownMenuItem>
                                     </CanAccess>
                                   ) : null}
+                                  {event.status !== "CANCELLED" && event.status !== "COMPLETED" ? (
+                                    <CanAccess permission="schedule.edit">
+                                      <DropdownMenuItem onSelect={() => openCancelWithReason(event)}>Cancel with Reason</DropdownMenuItem>
+                                    </CanAccess>
+                                  ) : null}
                                   {event.status !== "CANCELLED" ? (
                                     <CanAccess permission="schedule.delete">
                                       <DropdownMenuItem onSelect={() => void cancelEvent(event)}>Cancel</DropdownMenuItem>
                                     </CanAccess>
                                   ) : null}
+                                  <CanAccess permission="schedule.view">
+                                    <DropdownMenuItem onSelect={() => void openHistory(event)}>View History</DropdownMenuItem>
+                                  </CanAccess>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -1560,6 +1735,76 @@ export function ScheduleSection({ title, description }: { title: string; descrip
                 </select>
               </div>
             ) : null}
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Session Type</label>
+              <select
+                value={form.sessionType}
+                onChange={(event) => setForm((current) => ({ ...current, sessionType: event.target.value as SessionType | "" }))}
+                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+              >
+                <option value="">None</option>
+                {SESSION_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Assigned Trainers</label>
+              {form.trainers.length > 0 ? (
+                <div className="space-y-1.5">
+                  {form.trainers.map((trainer, idx) => (
+                    <div key={trainer.trainerProfileId} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className="flex-1 truncate text-sm font-medium text-slate-700">{trainer.label}</span>
+                      <select
+                        value={trainer.role}
+                        onChange={(event) => {
+                          const nextTrainers = [...form.trainers];
+                          nextTrainers[idx] = { ...nextTrainers[idx], role: event.target.value as TrainerSessionRole };
+                          setForm((current) => ({ ...current, trainers: nextTrainers }));
+                        }}
+                        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700"
+                      >
+                        {TRAINER_ROLE_OPTIONS.map((roleOpt) => (
+                          <option key={roleOpt.value} value={roleOpt.value}>{roleOpt.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setForm((current) => ({ ...current, trainers: current.trainers.filter((_, i) => i !== idx) }))}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <select
+                value=""
+                onChange={(event) => {
+                  const selectedId = event.target.value;
+                  if (!selectedId || form.trainers.some((t) => t.trainerProfileId === selectedId)) return;
+                  const option = trainerOptions.find((o) => o.id === selectedId);
+                  if (!option) return;
+                  setForm((current) => ({
+                    ...current,
+                    trainers: [...current.trainers, { trainerProfileId: selectedId, role: "PRIMARY", label: option.label }],
+                  }));
+                }}
+                className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900 shadow-sm"
+              >
+                <option value="">Add trainer...</option>
+                {trainerOptions
+                  .filter((opt) => !form.trainers.some((t) => t.trainerProfileId === opt.id))
+                  .map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.meta ? `${option.label} - ${option.meta}` : option.label}
+                    </option>
+                  ))}
+              </select>
+            </div>
 
             {supportsAssessmentPool ? (
               <div className="space-y-2">
@@ -1749,6 +1994,136 @@ export function ScheduleSection({ title, description }: { title: string; descrip
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* ── Reschedule Dialog ── */}
+      {rescheduleTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Reschedule Session</h3>
+            <p className="mt-1 text-sm text-slate-500">Rescheduling &ldquo;{rescheduleTarget.title}&rdquo;</p>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">New Start Time</label>
+                <Input type="datetime-local" value={rescheduleForm.startsAt} onChange={(e) => setRescheduleForm((c) => ({ ...c, startsAt: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">New End Time</label>
+                <Input type="datetime-local" value={rescheduleForm.endsAt} onChange={(e) => setRescheduleForm((c) => ({ ...c, endsAt: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Reason *</label>
+                <textarea
+                  value={rescheduleForm.reason}
+                  onChange={(e) => setRescheduleForm((c) => ({ ...c, reason: e.target.value }))}
+                  className="min-h-20 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                  placeholder="Why is this session being rescheduled?"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setRescheduleTarget(null)} disabled={rescheduleSubmitting}>Cancel</Button>
+              <Button onClick={() => void submitReschedule()} disabled={rescheduleSubmitting || !rescheduleForm.reason.trim()}>
+                {rescheduleSubmitting ? "Saving..." : "Reschedule"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Cancel with Reason Dialog ── */}
+      {cancelReasonTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Cancel Session</h3>
+            <p className="mt-1 text-sm text-slate-500">Cancelling &ldquo;{cancelReasonTarget.title}&rdquo;</p>
+            <div className="mt-4 space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Reason *</label>
+              <textarea
+                value={cancelReasonText}
+                onChange={(e) => setCancelReasonText(e.target.value)}
+                className="min-h-20 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                placeholder="Why is this session being cancelled?"
+              />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setCancelReasonTarget(null)} disabled={cancelReasonSubmitting}>Close</Button>
+              <Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void submitCancelWithReason()} disabled={cancelReasonSubmitting || !cancelReasonText.trim()}>
+                {cancelReasonSubmitting ? "Cancelling..." : "Cancel Session"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Complete Session Dialog ── */}
+      {completeTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Complete Session</h3>
+            <p className="mt-1 text-sm text-slate-500">Marking &ldquo;{completeTarget.title}&rdquo; as completed</p>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Attendance Count</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={completeForm.attendanceCount}
+                  onChange={(e) => setCompleteForm((c) => ({ ...c, attendanceCount: e.target.value }))}
+                  placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Completion Notes</label>
+                <textarea
+                  value={completeForm.completionNotes}
+                  onChange={(e) => setCompleteForm((c) => ({ ...c, completionNotes: e.target.value }))}
+                  className="min-h-20 w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                  placeholder="Optional notes about the session"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setCompleteTarget(null)} disabled={completeSubmitting}>Cancel</Button>
+              <Button onClick={() => void submitComplete()} disabled={completeSubmitting}>
+                {completeSubmitting ? "Saving..." : "Mark Complete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Session History Dialog ── */}
+      {historyTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Session History</h3>
+            <p className="mt-1 text-sm text-slate-500">{historyTarget.title}</p>
+            <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+              {historyLoading ? (
+                <p className="text-sm text-slate-500">Loading history...</p>
+              ) : historyItems.length === 0 ? (
+                <p className="text-sm text-slate-400">No history entries found.</p>
+              ) : (
+                historyItems.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="accent">{item.action.replaceAll("_", " ")}</Badge>
+                      <span className="text-xs text-slate-400">{formatDateTime(item.createdAt)}</span>
+                    </div>
+                    {item.actor?.name ? <p className="mt-1 text-xs text-slate-500">by {item.actor.name}</p> : null}
+                    {item.details ? (
+                      <p className="mt-1 text-xs text-slate-500">{JSON.stringify(item.details)}</p>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button variant="secondary" onClick={() => setHistoryTarget(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

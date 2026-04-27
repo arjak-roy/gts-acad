@@ -1,4 +1,4 @@
-import { AuditActionType, AuditEntityType, EvaluationStatus, Prisma } from "@prisma/client";
+import { AuditActionType, AuditEntityType, EvaluationStatus, SessionHistoryAction, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma-client";
 import { CancelScheduleEventInput, CreateScheduleEventInput, UpdateScheduleEventInput } from "@/lib/validation-schemas/schedule";
@@ -7,6 +7,13 @@ import {
   sendCandidateBatchEventNotifications,
 } from "@/services/candidate-notifications";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
+import { checkMultipleTrainerConflicts } from "@/services/schedule/conflict-detection";
+import { logSessionEvent } from "@/services/schedule/session-history";
+import { assignTrainersToEvent } from "@/services/schedule/trainer-assignment";
+import {
+  notifyTrainersOfSessionCancelled,
+  notifyTrainersOfSessionRescheduled,
+} from "@/services/schedule/trainer-notifications";
 import {
   batchScheduleEventDelegate,
   buildOccurrenceDates,
@@ -482,5 +489,297 @@ export async function cancelScheduleEventService(input: CancelScheduleEventInput
   return {
     cancelledCount: affected.length,
     ids: affected.map((event: { id: string }) => event.id),
+  };
+}
+
+// ── Extended Session Lifecycle ─────────────────────────────────
+
+export async function rescheduleSessionService(
+  eventId: string,
+  newStartsAt: string,
+  newEndsAt: string | null,
+  reason: string,
+  actorUserId: string | null,
+) {
+  ensureScheduleWritesAvailable();
+
+  const event = (await batchScheduleEventDelegate(prisma).findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      batchId: true,
+      title: true,
+      startsAt: true,
+      endsAt: true,
+      status: true,
+      batch: { select: { code: true } },
+    },
+  })) as {
+    id: string; batchId: string; title: string; startsAt: Date; endsAt: Date | null;
+    status: EvaluationStatus; batch: { code: string };
+  } | null;
+
+  if (!event) {
+    throw new Error("Schedule event not found.");
+  }
+
+  if (event.status === EvaluationStatus.CANCELLED || event.status === EvaluationStatus.COMPLETED) {
+    throw new Error("Cannot reschedule a cancelled or completed session.");
+  }
+
+  const parsedStartsAt = parseDate(newStartsAt, "new start time");
+  const parsedEndsAt = newEndsAt ? parseDate(newEndsAt, "new end time") : null;
+
+  if (parsedEndsAt && parsedEndsAt.getTime() <= parsedStartsAt.getTime()) {
+    throw new Error("End time must be after start time.");
+  }
+
+  const oldStartsAt = event.startsAt.toISOString();
+  const oldEndsAt = event.endsAt?.toISOString() ?? null;
+
+  // Re-check conflicts for all assigned trainers with new times
+  const assignments = await prisma.trainerSessionAssignment.findMany({
+    where: { scheduleEventId: eventId, removedAt: null },
+    select: { trainerProfileId: true, role: true },
+  });
+
+  const effectiveEndsAt = parsedEndsAt ?? new Date(parsedStartsAt.getTime() + 60 * 60 * 1000);
+  let conflictWarnings: Record<string, unknown> = {};
+  if (assignments.length > 0) {
+    const results = await checkMultipleTrainerConflicts(
+      assignments.map((a) => ({ trainerProfileId: a.trainerProfileId, role: a.role })),
+      parsedStartsAt,
+      effectiveEndsAt,
+      eventId,
+    );
+    for (const [trainerId, result] of results.entries()) {
+      if (result.hasConflict) {
+        conflictWarnings[trainerId] = result;
+      }
+    }
+  }
+
+  await batchScheduleEventDelegate(prisma).update({
+    where: { id: eventId },
+    data: {
+      startsAt: parsedStartsAt,
+      endsAt: parsedEndsAt,
+      status: EvaluationStatus.RESCHEDULED,
+      rescheduleReason: reason.trim(),
+    },
+  });
+
+  await logSessionEvent(eventId, SessionHistoryAction.RESCHEDULED, actorUserId, {
+    oldStartsAt,
+    oldEndsAt,
+    newStartsAt: parsedStartsAt.toISOString(),
+    newEndsAt: parsedEndsAt?.toISOString() ?? null,
+    reason: reason.trim(),
+  });
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.BATCH,
+    entityId: event.batchId,
+    action: AuditActionType.UPDATED,
+    status: "SCHEDULE",
+    actorUserId,
+    message: `Session "${event.title}" rescheduled for batch ${event.batch.code}.`,
+    metadata: {
+      eventId,
+      batchCode: event.batch.code,
+      oldStartsAt,
+      newStartsAt: parsedStartsAt.toISOString(),
+      reason: reason.trim(),
+    },
+  });
+
+  // Notify trainers and learners
+  try {
+    await notifyTrainersOfSessionRescheduled(eventId, reason.trim(), actorUserId);
+    await sendCandidateBatchEventNotifications({
+      batchId: event.batchId,
+      actorUserId,
+      events: [{
+        id: eventId,
+        title: event.title,
+        type: "CLASS",
+        startsAt: parsedStartsAt,
+        endsAt: parsedEndsAt,
+        location: null,
+        meetingUrl: null,
+      }],
+    });
+  } catch (error) {
+    console.warn("Session reschedule notification dispatch failed.", error);
+  }
+
+  return {
+    eventId,
+    status: "RESCHEDULED",
+    startsAt: parsedStartsAt.toISOString(),
+    endsAt: parsedEndsAt?.toISOString() ?? null,
+    reason: reason.trim(),
+    conflictWarnings,
+  };
+}
+
+export async function cancelSessionService(
+  eventId: string,
+  reason: string,
+  actorUserId: string | null,
+) {
+  ensureScheduleWritesAvailable();
+
+  const event = (await batchScheduleEventDelegate(prisma).findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      batchId: true,
+      title: true,
+      status: true,
+      startsAt: true,
+      endsAt: true,
+      batch: { select: { code: true } },
+    },
+  })) as {
+    id: string; batchId: string; title: string; status: EvaluationStatus;
+    startsAt: Date; endsAt: Date | null; batch: { code: string };
+  } | null;
+
+  if (!event) {
+    throw new Error("Schedule event not found.");
+  }
+
+  if (event.status === EvaluationStatus.CANCELLED) {
+    throw new Error("Session is already cancelled.");
+  }
+
+  if (event.status === EvaluationStatus.COMPLETED) {
+    throw new Error("Cannot cancel a completed session.");
+  }
+
+  await batchScheduleEventDelegate(prisma).update({
+    where: { id: eventId },
+    data: {
+      status: EvaluationStatus.CANCELLED,
+      cancellationReason: reason.trim(),
+    },
+  });
+
+  await logSessionEvent(eventId, SessionHistoryAction.CANCELLED, actorUserId, {
+    reason: reason.trim(),
+    previousStatus: event.status,
+  });
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.BATCH,
+    entityId: event.batchId,
+    action: AuditActionType.UPDATED,
+    status: "SCHEDULE",
+    actorUserId,
+    message: `Session "${event.title}" cancelled for batch ${event.batch.code}.`,
+    metadata: {
+      eventId,
+      batchCode: event.batch.code,
+      reason: reason.trim(),
+    },
+  });
+
+  // Notify trainers and learners
+  try {
+    await notifyTrainersOfSessionCancelled(eventId, reason.trim(), actorUserId);
+    await sendCandidateBatchEventNotifications({
+      batchId: event.batchId,
+      actorUserId,
+      events: [{
+        id: eventId,
+        title: event.title,
+        type: "CLASS",
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        location: null,
+        meetingUrl: null,
+      }],
+    });
+  } catch (error) {
+    console.warn("Session cancellation notification dispatch failed.", error);
+  }
+
+  return {
+    eventId,
+    status: "CANCELLED",
+    reason: reason.trim(),
+  };
+}
+
+export async function completeSessionService(
+  eventId: string,
+  completionNotes: string | null,
+  attendanceCount: number | null,
+  actorUserId: string | null,
+) {
+  ensureScheduleWritesAvailable();
+
+  const event = (await batchScheduleEventDelegate(prisma).findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      batchId: true,
+      title: true,
+      status: true,
+      batch: { select: { code: true } },
+    },
+  })) as {
+    id: string; batchId: string; title: string; status: EvaluationStatus;
+    batch: { code: string };
+  } | null;
+
+  if (!event) {
+    throw new Error("Schedule event not found.");
+  }
+
+  if (event.status !== EvaluationStatus.SCHEDULED && event.status !== EvaluationStatus.RESCHEDULED) {
+    throw new Error("Only scheduled or rescheduled sessions can be marked as completed.");
+  }
+
+  const completedAt = new Date();
+
+  await batchScheduleEventDelegate(prisma).update({
+    where: { id: eventId },
+    data: {
+      status: EvaluationStatus.COMPLETED,
+      completedAt,
+      completionNotes: completionNotes?.trim() ?? null,
+      attendanceCount,
+    },
+  });
+
+  await logSessionEvent(eventId, SessionHistoryAction.COMPLETED, actorUserId, {
+    completedAt: completedAt.toISOString(),
+    completionNotes: completionNotes?.trim() ?? null,
+    attendanceCount,
+  });
+
+  await createAuditLogEntry({
+    entityType: AuditEntityType.BATCH,
+    entityId: event.batchId,
+    action: AuditActionType.UPDATED,
+    status: "SCHEDULE",
+    actorUserId,
+    message: `Session "${event.title}" marked as completed for batch ${event.batch.code}.`,
+    metadata: {
+      eventId,
+      batchCode: event.batch.code,
+      completedAt: completedAt.toISOString(),
+      attendanceCount,
+    },
+  });
+
+  return {
+    eventId,
+    status: "COMPLETED",
+    completedAt: completedAt.toISOString(),
+    completionNotes: completionNotes?.trim() ?? null,
+    attendanceCount,
   };
 }

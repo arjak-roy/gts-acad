@@ -20,6 +20,12 @@ export {
   getTrainerPerformanceService,
   listTrainerActivityService,
 } from "@/services/trainers/insights";
+export {
+  getTrainerCalendar,
+  getTrainerCalendarStats,
+  getTrainerPastSessions,
+  getTrainerUpcomingSessions,
+} from "@/services/trainers/calendar";
 export { commitTrainerImportService, previewTrainerImportService } from "@/services/trainers/import";
 
 export type {
@@ -40,3 +46,7 @@ export type {
   TrainerStatus,
   TrainerStatusHistoryItem,
 } from "@/services/trainers/types";
+export type {
+  TrainerCalendarEvent,
+  TrainerCalendarStats,
+} from "@/services/trainers/calendar";

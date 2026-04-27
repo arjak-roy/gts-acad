@@ -1,8 +1,10 @@
-import { BatchMode, EvaluationStatus, LiveClassProvider, Prisma } from "@prisma/client";
+import { BatchMode, EvaluationStatus, LiveClassProvider, Prisma, SessionType, TrainerSessionRole } from "@prisma/client";
 
 export type ScheduleEventType = "CLASS" | "TEST";
 export type LiveClassProviderType = "MANUAL" | "HMS" | "WEBRTC";
 export type ScheduleContextType = "batch" | "learner" | "trainer";
+export type SessionTypeValue = "COURSE_SESSION" | "REVIEW_SESSION" | "ASSESSMENT_REVIEW" | "WORKSHOP" | "WEBINAR";
+export type TrainerSessionRoleValue = "PRIMARY" | "CO_TRAINER" | "REVIEWER";
 
 export type BatchScheduleEventWhereInput = Record<string, unknown>;
 
@@ -72,4 +74,25 @@ export type ScheduleEventListResponse = {
   page: number;
   pageSize: number;
   pageCount: number;
+};
+
+export type TrainerAssignmentInput = {
+  trainerProfileId: string;
+  role?: TrainerSessionRoleValue;
+};
+
+export type ScheduleEventWithTrainers = ScheduleEventListItem & {
+  sessionType: SessionTypeValue | null;
+  rescheduleReason: string | null;
+  cancellationReason: string | null;
+  completedAt: string | null;
+  completionNotes: string | null;
+  attendanceCount: number | null;
+  trainers: Array<{
+    id: string;
+    trainerProfileId: string;
+    trainerName: string;
+    employeeCode: string;
+    role: string;
+  }>;
 };

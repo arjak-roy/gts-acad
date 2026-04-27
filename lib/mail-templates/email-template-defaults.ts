@@ -16,6 +16,7 @@ import {
   QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,
   QUIZ_RESULT_EMAIL_TEMPLATE_KEY,
   TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
+  TRAINER_SESSION_NOTIFICATION_EMAIL_TEMPLATE_KEY,
   TWO_FACTOR_EMAIL_TEMPLATE_KEY,
   USER_INVITATION_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-keys";
@@ -38,6 +39,7 @@ export {
   QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY,
   QUIZ_RESULT_EMAIL_TEMPLATE_KEY,
   TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
+  TRAINER_SESSION_NOTIFICATION_EMAIL_TEMPLATE_KEY,
   TWO_FACTOR_EMAIL_TEMPLATE_KEY,
   USER_INVITATION_EMAIL_TEMPLATE_KEY,
 } from "@/lib/mail-templates/email-template-keys";
@@ -734,6 +736,46 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateSource[] = [
             <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Program:</strong> {{programName}}</p>
           </div>
           <a href="{{loginUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">View Schedule</a>
+        </div>
+      </div>
+    `,
+    isSystem: true,
+    isActive: true,
+  },
+  {
+    key: TRAINER_SESSION_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+    name: "Trainer Session Notification",
+    description: "Email sent to trainers when a session is created, rescheduled, or cancelled.",
+    subject: "{{action}}: {{sessionTitle}}",
+    textContent: [
+      "Hello {{recipientName}},",
+      "",
+      "{{action}}",
+      "",
+      "Session: {{sessionTitle}}",
+      "Course: {{courseName}}",
+      "Batch: {{batchName}}",
+      "Date: {{startsAt}} – {{endsAt}}",
+      "Location: {{location}}",
+      "Meeting Link: {{meetingUrl}}",
+      "",
+      "Login to view your schedule: {{portalUrl}}",
+    ].join("\n"),
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; background: #f6f7f9; padding: 32px; color: #0f172a;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dde1e6; border-radius: 20px; padding: 32px;">
+          <p style="margin: 0 0 12px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.12em;">{{appName}}</p>
+          <h1 style="margin: 0 0 16px; font-size: 28px; line-height: 1.2; color: #0d3b84;">{{action}}</h1>
+          <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #334155;">Hello {{recipientName}},</p>
+          <div style="margin: 0 0 20px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px;">
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Session:</strong> {{sessionTitle}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Course:</strong> {{courseName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Batch:</strong> {{batchName}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Date:</strong> {{startsAt}} – {{endsAt}}</p>
+            <p style="margin: 0 0 8px; font-size: 13px; color: #475569;"><strong>Location:</strong> {{location}}</p>
+            <p style="margin: 0; font-size: 13px; color: #475569;"><strong>Meeting Link:</strong> {{meetingUrl}}</p>
+          </div>
+          <a href="{{portalUrl}}" style="display: inline-block; margin-bottom: 16px; padding: 12px 18px; background: #0d3b84; border-radius: 12px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none;">View Schedule</a>
         </div>
       </div>
     `,

@@ -7,6 +7,8 @@ const liveClassProviderSchema = z.enum(["MANUAL", "HMS"]);
 const recurrenceFrequencySchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
 const scheduleUpdateScopeSchema = z.enum(["SINGLE", "THIS_AND_FUTURE", "SERIES"]);
 const scheduleContextTypeSchema = z.enum(["batch", "learner", "trainer"]);
+const sessionTypeSchema = z.enum(["COURSE_SESSION", "REVIEW_SESSION", "ASSESSMENT_REVIEW", "WORKSHOP", "WEBINAR"]);
+const trainerSessionRoleSchema = z.enum(["PRIMARY", "CO_TRAINER", "REVIEWER"]);
 
 const recurrenceRuleSchema = z
   .object({
@@ -35,6 +37,11 @@ export const createScheduleEventSchema = z
     meetingUrl: z.string().trim().url().max(1000).optional().or(z.literal("")).default(""),
     liveProvider: liveClassProviderSchema.optional().default("MANUAL"),
     linkedAssessmentPoolId: z.string().trim().min(1).optional().nullable(),
+    sessionType: sessionTypeSchema.optional(),
+    trainers: z.array(z.object({
+      trainerProfileId: z.string().trim().min(1),
+      role: trainerSessionRoleSchema.optional().default("PRIMARY"),
+    })).optional().default([]),
     recurrence: recurrenceRuleSchema.optional(),
   })
   .refine((value) => (value.type === "CLASS" ? Boolean(value.classMode) : true), {
@@ -66,6 +73,7 @@ export const updateScheduleEventSchema = z
     meetingUrl: z.string().trim().url().max(1000).or(z.literal("")).nullable().optional(),
     liveProvider: liveClassProviderSchema.optional(),
     linkedAssessmentPoolId: z.string().trim().min(1).nullable().optional(),
+    sessionType: sessionTypeSchema.nullable().optional(),
     scope: scheduleUpdateScopeSchema.optional().default("SINGLE"),
   })
   .refine((value) => {
@@ -128,3 +136,46 @@ export type UpdateScheduleEventInput = z.infer<typeof updateScheduleEventSchema>
 export type ListScheduleEventsQueryInput = z.infer<typeof listScheduleEventsQuerySchema>;
 export type CancelScheduleEventInput = z.infer<typeof cancelScheduleEventSchema>;
 export type ScheduleContextTypeInput = z.infer<typeof scheduleContextTypeSchema>;
+
+// ── Trainer Session Schemas ────────────────────────────────────
+
+export const rescheduleSessionSchema = z.object({
+  startsAt: z.string().trim().datetime(),
+  endsAt: z.string().trim().datetime().nullable().optional(),
+  reason: z.string().trim().min(2).max(1000),
+}).refine((value) => {
+  if (!value.endsAt) return true;
+  return new Date(value.endsAt).getTime() > new Date(value.startsAt).getTime();
+}, { message: "End time must be after start time.", path: ["endsAt"] });
+
+export const cancelSessionSchema = z.object({
+  reason: z.string().trim().min(2).max(1000),
+});
+
+export const completeSessionSchema = z.object({
+  completionNotes: z.string().trim().max(2000).optional().nullable(),
+  attendanceCount: z.coerce.number().int().min(0).optional().nullable(),
+});
+
+export const assignTrainerSchema = z.object({
+  trainerProfileId: z.string().trim().min(1),
+  role: trainerSessionRoleSchema.optional().default("PRIMARY"),
+});
+
+export const updateTrainerRoleSchema = z.object({
+  role: trainerSessionRoleSchema,
+});
+
+export const conflictCheckSchema = z.object({
+  trainerProfileId: z.string().trim().min(1),
+  startsAt: z.string().trim().datetime(),
+  endsAt: z.string().trim().datetime(),
+  excludeEventId: z.string().trim().min(1).optional(),
+});
+
+export type RescheduleSessionInput = z.infer<typeof rescheduleSessionSchema>;
+export type CancelSessionInput = z.infer<typeof cancelSessionSchema>;
+export type CompleteSessionInput = z.infer<typeof completeSessionSchema>;
+export type AssignTrainerInput = z.infer<typeof assignTrainerSchema>;
+export type UpdateTrainerRoleInput = z.infer<typeof updateTrainerRoleSchema>;
+export type ConflictCheckInput = z.infer<typeof conflictCheckSchema>;

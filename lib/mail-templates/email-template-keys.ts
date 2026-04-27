@@ -18,6 +18,7 @@ export const ASSESSMENT_RESULT_EMAIL_TEMPLATE_KEY = "assessment-result";
 export const QUIZ_ASSIGNED_EMAIL_TEMPLATE_KEY = "quiz-assigned";
 export const QUIZ_RESULT_EMAIL_TEMPLATE_KEY = "quiz-result";
 export const TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY = "trainer-assignment";
+export const TRAINER_SESSION_NOTIFICATION_EMAIL_TEMPLATE_KEY = "trainer-session-notification";
 export const GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY = "general-notification";
 
 export type EmailTemplateKeyOption = {
@@ -116,6 +117,11 @@ export const EMAIL_TEMPLATE_KEY_OPTIONS: EmailTemplateKeyOption[] = [
     key: TRAINER_ASSIGNMENT_EMAIL_TEMPLATE_KEY,
     label: "Trainer Assignment",
     description: "Email sent when a trainer is assigned to a batch or course.",
+  },
+  {
+    key: TRAINER_SESSION_NOTIFICATION_EMAIL_TEMPLATE_KEY,
+    label: "Trainer Session Notification",
+    description: "Email sent to trainers when a session is created, rescheduled, or cancelled.",
   },
   {
     key: GENERAL_NOTIFICATION_EMAIL_TEMPLATE_KEY,

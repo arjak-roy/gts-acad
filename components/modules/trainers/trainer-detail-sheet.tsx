@@ -28,7 +28,7 @@ type TrainerDetailSheetProps = {
 
 export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: TrainerDetailSheetProps) {
   const [trainer, setTrainer] = useState<TrainerDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "performance" | "activity" | "status-history">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "performance" | "activity" | "status-history" | "sessions">("overview");
   const [statusHistory, setStatusHistory] = useState<TrainerStatusHistoryItem[]>([]);
   const [statusHistoryLoading, setStatusHistoryLoading] = useState(false);
   const [statusHistoryError, setStatusHistoryError] = useState<string | null>(null);
@@ -41,6 +41,9 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
   const [isActivityLoading, setIsActivityLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; status: string; startsAt: string; endsAt: string | null; batchCode: string | null; role: string; sessionType: string | null }>>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !trainerId) {
@@ -58,6 +61,9 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
     setActivityTotal(0);
     setActivityError(null);
     setIsActivityLoading(false);
+    setSessions([]);
+    setSessionsLoading(false);
+    setSessionsError(null);
     setActiveTab("overview");
 
     Promise.all([
@@ -115,6 +121,9 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
       setStatusHistory([]);
       setStatusHistoryLoading(false);
       setStatusHistoryError(null);
+      setSessions([]);
+      setSessionsLoading(false);
+      setSessionsError(null);
       setActiveTab("overview");
     }
   };
@@ -177,6 +186,33 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
       });
   }, [activeTab, open, statusHistory.length, statusHistoryLoading, trainerId]);
 
+  useEffect(() => {
+    if (!open || !trainerId || activeTab !== "sessions" || sessions.length > 0 || sessionsLoading) {
+      return;
+    }
+
+    setSessionsLoading(true);
+    setSessionsError(null);
+
+    const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    fetch(`/api/trainers/${trainerId}/calendar?from=${from}&to=${to}`, { cache: "no-store" })
+      .then(async (res) => {
+        const payload = (await res.json().catch(() => null)) as { data?: typeof sessions; error?: string } | null;
+        if (!res.ok) {
+          throw new Error(payload?.error ?? "Failed to load sessions.");
+        }
+        setSessions(payload?.data ?? []);
+      })
+      .catch((err) => {
+        setSessionsError(err instanceof Error ? err.message : "Failed to load sessions.");
+      })
+      .finally(() => {
+        setSessionsLoading(false);
+      });
+  }, [activeTab, open, sessions.length, sessionsLoading, trainerId]);
+
   const formatDate = (value: string | null) => {
     if (!value) {
       return "Never";
@@ -238,7 +274,7 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
 
             <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-6">
               <div className="rounded-3xl border border-slate-100 bg-white p-2 shadow-sm">
-                <div className="grid grid-cols-4 gap-1">
+                <div className="grid grid-cols-5 gap-1">
                   <button
                     type="button"
                     className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${
@@ -256,6 +292,15 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
                     onClick={() => setActiveTab("performance")}
                   >
                     Performance
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${
+                      activeTab === "sessions" ? "bg-emerald-100 text-emerald-800" : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                    onClick={() => setActiveTab("sessions")}
+                  >
+                    Sessions
                   </button>
                   <button
                     type="button"
@@ -501,6 +546,32 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
                         <p className="mt-1 text-xs text-slate-400">
                           {formatDate(item.changedAt)}{item.changedByName ? ` · by ${item.changedByName}` : ""}
                         </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {activeTab === "sessions" ? (
+                <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Session Assignments</p>
+                  {sessionsError ? <p className="mt-3 text-sm font-semibold text-rose-600">{sessionsError}</p> : null}
+                  {sessionsLoading ? <p className="mt-3 text-xs font-semibold text-slate-500">Loading sessions…</p> : null}
+                  {!sessionsLoading && !sessionsError && sessions.length === 0 ? (
+                    <p className="mt-3 text-sm text-slate-500">No session assignments found.</p>
+                  ) : null}
+                  <div className="mt-3 space-y-3">
+                    {sessions.map((session) => (
+                      <div key={session.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                        <p className="text-sm font-semibold text-slate-900">{session.title}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span>{formatDate(session.startsAt)}</span>
+                          {session.batchCode ? <span>· {session.batchCode}</span> : null}
+                          <Badge variant="info">{session.role.replaceAll("_", " ")}</Badge>
+                          <Badge variant={session.status === "COMPLETED" ? "success" : session.status === "CANCELLED" ? "danger" : "accent"}>
+                            {session.status.replaceAll("_", " ")}
+                          </Badge>
+                        </div>
                       </div>
                     ))}
                   </div>

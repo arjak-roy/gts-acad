@@ -12,6 +12,7 @@ export const routePermissionMap: Record<string, PermissionRequirement> = {
   "/centers": "centers.view",
   "/trainers": "trainers.view",
   "/schedule": "schedule.view",
+  "/trainer-sessions": "schedule.view",
   "/attendance": "attendance.view",
   "/assessments/reviews": "assessment_reviews.view",
   "/assessments/analytics": "assessment_reports.view",

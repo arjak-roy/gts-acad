@@ -39,6 +39,7 @@ import { AddProgramSheet } from "@/components/modules/programs/add-program-sheet
 import { LanguageLabSection } from "@/components/modules/language-lab/language-lab-section";
 import { LogsActionsSection } from "@/components/modules/logs-actions/logs-actions-section";
 import { ScheduleSection } from "@/components/modules/schedule/schedule-section";
+import { TrainerSessionsSection } from "@/components/modules/schedule/trainer-sessions-section";
 import { TableColumnVisibilityMenu } from "@/components/ui/table-column-visibility-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
@@ -634,6 +635,10 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
 
   if (sectionKey === "schedule") {
     return <ScheduleSection title={section.title} description={section.description} />;
+  }
+
+  if (sectionKey === "trainer-sessions") {
+    return <TrainerSessionsSection />;
   }
 
   if (sectionKey === "language-lab") {
