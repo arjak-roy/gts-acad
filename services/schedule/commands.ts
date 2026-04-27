@@ -1,4 +1,4 @@
-import { AuditActionType, AuditEntityType, EvaluationStatus, SessionHistoryAction, Prisma } from "@prisma/client";
+import { AuditActionType, AuditEntityType, EvaluationStatus, SessionHistoryAction, TrainerSessionRole, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma-client";
 import { CancelScheduleEventInput, CreateScheduleEventInput, UpdateScheduleEventInput } from "@/lib/validation-schemas/schedule";
@@ -9,7 +9,7 @@ import {
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { checkMultipleTrainerConflicts } from "@/services/schedule/conflict-detection";
 import { logSessionEvent } from "@/services/schedule/session-history";
-import { assignTrainersToEvent } from "@/services/schedule/trainer-assignment";
+import { assignTrainerToSession, assignTrainersToEvent, removeTrainerFromSession, updateTrainerSessionRole } from "@/services/schedule/trainer-assignment";
 import {
   notifyTrainersOfSessionCancelled,
   notifyTrainersOfSessionRescheduled,
@@ -157,6 +157,7 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
           location,
           meetingUrl,
           liveProvider,
+          sessionType: input.sessionType ?? null,
           recurrenceRule: occurrence.recurrenceRule,
           createdById: actorUserId ?? null,
         },
@@ -186,6 +187,20 @@ export async function createScheduleEventService(input: CreateScheduleEventInput
       eventIds: createdEvents.map((event) => event.id),
     },
   });
+
+  // Persist trainer assignments selected in the create form for each generated occurrence.
+  if (input.trainers.length > 0) {
+    for (const createdEvent of createdEvents) {
+      await assignTrainersToEvent(
+        createdEvent.id,
+        input.trainers.map((trainer) => ({
+          trainerProfileId: trainer.trainerProfileId,
+          role: (trainer.role as TrainerSessionRole | undefined) ?? TrainerSessionRole.PRIMARY,
+        })),
+        actorUserId ?? null,
+      );
+    }
+  }
 
   try {
     const notificationEvents = createdEvents.map((event) => ({
@@ -320,6 +335,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
       const nextMeetingUrl = input.meetingUrl === undefined ? event.meetingUrl : toNullableText(input.meetingUrl ?? "");
       const nextLiveProvider = input.liveProvider ?? event.liveProvider;
       const nextStatus = input.status ?? event.status;
+      const nextSessionType = input.sessionType === undefined ? event.sessionType ?? null : input.sessionType;
       const nextLinkedAssessmentPoolId = shouldLinkAssessment(nextType)
         ? await syncLinkedAssessmentPoolForBatch(tx, {
             batchId: event.batchId,
@@ -353,6 +369,7 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
           location: nextLocation,
           meetingUrl: nextMeetingUrl,
           liveProvider: nextLiveProvider,
+          sessionType: nextSessionType,
           linkedAssessmentId,
           linkedAssessmentPoolId: nextLinkedAssessmentPoolId,
         },
@@ -389,6 +406,43 @@ export async function updateScheduleEventService(input: UpdateScheduleEventInput
       },
     },
   });
+
+  if (input.trainers !== undefined) {
+    for (const event of updated) {
+      const existingAssignments = await prisma.trainerSessionAssignment.findMany({
+        where: { scheduleEventId: event.id, removedAt: null },
+        select: { id: true, trainerProfileId: true, role: true },
+      });
+
+      const desiredByTrainerId = new Map(
+        input.trainers.map((trainer) => [
+          trainer.trainerProfileId,
+          (trainer.role as TrainerSessionRole | undefined) ?? TrainerSessionRole.PRIMARY,
+        ]),
+      );
+
+      for (const existing of existingAssignments) {
+        if (!desiredByTrainerId.has(existing.trainerProfileId)) {
+          await removeTrainerFromSession(existing.id, actorUserId ?? null);
+        }
+      }
+
+      for (const [trainerProfileId, desiredRole] of desiredByTrainerId.entries()) {
+        const existing = existingAssignments.find((row) => row.trainerProfileId === trainerProfileId);
+        if (!existing) {
+          await assignTrainerToSession(
+            { scheduleEventId: event.id, trainerProfileId, role: desiredRole },
+            actorUserId ?? null,
+          );
+          continue;
+        }
+
+        if (existing.role !== desiredRole) {
+          await updateTrainerSessionRole(existing.id, desiredRole, actorUserId ?? null);
+        }
+      }
+    }
+  }
 
   return {
     updatedCount: updated.length,

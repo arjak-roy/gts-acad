@@ -324,7 +324,8 @@ function shiftDate(baseDate: Date, viewMode: ViewMode, direction: "prev" | "next
   return new Date(baseDate.getFullYear(), baseDate.getMonth() + multiplier, baseDate.getDate());
 }
 
-function buildEventPayload(form: EventFormState) {
+function buildEventPayload(form: EventFormState, options?: { includeTrainers?: boolean }) {
+  const includeTrainers = options?.includeTrainers ?? true;
   const payload: Record<string, unknown> = {
     batchId: form.batchId,
     title: form.title,
@@ -338,8 +339,11 @@ function buildEventPayload(form: EventFormState) {
     liveProvider: form.type === "CLASS" && form.classMode === "ONLINE" ? form.liveProvider : "MANUAL",
     linkedAssessmentPoolId: eventTypeSupportsCourseBuilderAssessment(form.type) ? form.linkedAssessmentPoolId || null : null,
     sessionType: form.sessionType || null,
-    trainers: form.trainers.map((t) => ({ trainerProfileId: t.trainerProfileId, role: t.role })),
   };
+
+  if (includeTrainers) {
+    payload.trainers = form.trainers.map((t) => ({ trainerProfileId: t.trainerProfileId, role: t.role }));
+  }
 
   if (form.type === "CLASS") {
     payload.classMode = form.classMode;
@@ -1238,7 +1242,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
         throw new Error("Class mode is required for class events.");
       }
 
-      const payload = buildEventPayload(form);
+      const payload = buildEventPayload(form, { includeTrainers: !editingEvent || form.trainers.length > 0 });
 
       const response = await fetch(editingEvent ? `/api/schedule/${editingEvent.id}` : "/api/schedule", {
         method: editingEvent ? "PATCH" : "POST",

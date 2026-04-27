@@ -37,7 +37,7 @@ export const createScheduleEventSchema = z
     meetingUrl: z.string().trim().url().max(1000).optional().or(z.literal("")).default(""),
     liveProvider: liveClassProviderSchema.optional().default("MANUAL"),
     linkedAssessmentPoolId: z.string().trim().min(1).optional().nullable(),
-    sessionType: sessionTypeSchema.optional(),
+    sessionType: sessionTypeSchema.nullable().optional(),
     trainers: z.array(z.object({
       trainerProfileId: z.string().trim().min(1),
       role: trainerSessionRoleSchema.optional().default("PRIMARY"),
@@ -74,6 +74,10 @@ export const updateScheduleEventSchema = z
     liveProvider: liveClassProviderSchema.optional(),
     linkedAssessmentPoolId: z.string().trim().min(1).nullable().optional(),
     sessionType: sessionTypeSchema.nullable().optional(),
+    trainers: z.array(z.object({
+      trainerProfileId: z.string().trim().min(1),
+      role: trainerSessionRoleSchema.optional().default("PRIMARY"),
+    })).optional(),
     scope: scheduleUpdateScopeSchema.optional().default("SINGLE"),
   })
   .refine((value) => {

@@ -116,6 +116,7 @@ export function mapScheduleEvent(item: EventRecord & {
     linkedAssessmentPoolId: item.linkedAssessmentPoolId,
     linkedAssessmentPoolCode: item.linkedAssessmentPool?.code ?? null,
     linkedAssessmentPoolTitle: item.linkedAssessmentPool?.title ?? null,
+    sessionType: item.sessionType,
     seriesId: item.seriesId,
     occurrenceIndex: item.occurrenceIndex,
     isRecurring: Boolean(item.seriesId),

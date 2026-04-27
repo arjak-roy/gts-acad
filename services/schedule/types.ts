@@ -36,6 +36,7 @@ export type EventRecord = {
   liveStartedAt: Date | null;
   liveEndedAt: Date | null;
   recurrenceRule: Prisma.JsonValue;
+  sessionType: SessionType | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -63,6 +64,7 @@ export type ScheduleEventListItem = {
   linkedAssessmentPoolId: string | null;
   linkedAssessmentPoolCode: string | null;
   linkedAssessmentPoolTitle: string | null;
+  sessionType: SessionTypeValue | null;
   seriesId: string | null;
   occurrenceIndex: number;
   isRecurring: boolean;
