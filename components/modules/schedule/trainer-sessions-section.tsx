@@ -28,6 +28,20 @@ type TrainerCalendarStats = {
   currentWeek: { sessions: number; hours: number };
 };
 
+type TrainerCalendarStatsApi = {
+  upcomingSessions?: number;
+  completedSessions?: number;
+  cancelledSessions?: number;
+  totalHours?: number;
+  currentWeek?: { sessions?: number; hours?: number };
+  upcomingCount?: number;
+  completedCount?: number;
+  cancelledCount?: number;
+  totalScheduledHours?: number;
+  currentWeekSessions?: number;
+  currentWeekHours?: number;
+};
+
 type TrainerOption = {
   id: string;
   label: string;
@@ -49,6 +63,30 @@ function getStatusColor(status: string) {
     case "IN_PROGRESS": return "warning" as const;
     default: return "info" as const;
   }
+}
+
+function normalizeTrainerStats(input: unknown): TrainerCalendarStats | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const source = input as TrainerCalendarStatsApi;
+
+  const toFinite = (value: unknown, fallback = 0) => {
+    const num = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  };
+
+  return {
+    upcomingSessions: toFinite(source.upcomingSessions ?? source.upcomingCount),
+    completedSessions: toFinite(source.completedSessions ?? source.completedCount),
+    cancelledSessions: toFinite(source.cancelledSessions ?? source.cancelledCount),
+    totalHours: toFinite(source.totalHours ?? source.totalScheduledHours),
+    currentWeek: {
+      sessions: toFinite(source.currentWeek?.sessions ?? source.currentWeekSessions),
+      hours: toFinite(source.currentWeek?.hours ?? source.currentWeekHours),
+    },
+  };
 }
 
 export function TrainerSessionsSection() {
@@ -88,7 +126,9 @@ export function TrainerSessionsSection() {
 
       if (statsRes.ok) {
         const statsPayload = await statsRes.json();
-        setStats(statsPayload.data ?? null);
+        setStats(normalizeTrainerStats(statsPayload.data));
+      } else {
+        setStats(null);
       }
 
       if (calendarRes.ok) {
