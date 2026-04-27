@@ -150,6 +150,8 @@ export async function searchLearningResourcesService(query: string, limit: numbe
           { title: { contains: query, mode: "insensitive" } },
           { description: { contains: query, mode: "insensitive" } },
           { category: { name: { contains: query, mode: "insensitive" } } },
+          { subcategory: { name: { contains: query, mode: "insensitive" } } },
+          { tags: { some: { tag: { name: { contains: query, mode: "insensitive" } } } } },
         ],
       },
       orderBy: [{ updatedAt: "desc" }],

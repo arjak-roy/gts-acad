@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { BookOpen, Mail, Phone, Star, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -343,10 +344,14 @@ export function TrainerDetailSheet({ trainerId, open, onOpenChange, onEdit }: Tr
                     ) : (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {trainer.courses.map((course) => (
-                          <span key={course} className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                          <Link
+                            key={course}
+                            href={`/courses?search=${encodeURIComponent(course)}`}
+                            className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+                          >
                             <BookOpen className="h-3 w-3" />
                             {course}
-                          </span>
+                          </Link>
                         ))}
                       </div>
                     )}

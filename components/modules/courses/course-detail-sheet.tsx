@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
@@ -777,7 +778,11 @@ export function CourseDetailSheet({ courseId, open, onOpenChange, onEdit }: Cour
                     {assessments.length > 0 ? (
                       <div className="mt-4 space-y-2">
                         {assessments.map((assessment) => (
-                          <div key={assessment.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                          <Link
+                            key={assessment.id}
+                            href={`/assessments?viewId=${assessment.id}`}
+                            className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                          >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -797,7 +802,7 @@ export function CourseDetailSheet({ courseId, open, onOpenChange, onEdit }: Cour
                                 <Badge variant="info">{assessment.totalMarks} marks</Badge>
                               </div>
                             </div>
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     ) : (

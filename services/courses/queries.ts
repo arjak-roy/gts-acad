@@ -74,6 +74,7 @@ export async function searchCoursesService(query: string, limit: number): Promis
         OR: [
           { name: { contains: query, mode: "insensitive" } },
           { description: { contains: query, mode: "insensitive" } },
+          { code: { contains: query, mode: "insensitive" } },
         ],
       },
       orderBy: [{ name: "asc" }],

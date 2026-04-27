@@ -12,6 +12,7 @@ import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DataTableFilterBar, type FilterConfig } from "@/components/ui/data-table-filter-bar";
 import { DataTableFilterChips } from "@/components/ui/data-table-filter-chips";
 import { DataTableEmptyState } from "@/components/ui/data-table-empty-state";
+import { SavedFilterPresetsMenu } from "@/components/ui/saved-filter-presets-menu";
 import { BatchDetailSheet } from "@/components/modules/batches/batch-detail-sheet";
 import { BatchEnrollmentSheet } from "@/components/modules/batches/batch-enrollment-sheet";
 import { EditBatchSheet } from "@/components/modules/batches/edit-batch-sheet";
@@ -43,6 +44,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CardLayoutPreset, FlexibleCardGrid, FlexibleCardItem, parseCardLayoutPreset } from "@/components/ui/flexible-card-layout";
 import { CanAccess } from "@/components/ui/can-access";
 import { usePersistedTablePreferences } from "@/hooks/use-persisted-table-preferences";
+import { useSavedFilterPresets } from "@/hooks/use-saved-filter-presets";
+import { getSectionFilterConfigs } from "@/lib/constants/section-filters";
 import { cn } from "@/lib/utils";
 import { PortalSectionContent, PortalSectionTableColumn, PortalSectionTableRow } from "@/types";
 
@@ -187,11 +190,16 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     columnIds: tableColumnOptions.map((column) => column.key),
   });
 
-  // Auto-derive filterable columns from data
-  const filterConfigs = useMemo(
-    () => deriveFilterConfigs(section.tableRows, section.tableColumns),
-    [section.tableRows, section.tableColumns],
-  );
+  // Auto-derive filterable columns from data, then merge with curated configs
+  const filterConfigs = useMemo(() => {
+    const derived = deriveFilterConfigs(section.tableRows, section.tableColumns);
+    const curated = getSectionFilterConfigs(sectionKey ?? "");
+    if (!curated) return derived;
+
+    // Curated filters take priority; append any auto-derived filters not already covered
+    const curatedKeys = new Set(curated.map((f) => f.key));
+    return [...curated, ...derived.filter((f) => !curatedKeys.has(f.key))];
+  }, [section.tableRows, section.tableColumns, sectionKey]);
 
   // Column filter values as a flat map (for bar/chips)
   const columnFilterValues = useMemo(() => {
@@ -201,6 +209,9 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
     }
     return map;
   }, [columnFilters]);
+
+  // Saved filter presets
+  const { presets: savedPresets, savePreset, deletePreset: deleteFilterPreset } = useSavedFilterPresets(tablePreferenceKey);
 
   // URL state sync
   const updateUrl = useCallback(
@@ -253,6 +264,30 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
   const handleColumnFilterRemove = useCallback(
     (key: string) => handleColumnFilterChange(key, ""),
     [handleColumnFilterChange],
+  );
+
+  const handleApplyFilterPreset = useCallback(
+    (filters: Record<string, string>) => {
+      const nextFilters: ColumnFiltersState = [];
+      const urlPatch: Record<string, string | null> = { page: null };
+
+      // Clear all existing filter_ params
+      for (const f of filterConfigs) {
+        urlPatch[`filter_${f.key}`] = null;
+      }
+
+      // Apply preset filters
+      for (const [key, value] of Object.entries(filters)) {
+        if (value) {
+          nextFilters.push({ id: key, value });
+          urlPatch[`filter_${key}`] = value;
+        }
+      }
+
+      setColumnFilters(nextFilters);
+      updateUrl(urlPatch);
+    },
+    [filterConfigs, updateUrl],
   );
 
   const handlePageChange = useCallback(
@@ -704,12 +739,22 @@ export function SectionPageContent({ section, sectionKey }: SectionPageContentPr
             </div>
             {filterConfigs.length > 0 ? (
               <div className="mt-3 space-y-2">
-                <DataTableFilterBar
-                  filters={filterConfigs}
-                  values={columnFilterValues}
-                  onChange={handleColumnFilterChange}
-                  onReset={handleColumnFilterReset}
-                />
+                <div className="flex items-end gap-3">
+                  <DataTableFilterBar
+                    filters={filterConfigs}
+                    values={columnFilterValues}
+                    onChange={handleColumnFilterChange}
+                    onReset={handleColumnFilterReset}
+                    className="flex-1"
+                  />
+                  <SavedFilterPresetsMenu
+                    presets={savedPresets}
+                    currentFilters={columnFilterValues}
+                    onApplyPreset={handleApplyFilterPreset}
+                    onSavePreset={savePreset}
+                    onDeletePreset={deleteFilterPreset}
+                  />
+                </div>
                 <DataTableFilterChips
                   filters={filterConfigs}
                   values={columnFilterValues}

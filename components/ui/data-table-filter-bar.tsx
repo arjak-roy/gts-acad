@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export type FilterConfig = {
   key: string;
   label: string;
-  type: "select" | "text";
+  type: "select" | "text" | "date-range";
   options?: { label: string; value: string }[];
 };
 
@@ -43,6 +43,13 @@ export function DataTableFilterBar({ filters, values, onChange, onReset, classNa
                 </option>
               ))}
             </select>
+          ) : filter.type === "date-range" ? (
+            <input
+              type="date"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+              value={values[filter.key] ?? ""}
+              onChange={(e) => onChange(filter.key, e.target.value)}
+            />
           ) : (
             <input
               type="text"
