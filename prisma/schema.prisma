@@ -501,6 +501,17 @@ enum AssessmentAttemptStatus {
   @@map("assessment_attempt_status")
 }
 
+enum AssessmentReviewHistoryEvent {
+  REVIEW_STARTED   @map("review_started")
+  DRAFT_SAVED      @map("draft_saved")
+  GRADED           @map("graded")
+  OVERRIDE_APPLIED @map("override_applied")
+  FINALIZED        @map("finalized")
+  REOPENED         @map("reopened")
+
+  @@map("assessment_review_history_event")
+}
+
 enum AiJobStatus {
   PENDING    @map("pending")
   PROCESSING @map("processing")
@@ -613,6 +624,9 @@ model User {
   assignedBatchCurricula       BatchCurriculumMapping[]      @relation("BatchCurriculumAssignedBy")
   aiAssessmentJobs             AiAssessmentJob[]             @relation("AiJobCreatedBy")
   reviewedAssessmentAttempts   AssessmentAttempt[]           @relation("AssessmentAttemptReviewedBy")
+  overriddenAssessmentAttempts AssessmentAttempt[]           @relation("AssessmentAttemptOverriddenBy")
+  finalizedAssessmentAttempts  AssessmentAttempt[]           @relation("AssessmentAttemptFinalizedBy")
+  assessmentReviewHistoryLogs  AssessmentReviewHistory[]     @relation("AssessmentReviewHistoryActor")
   createdEmailTemplates        EmailTemplate[]               @relation("EmailTemplateCreatedBy")
   updatedEmailTemplates        EmailTemplate[]               @relation("EmailTemplateUpdatedBy")
   emailTemplateVersions        EmailTemplateVersion[]        @relation("EmailTemplateVersionUpdatedBy")
@@ -1491,6 +1505,15 @@ model AssessmentAttempt {
   totalMarks           Int                     @map("total_marks")
   percentage           Int?
   passed               Boolean?
+  overrideMarks        Int?                    @map("override_marks")
+  overridePassed       Boolean?                @map("override_passed")
+  overrideReason       String?                 @map("override_reason") @db.VarChar(2000)
+  overriddenByUserId   String?                 @map("overridden_by_user_id") @db.Uuid
+  overriddenAt         DateTime?               @map("overridden_at") @db.Timestamptz(6)
+  isFinalized          Boolean                 @default(false) @map("is_finalized")
+  finalizedAt          DateTime?               @map("finalized_at") @db.Timestamptz(6)
+  finalizedByUserId    String?                 @map("finalized_by_user_id") @db.Uuid
+  feedbackVisibleToLearner Boolean             @default(true) @map("feedback_visible_to_learner")
   reviewerFeedback     String?                 @map("reviewer_feedback")
   reviewStartedAt      DateTime?               @map("review_started_at") @db.Timestamptz(6)
   reviewedByUserId     String?                 @map("reviewed_by_user_id") @db.Uuid
@@ -1505,16 +1528,41 @@ model AssessmentAttempt {
   learner              Learner                 @relation(fields: [learnerId], references: [id], onDelete: Cascade)
   batch                Batch                   @relation(fields: [batchId], references: [id], onDelete: Cascade)
   reviewedByUser       User?                   @relation("AssessmentAttemptReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  overriddenByUser     User?                   @relation("AssessmentAttemptOverriddenBy", fields: [overriddenByUserId], references: [id], onDelete: SetNull)
+  finalizedByUser      User?                   @relation("AssessmentAttemptFinalizedBy", fields: [finalizedByUserId], references: [id], onDelete: SetNull)
   questionResults      AttemptQuestionResult[]
+  reviewHistory        AssessmentReviewHistory[]
 
   @@unique([assessmentId, learnerId, attemptNumber], map: "uq_assessment_attempts_assessment_learner_attempt")
   @@index([assessmentPoolId, status], map: "idx_assessment_attempts_pool_status")
   @@index([learnerId, submittedAt], map: "idx_assessment_attempts_candidate_submitted")
   @@index([reviewedByUserId, status], map: "idx_assessment_attempts_reviewer_status")
+  @@index([overriddenByUserId], map: "idx_assessment_attempts_overridden_by")
+  @@index([finalizedByUserId], map: "idx_assessment_attempts_finalized_by")
   @@index([batchId, status], map: "idx_assessment_attempts_batch_status")
   @@index([assessmentPoolId, submittedAt], map: "idx_assessment_attempts_pool_submitted")
   @@index([batchId, assessmentPoolId, status], map: "idx_assessment_attempts_batch_pool_status")
   @@map("assessment_attempts")
+}
+
+model AssessmentReviewHistory {
+  id           String                       @id @default(dbgenerated("gen_random_uuid()")) @map("history_id") @db.Uuid
+  attemptId    String                       @map("attempt_id") @db.Uuid
+  actorUserId  String?                      @map("actor_user_id") @db.Uuid
+  eventType    AssessmentReviewHistoryEvent @map("event_type")
+  scoreBefore  Int?                         @map("score_before")
+  scoreAfter   Int?                         @map("score_after")
+  passedBefore Boolean?                     @map("passed_before")
+  passedAfter  Boolean?                     @map("passed_after")
+  notes        String?                      @db.VarChar(2000)
+  snapshot     Json?                        @default("{}")
+  createdAt    DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  attempt      AssessmentAttempt            @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  actor        User?                        @relation("AssessmentReviewHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([attemptId, createdAt], map: "idx_assessment_review_history_attempt_created")
+  @@index([actorUserId, createdAt], map: "idx_assessment_review_history_actor_created")
+  @@map("assessment_review_history")
 }
 
 model ReadinessEngineRule {
@@ -2168,6 +2216,7 @@ model AssessmentPool {
   difficultyLevel         DifficultyLevel               @default(MEDIUM) @map("difficulty_level")
   totalMarks              Int                           @default(100) @map("total_marks")
   passingMarks            Int                           @default(40) @map("passing_marks")
+  passCriteriaConfig      Json?                         @map("pass_criteria_config")
   timeLimitMinutes        Int?                          @map("time_limit_minutes")
   status                  AssessmentPoolStatus          @default(DRAFT)
   shuffleQuestions        Boolean                       @default(false) @map("shuffle_questions")
@@ -2207,6 +2256,7 @@ model AssessmentQuestion {
   correctAnswer    Json?                   @map("correct_answer")
   explanation      String?
   marks            Int                     @default(1)
+  isMandatory      Boolean                 @default(false) @map("is_mandatory")
   sortOrder        Int                     @default(0) @map("sort_order")
   createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

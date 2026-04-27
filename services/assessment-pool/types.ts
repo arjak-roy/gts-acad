@@ -11,6 +11,12 @@ export type AssessmentPoolListItem = {
   difficultyLevel: DifficultyLevel;
   totalMarks: number;
   passingMarks: number;
+  passCriteriaConfig?: {
+    minPercentageScore?: number;
+    minMarks?: number;
+    mandatoryQuestionIds?: string[];
+    minCompletionRequirement?: number;
+  } | null;
   timeLimitMinutes: number | null;
   status: AssessmentPoolStatus;
   isAiGenerated: boolean;
@@ -28,6 +34,7 @@ export type QuestionDetail = {
   correctAnswer: unknown;
   explanation: string | null;
   marks: number;
+  isMandatory: boolean;
   sortOrder: number;
   sectionId: string | null;
 };

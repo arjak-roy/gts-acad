@@ -9,7 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
-import { ASSESSMENT_ATTEMPT_STATUS_LABELS, type AssessmentReviewDetail } from "@/services/assessment-reviews/types";
+import {
+  ASSESSMENT_ATTEMPT_STATUS_LABELS,
+  type AssessmentReviewDetail,
+  type AssessmentReviewHistoryItem,
+} from "@/services/assessment-reviews/types";
 
 type ManualScoreState = {
   marksAwarded: string;
@@ -89,11 +93,25 @@ export function AssessmentReviewDetailSheet({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideMarks, setOverrideMarks] = useState("");
+  const [overridePassed, setOverridePassed] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+  const [historyItems, setHistoryItems] = useState<AssessmentReviewHistoryItem[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const manualQuestions = useMemo(
     () => detail?.questions.filter((question) => question.requiresManualReview) ?? [],
     [detail],
   );
+
+  const hydrateLocalStateFromDetail = (nextDetail: AssessmentReviewDetail) => {
+    setDetail(nextDetail);
+    setManualScores(buildManualScoreState(nextDetail));
+    setReviewerFeedback(nextDetail.reviewerFeedback ?? "");
+    setOverrideMarks(String(nextDetail.overrideMarks ?? nextDetail.marksObtained ?? 0));
+    setOverridePassed(nextDetail.overridePassed ?? nextDetail.passed ?? false);
+    setOverrideReason(nextDetail.overrideReason ?? "");
+  };
 
   useEffect(() => {
     if (!open || !attemptId) {
@@ -115,9 +133,7 @@ export function AssessmentReviewDetailSheet({
           return;
         }
 
-        setDetail(payload.data);
-        setManualScores(buildManualScoreState(payload.data));
-        setReviewerFeedback(payload.data.reviewerFeedback ?? "");
+        hydrateLocalStateFromDetail(payload.data);
       })
       .catch((loadError) => {
         if (active) {
@@ -143,8 +159,32 @@ export function AssessmentReviewDetailSheet({
       setError(null);
       setIsLoading(false);
       setIsSaving(false);
+      setOverrideMarks("");
+      setOverridePassed(false);
+      setOverrideReason("");
+      setHistoryItems([]);
+      setHistoryLoaded(false);
     }
   }, [open]);
+
+  const loadHistory = async () => {
+    if (!attemptId || historyLoaded) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/assessment-reviews/${attemptId}/history`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as { data?: AssessmentReviewHistoryItem[]; error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load review history.");
+      }
+
+      setHistoryItems(payload?.data ?? []);
+      setHistoryLoaded(true);
+    } catch (historyError) {
+      toast.error(historyError instanceof Error ? historyError.message : "Failed to load review history.");
+    }
+  };
 
   const handleStatusChange = async (status: "PENDING_REVIEW" | "IN_REVIEW") => {
     if (!attemptId || isSaving) {
@@ -168,9 +208,7 @@ export function AssessmentReviewDetailSheet({
         throw new Error(payload?.error || "Failed to update review state.");
       }
 
-      setDetail(payload.data);
-      setManualScores(buildManualScoreState(payload.data));
-      setReviewerFeedback(payload.data.reviewerFeedback ?? "");
+      hydrateLocalStateFromDetail(payload.data);
       onUpdated?.();
       toast.success(status === "IN_REVIEW" ? "Attempt moved into review." : "Attempt returned to the queue.");
     } catch (statusError) {
@@ -212,6 +250,7 @@ export function AssessmentReviewDetailSheet({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          draft: false,
           reviewerFeedback,
           questionScores,
         }),
@@ -222,13 +261,183 @@ export function AssessmentReviewDetailSheet({
         throw new Error(payload?.error || "Failed to submit the final grade.");
       }
 
-      setDetail(payload.data);
-      setManualScores(buildManualScoreState(payload.data));
-      setReviewerFeedback(payload.data.reviewerFeedback ?? "");
+      hydrateLocalStateFromDetail(payload.data);
       onUpdated?.();
       toast.success("Assessment graded successfully.");
     } catch (gradeError) {
       const message = gradeError instanceof Error ? gradeError.message : "Failed to submit the final grade.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!attemptId || isSaving) {
+      return;
+    }
+
+    const questionScores = manualQuestions.map((question) => {
+      const nextScore = manualScores[question.questionId] ?? { marksAwarded: "0", feedback: "" };
+      const marksAwarded = Number(nextScore.marksAwarded);
+
+      if (!Number.isFinite(marksAwarded) || marksAwarded < 0 || marksAwarded > question.maxMarks) {
+        throw new Error(`Enter a valid score between 0 and ${question.maxMarks} for ${question.questionText}.`);
+      }
+
+      return {
+        questionId: question.questionId,
+        marksAwarded,
+        feedback: nextScore.feedback,
+      };
+    });
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/assessment-reviews/${attemptId}/grade`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          draft: true,
+          reviewerFeedback,
+          questionScores,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: AssessmentReviewDetail; error?: string } | null;
+      if (!response.ok || !payload?.data) {
+        throw new Error(payload?.error || "Failed to save draft review.");
+      }
+
+      hydrateLocalStateFromDetail(payload.data);
+      onUpdated?.();
+      toast.success("Review draft saved.");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : "Failed to save draft review.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFinalize = async () => {
+    if (!attemptId || isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/assessment-reviews/${attemptId}/finalize`, {
+        method: "POST",
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: AssessmentReviewDetail; error?: string } | null;
+      if (!response.ok || !payload?.data) {
+        throw new Error(payload?.error || "Failed to finalize review.");
+      }
+
+      hydrateLocalStateFromDetail(payload.data);
+      onUpdated?.();
+      toast.success("Review finalized.");
+    } catch (finalizeError) {
+      const message = finalizeError instanceof Error ? finalizeError.message : "Failed to finalize review.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!attemptId || isSaving) {
+      return;
+    }
+
+    const reason = window.prompt("Enter reason to reopen this finalized review:", "");
+    if (!reason || reason.trim().length < 10) {
+      toast.error("Reopen reason is required (minimum 10 characters).");
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/assessment-reviews/${attemptId}/reopen`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reason }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: AssessmentReviewDetail; error?: string } | null;
+      if (!response.ok || !payload?.data) {
+        throw new Error(payload?.error || "Failed to reopen review.");
+      }
+
+      hydrateLocalStateFromDetail(payload.data);
+      onUpdated?.();
+      toast.success("Review reopened.");
+    } catch (reopenError) {
+      const message = reopenError instanceof Error ? reopenError.message : "Failed to reopen review.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleApplyOverride = async () => {
+    if (!attemptId || isSaving) {
+      return;
+    }
+
+    const parsedOverrideMarks = Number(overrideMarks);
+    if (!Number.isFinite(parsedOverrideMarks) || parsedOverrideMarks < 0) {
+      toast.error("Override marks must be a valid non-negative number.");
+      return;
+    }
+
+    if (overrideReason.trim().length < 10) {
+      toast.error("Override reason is required (minimum 10 characters).");
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/assessment-reviews/${attemptId}/override`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          overrideMarks: parsedOverrideMarks,
+          overridePassed,
+          overrideReason,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { data?: AssessmentReviewDetail; error?: string } | null;
+      if (!response.ok || !payload?.data) {
+        throw new Error(payload?.error || "Failed to apply override.");
+      }
+
+      hydrateLocalStateFromDetail(payload.data);
+      onUpdated?.();
+      toast.success("Override applied.");
+    } catch (overrideError) {
+      const message = overrideError instanceof Error ? overrideError.message : "Failed to apply override.";
       setError(message);
       toast.error(message);
     } finally {
@@ -289,7 +498,11 @@ export function AssessmentReviewDetailSheet({
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Score</p>
                       <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {detail.marksObtained === null ? "Pending" : `${detail.marksObtained}/${detail.totalMarks}`}
+                        {detail.overrideMarks !== null
+                          ? `${detail.overrideMarks}/${detail.totalMarks} (Override)`
+                          : detail.marksObtained === null
+                            ? "Pending"
+                            : `${detail.marksObtained}/${detail.totalMarks}`}
                       </p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
@@ -388,6 +601,83 @@ export function AssessmentReviewDetailSheet({
                     disabled={!detail.access.canManualGrade}
                   />
                 </div>
+
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Manual Override</p>
+                    <Badge variant={detail.overrideMarks !== null || detail.overridePassed !== null ? "warning" : "info"}>
+                      {detail.overrideMarks !== null || detail.overridePassed !== null ? "Override Applied" : "No Override"}
+                    </Badge>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Override Marks</label>
+                      <Input value={overrideMarks} onChange={(event) => setOverrideMarks(event.target.value)} type="number" min={0} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Final Status</label>
+                      <select
+                        className="h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm font-medium text-slate-700"
+                        value={overridePassed ? "PASS" : "FAIL"}
+                        onChange={(event) => setOverridePassed(event.target.value === "PASS")}
+                      >
+                        <option value="PASS">Pass</option>
+                        <option value="FAIL">Fail</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Feedback Visibility</label>
+                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        {detail.feedbackVisibleToLearner ? "Visible to learner" : "Hidden from learner"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Override Reason</label>
+                    <textarea
+                      className="min-h-20 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                      value={overrideReason}
+                      onChange={(event) => setOverrideReason(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-slate-900">Review History</p>
+                    <Button variant="secondary" size="sm" onClick={() => void loadHistory()} disabled={isSaving}>
+                      {historyLoaded ? "Refresh History" : "Load History"}
+                    </Button>
+                  </div>
+
+                  {historyLoaded ? (
+                    historyItems.length > 0 ? (
+                      <div className="space-y-2">
+                        {historyItems.map((entry) => (
+                          <div key={entry.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{entry.eventType}</p>
+                            <p className="mt-1 text-sm text-slate-700">{entry.notes ?? "No notes"}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {new Date(entry.createdAt).toLocaleString()} • {entry.actorName ?? "System"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">No history recorded yet.</p>
+                    )
+                  ) : (
+                    <p className="text-sm text-slate-500">History loads on demand.</p>
+                  )}
+                </div>
+
+                {detail.isFinalized ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                    Finalized at {formatDateTime(detail.finalizedAt)} by {detail.finalizedByName ?? "Unknown reviewer"}.
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -412,8 +702,28 @@ export function AssessmentReviewDetailSheet({
                   Close
                 </Button>
                 {detail.access.canManualGrade && manualQuestions.length > 0 ? (
-                  <Button onClick={() => void handleGrade()} disabled={isSaving}>
+                  <Button variant="secondary" onClick={() => void handleSaveDraft()} disabled={isSaving || detail.isFinalized}>
+                    Save Draft Review
+                  </Button>
+                ) : null}
+                {detail.access.canManualGrade && manualQuestions.length > 0 ? (
+                  <Button onClick={() => void handleGrade()} disabled={isSaving || detail.isFinalized}>
                     {isSaving ? "Saving..." : detail.status === "GRADED" ? "Update Grade" : "Submit Grade"}
+                  </Button>
+                ) : null}
+                {detail.access.canManualGrade ? (
+                  <Button variant="secondary" onClick={() => void handleApplyOverride()} disabled={isSaving || detail.isFinalized}>
+                    Apply Override
+                  </Button>
+                ) : null}
+                {detail.access.canManualGrade || detail.access.canManageAttempts ? (
+                  <Button onClick={() => void handleFinalize()} disabled={isSaving || detail.isFinalized || detail.status !== "GRADED"}>
+                    Finalize Review
+                  </Button>
+                ) : null}
+                {detail.access.canManageAttempts ? (
+                  <Button variant="secondary" onClick={() => void handleReopen()} disabled={isSaving || !detail.isFinalized}>
+                    Reopen Review
                   </Button>
                 ) : null}
               </div>

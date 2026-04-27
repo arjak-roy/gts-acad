@@ -11,6 +11,7 @@ import {
 import type {
   AssessmentReviewAccess,
   AssessmentReviewDetail,
+  AssessmentReviewHistoryItem,
   AssessmentReviewQueueItem,
   AssessmentReviewQuestionItem,
 } from "@/services/assessment-reviews/types";
@@ -30,6 +31,12 @@ function buildQueueItem(options: {
     marksObtained: number | null;
     percentage: number | null;
     passed: boolean | null;
+    overrideMarks: number | null;
+    overridePassed: boolean | null;
+    overrideReason: string | null;
+    isFinalized: boolean;
+    finalizedAt: Date | null;
+    feedbackVisibleToLearner: boolean;
     requiresManualReview: boolean;
     learner: {
       id: string;
@@ -48,6 +55,9 @@ function buildQueueItem(options: {
       difficultyLevel: AssessmentReviewQueueItem["difficultyLevel"];
     };
     reviewedByUser: {
+      name: string;
+    } | null;
+    finalizedByUser: {
       name: string;
     } | null;
   };
@@ -75,6 +85,13 @@ function buildQueueItem(options: {
     marksObtained: options.record.marksObtained,
     percentage: options.record.percentage,
     passed: options.record.passed,
+    overrideMarks: options.record.overrideMarks,
+    overridePassed: options.record.overridePassed,
+    overrideReason: options.record.overrideReason,
+    isFinalized: options.record.isFinalized,
+    finalizedAt: options.record.finalizedAt?.toISOString() ?? null,
+    finalizedByName: options.record.finalizedByUser?.name ?? null,
+    feedbackVisibleToLearner: options.record.feedbackVisibleToLearner,
     requiresManualReview: options.record.requiresManualReview,
     access: options.access,
   };
@@ -86,6 +103,8 @@ function buildDetailQuestions(options: {
     questionText: string;
     questionType: AssessmentReviewQuestionItem["questionType"];
     options: unknown;
+    correctAnswer: unknown;
+    isMandatory: boolean;
     marks: number;
     sortOrder: number;
   }>;
@@ -106,6 +125,8 @@ function buildDetailQuestions(options: {
         questionText: question.questionText,
         questionType: question.questionType,
         options: question.options ?? null,
+        correctAnswer: question.correctAnswer ?? null,
+        isMandatory: question.isMandatory,
         submittedAnswer: answerMap.get(question.id) ?? null,
         maxMarks: question.marks,
         marksAwarded: result?.marksAwarded ?? (requiresManualReview ? null : 0),
@@ -181,6 +202,12 @@ export async function listAssessmentReviewQueueService(options: {
           marksObtained: true,
           percentage: true,
           passed: true,
+          overrideMarks: true,
+          overridePassed: true,
+          overrideReason: true,
+          isFinalized: true,
+          finalizedAt: true,
+          feedbackVisibleToLearner: true,
           requiresManualReview: true,
           learner: {
             select: {
@@ -217,6 +244,11 @@ export async function listAssessmentReviewQueueService(options: {
               name: true,
             },
           },
+          finalizedByUser: {
+            select: {
+              name: true,
+            },
+          },
         },
       })
     : await prisma.assessmentAttempt.findMany({
@@ -235,6 +267,12 @@ export async function listAssessmentReviewQueueService(options: {
           marksObtained: true,
           percentage: true,
           passed: true,
+          overrideMarks: true,
+          overridePassed: true,
+          overrideReason: true,
+          isFinalized: true,
+          finalizedAt: true,
+          feedbackVisibleToLearner: true,
           requiresManualReview: true,
           learner: {
             select: {
@@ -271,6 +309,11 @@ export async function listAssessmentReviewQueueService(options: {
             },
           },
           reviewedByUser: {
+            select: {
+              name: true,
+            },
+          },
+          finalizedByUser: {
             select: {
               name: true,
             },
@@ -326,6 +369,12 @@ export async function getAssessmentReviewDetailService(options: {
       marksObtained: true,
       percentage: true,
       passed: true,
+      overrideMarks: true,
+      overridePassed: true,
+      overrideReason: true,
+      isFinalized: true,
+      finalizedAt: true,
+      feedbackVisibleToLearner: true,
       requiresManualReview: true,
       reviewerFeedback: true,
       learner: {
@@ -355,6 +404,8 @@ export async function getAssessmentReviewDetailService(options: {
               questionText: true,
               questionType: true,
               options: true,
+              correctAnswer: true,
+              isMandatory: true,
               marks: true,
               sortOrder: true,
             },
@@ -376,6 +427,11 @@ export async function getAssessmentReviewDetailService(options: {
         },
       },
       reviewedByUser: {
+        select: {
+          name: true,
+        },
+      },
+      finalizedByUser: {
         select: {
           name: true,
         },
@@ -425,4 +481,59 @@ export async function getAssessmentReviewDetailService(options: {
       gradingReport: parseAssessmentAttemptGradingReport(attempt.gradingReport),
     }),
   };
+}
+
+export async function listAssessmentReviewHistoryService(options: {
+  attemptId: string;
+  userId: string;
+}): Promise<AssessmentReviewHistoryItem[]> {
+  if (!isDatabaseConfigured) {
+    return [];
+  }
+
+  const attempt = await prisma.assessmentAttempt.findUnique({
+    where: { id: options.attemptId },
+    select: { assessmentPoolId: true },
+  });
+
+  if (!attempt) {
+    return [];
+  }
+
+  const access = await resolveAssessmentReviewAccess(options.userId, attempt.assessmentPoolId);
+  if (!access.canReviewResponses && !access.canManageAttempts && !access.canManualGrade) {
+    return [];
+  }
+
+  const rows = await prisma.assessmentReviewHistory.findMany({
+    where: { attemptId: options.attemptId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      eventType: true,
+      notes: true,
+      scoreBefore: true,
+      scoreAfter: true,
+      passedBefore: true,
+      passedAfter: true,
+      createdAt: true,
+      actor: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    eventType: row.eventType,
+    notes: row.notes,
+    scoreBefore: row.scoreBefore,
+    scoreAfter: row.scoreAfter,
+    passedBefore: row.passedBefore,
+    passedAfter: row.passedAfter,
+    createdAt: row.createdAt.toISOString(),
+    actorName: row.actor?.name ?? null,
+  }));
 }

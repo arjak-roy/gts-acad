@@ -36,6 +36,7 @@ export const updateAssessmentAttemptStatusSchema = z.object({
 });
 
 export const gradeAssessmentAttemptSchema = z.object({
+  draft: z.coerce.boolean().optional().default(false),
   reviewerFeedback: z.string().trim().max(2000).optional().default(""),
   questionScores: z.array(z.object({
     questionId: z.string().trim().min(1, "Question is required."),
@@ -44,8 +45,20 @@ export const gradeAssessmentAttemptSchema = z.object({
   })).min(1, "At least one graded question is required."),
 });
 
+export const overrideAssessmentAttemptSchema = z.object({
+  overrideMarks: z.coerce.number().int().min(0, "Override marks cannot be negative."),
+  overridePassed: z.coerce.boolean(),
+  overrideReason: z.string().trim().min(10, "Override reason is required.").max(2000),
+});
+
+export const reopenAssessmentAttemptSchema = z.object({
+  reason: z.string().trim().min(10, "Reopen reason is required.").max(2000),
+});
+
 export type TrainerAssessmentAssignmentInput = z.infer<typeof trainerAssessmentAssignmentSchema>;
 export type ReplaceTrainerAssessmentAssignmentsInput = z.infer<typeof replaceTrainerAssessmentAssignmentsSchema>;
 export type ListAssessmentReviewQueueInput = z.infer<typeof listAssessmentReviewQueueSchema>;
 export type UpdateAssessmentAttemptStatusInput = z.infer<typeof updateAssessmentAttemptStatusSchema>;
 export type GradeAssessmentAttemptInput = z.infer<typeof gradeAssessmentAttemptSchema>;
+export type OverrideAssessmentAttemptInput = z.infer<typeof overrideAssessmentAttemptSchema>;
+export type ReopenAssessmentAttemptInput = z.infer<typeof reopenAssessmentAttemptSchema>;

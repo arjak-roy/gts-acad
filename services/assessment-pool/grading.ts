@@ -3,6 +3,13 @@ import "server-only";
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
 import type { QuestionDetail, GradeResult, GradingReport } from "@/services/assessment-pool/types";
 
+type PassCriteriaConfig = {
+  minPercentageScore?: number;
+  minMarks?: number;
+  mandatoryQuestionIds?: string[];
+  minCompletionRequirement?: number;
+};
+
 function normalizeTrueFalseValue(value: unknown): boolean | null {
   if (typeof value === "boolean") {
     return value;
@@ -132,6 +139,7 @@ export async function gradeSubmissionService(
     select: {
       totalMarks: true,
       passingMarks: true,
+      passCriteriaConfig: true,
       questions: {
         select: {
           id: true,
@@ -141,6 +149,7 @@ export async function gradeSubmissionService(
           correctAnswer: true,
           explanation: true,
           marks: true,
+          isMandatory: true,
           sortOrder: true,
         },
       },
@@ -152,6 +161,7 @@ export async function gradeSubmissionService(
   }
 
   const questionMap = new Map(pool.questions.map((q) => [q.id, q as QuestionDetail]));
+  const submittedQuestionIds = new Set(answers.map((item) => item.questionId));
   const results: GradeResult[] = [];
   let marksObtained = 0;
   let requiresManualReview = false;
@@ -179,12 +189,38 @@ export async function gradeSubmissionService(
   }
 
   const percentage = pool.totalMarks > 0 ? Math.round((marksObtained / pool.totalMarks) * 100) : 0;
+  const criteria = (pool.passCriteriaConfig as PassCriteriaConfig | null) ?? null;
+  const mandatoryIds = new Set([
+    ...pool.questions.filter((question) => question.isMandatory).map((question) => question.id),
+    ...(criteria?.mandatoryQuestionIds ?? []),
+  ]);
+  const resultByQuestionId = new Map(results.map((item) => [item.questionId, item]));
+
+  const meetsMandatoryQuestionRule = Array.from(mandatoryIds).every((questionId) => {
+    const result = resultByQuestionId.get(questionId);
+    if (!result) {
+      return false;
+    }
+
+    return result.isCorrect === true;
+  });
+
+  const completionRequirement = criteria?.minCompletionRequirement;
+  const completionRatio = pool.questions.length > 0 ? (submittedQuestionIds.size / pool.questions.length) * 100 : 100;
+  const meetsCompletionRule = completionRequirement === undefined || completionRatio >= completionRequirement;
+
+  const minMarksThreshold = criteria?.minMarks ?? pool.passingMarks;
+  const meetsMarksRule = marksObtained >= minMarksThreshold;
+
+  const meetsPercentageRule = criteria?.minPercentageScore === undefined || percentage >= criteria.minPercentageScore;
+
+  const passed = meetsMarksRule && meetsPercentageRule && meetsMandatoryQuestionRule && meetsCompletionRule;
 
   return {
     totalMarks: pool.totalMarks,
     marksObtained,
     percentage,
-    passed: marksObtained >= pool.passingMarks,
+    passed,
     requiresManualReview,
     results,
   };

@@ -36,6 +36,13 @@ export type AssessmentReviewQueueItem = {
   marksObtained: number | null;
   percentage: number | null;
   passed: boolean | null;
+  overrideMarks: number | null;
+  overridePassed: boolean | null;
+  overrideReason: string | null;
+  isFinalized: boolean;
+  finalizedAt: string | null;
+  finalizedByName: string | null;
+  feedbackVisibleToLearner: boolean;
   requiresManualReview: boolean;
   access: AssessmentReviewAccess;
 };
@@ -45,6 +52,8 @@ export type AssessmentReviewQuestionItem = {
   questionText: string;
   questionType: QuestionType;
   options: unknown;
+  correctAnswer: unknown;
+  isMandatory: boolean;
   submittedAnswer: unknown;
   maxMarks: number;
   marksAwarded: number | null;
@@ -56,4 +65,16 @@ export type AssessmentReviewQuestionItem = {
 export type AssessmentReviewDetail = AssessmentReviewQueueItem & {
   reviewerFeedback: string | null;
   questions: AssessmentReviewQuestionItem[];
+};
+
+export type AssessmentReviewHistoryItem = {
+  id: string;
+  eventType: string;
+  notes: string | null;
+  scoreBefore: number | null;
+  scoreAfter: number | null;
+  passedBefore: boolean | null;
+  passedAfter: boolean | null;
+  createdAt: string;
+  actorName: string | null;
 };

@@ -1,11 +1,20 @@
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { AUDIT_ENTITY_TYPE, AUDIT_ACTION_TYPE } from "@/services/logs-actions/constants";
 import { deriveGeneratedCodePrefix } from "@/lib/utils";
 import type { CreateAssessmentPoolInput, UpdateAssessmentPoolInput, CreateQuestionInput, UpdateQuestionInput } from "@/lib/validation-schemas/assessment-pool";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import type { AssessmentPoolCreateResult, QuestionDetail } from "@/services/assessment-pool/types";
+
+function toNullableJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === null || value === undefined) {
+    return Prisma.DbNull;
+  }
+
+  return value as Prisma.InputJsonValue;
+}
 
 export async function generateAssessmentPoolCode(title: string): Promise<string> {
   const prefix = deriveGeneratedCodePrefix(title);
@@ -67,6 +76,7 @@ export async function createAssessmentPoolService(
       difficultyLevel: (input.difficultyLevel ?? "MEDIUM") as "EASY" | "MEDIUM" | "HARD",
       totalMarks: input.totalMarks ?? 100,
       passingMarks: input.passingMarks ?? 40,
+      passCriteriaConfig: toNullableJsonInput(input.passCriteriaConfig),
       timeLimitMinutes: input.timeLimitMinutes ?? null,
       createdById: options?.actorUserId ?? null,
     },
@@ -117,6 +127,7 @@ export async function updateAssessmentPoolService(
       ...(input.difficultyLevel !== undefined && { difficultyLevel: input.difficultyLevel as "EASY" | "MEDIUM" | "HARD" }),
       ...(input.totalMarks !== undefined && { totalMarks: input.totalMarks }),
       ...(input.passingMarks !== undefined && { passingMarks: input.passingMarks }),
+      ...(input.passCriteriaConfig !== undefined && { passCriteriaConfig: toNullableJsonInput(input.passCriteriaConfig) }),
       ...(input.timeLimitMinutes !== undefined && { timeLimitMinutes: input.timeLimitMinutes }),
       ...(input.status !== undefined && { status: input.status as AssessmentPoolCreateResult["status"] }),
     },
@@ -224,6 +235,7 @@ export async function addQuestionService(
       correctAnswer: input.correctAnswer ?? null,
       explanation: input.explanation?.trim() || null,
       marks: input.marks ?? 1,
+      isMandatory: input.isMandatory ?? false,
       sortOrder: nextOrder,
     },
     select: {
@@ -234,6 +246,7 @@ export async function addQuestionService(
       correctAnswer: true,
       explanation: true,
       marks: true,
+      isMandatory: true,
       sortOrder: true,
     },
   });
@@ -255,6 +268,7 @@ export async function updateQuestionService(input: UpdateQuestionInput): Promise
       ...(input.correctAnswer !== undefined && { correctAnswer: input.correctAnswer }),
       ...(input.explanation !== undefined && { explanation: input.explanation.trim() || null }),
       ...(input.marks !== undefined && { marks: input.marks }),
+      ...(input.isMandatory !== undefined && { isMandatory: input.isMandatory }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
     },
     select: {
@@ -265,6 +279,7 @@ export async function updateQuestionService(input: UpdateQuestionInput): Promise
       correctAnswer: true,
       explanation: true,
       marks: true,
+      isMandatory: true,
       sortOrder: true,
     },
   });
