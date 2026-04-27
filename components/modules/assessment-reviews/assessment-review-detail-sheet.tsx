@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -96,6 +97,8 @@ export function AssessmentReviewDetailSheet({
   const [overrideMarks, setOverrideMarks] = useState("");
   const [overridePassed, setOverridePassed] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
   const [historyItems, setHistoryItems] = useState<AssessmentReviewHistoryItem[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
@@ -162,6 +165,8 @@ export function AssessmentReviewDetailSheet({
       setOverrideMarks("");
       setOverridePassed(false);
       setOverrideReason("");
+      setReopenDialogOpen(false);
+      setReopenReason("");
       setHistoryItems([]);
       setHistoryLoaded(false);
     }
@@ -361,8 +366,8 @@ export function AssessmentReviewDetailSheet({
       return;
     }
 
-    const reason = window.prompt("Enter reason to reopen this finalized review:", "");
-    if (!reason || reason.trim().length < 10) {
+    const trimmedReason = reopenReason.trim();
+    if (trimmedReason.length < 10) {
       toast.error("Reopen reason is required (minimum 10 characters).");
       return;
     }
@@ -376,7 +381,7 @@ export function AssessmentReviewDetailSheet({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason: trimmedReason }),
       });
 
       const payload = (await response.json().catch(() => null)) as { data?: AssessmentReviewDetail; error?: string } | null;
@@ -385,6 +390,8 @@ export function AssessmentReviewDetailSheet({
       }
 
       hydrateLocalStateFromDetail(payload.data);
+      setReopenDialogOpen(false);
+      setReopenReason("");
       onUpdated?.();
       toast.success("Review reopened.");
     } catch (reopenError) {
@@ -446,17 +453,18 @@ export function AssessmentReviewDetailSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-4xl">
-        <SheetHeader>
-          <SheetTitle>Assessment Review</SheetTitle>
-          <SheetDescription>
-            Review submitted answers, manage the attempt state, and apply manual grading where required.
-          </SheetDescription>
-        </SheetHeader>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="sm:max-w-4xl">
+          <SheetHeader>
+            <SheetTitle>Assessment Review</SheetTitle>
+            <SheetDescription>
+              Review submitted answers, manage the attempt state, and apply manual grading where required.
+            </SheetDescription>
+          </SheetHeader>
 
-        <div className="flex h-full flex-col overflow-hidden p-6">
-          <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+          <div className="flex h-full flex-col overflow-hidden p-6">
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
             {isLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-24 w-full rounded-2xl" />
@@ -682,55 +690,97 @@ export function AssessmentReviewDetailSheet({
             ) : null}
           </div>
 
-          {!isLoading && detail ? (
-            <SheetFooter className="flex-wrap gap-2 border-t border-slate-100 pt-4 sm:justify-between">
-              <div className="flex flex-wrap gap-2">
-                {detail.status === "PENDING_REVIEW" && (detail.access.canManageAttempts || detail.access.canManualGrade) ? (
-                  <Button variant="secondary" onClick={() => void handleStatusChange("IN_REVIEW")} disabled={isSaving}>
-                    Start Review
-                  </Button>
-                ) : null}
-                {detail.status === "IN_REVIEW" && detail.access.canManageAttempts ? (
-                  <Button variant="secondary" onClick={() => void handleStatusChange("PENDING_REVIEW")} disabled={isSaving}>
-                    Return To Queue
-                  </Button>
-                ) : null}
-              </div>
+            {!isLoading && detail ? (
+              <SheetFooter className="flex-wrap gap-2 border-t border-slate-100 pt-4 sm:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {detail.status === "PENDING_REVIEW" && (detail.access.canManageAttempts || detail.access.canManualGrade) ? (
+                    <Button variant="secondary" onClick={() => void handleStatusChange("IN_REVIEW")} disabled={isSaving}>
+                      Start Review
+                    </Button>
+                  ) : null}
+                  {detail.status === "IN_REVIEW" && detail.access.canManageAttempts ? (
+                    <Button variant="secondary" onClick={() => void handleStatusChange("PENDING_REVIEW")} disabled={isSaving}>
+                      Return To Queue
+                    </Button>
+                  ) : null}
+                </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={isSaving}>
-                  Close
-                </Button>
-                {detail.access.canManualGrade && manualQuestions.length > 0 ? (
-                  <Button variant="secondary" onClick={() => void handleSaveDraft()} disabled={isSaving || detail.isFinalized}>
-                    Save Draft Review
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={isSaving}>
+                    Close
                   </Button>
-                ) : null}
-                {detail.access.canManualGrade && manualQuestions.length > 0 ? (
-                  <Button onClick={() => void handleGrade()} disabled={isSaving || detail.isFinalized}>
-                    {isSaving ? "Saving..." : detail.status === "GRADED" ? "Update Grade" : "Submit Grade"}
-                  </Button>
-                ) : null}
-                {detail.access.canManualGrade ? (
-                  <Button variant="secondary" onClick={() => void handleApplyOverride()} disabled={isSaving || detail.isFinalized}>
-                    Apply Override
-                  </Button>
-                ) : null}
-                {detail.access.canManualGrade || detail.access.canManageAttempts ? (
-                  <Button onClick={() => void handleFinalize()} disabled={isSaving || detail.isFinalized || detail.status !== "GRADED"}>
-                    Finalize Review
-                  </Button>
-                ) : null}
-                {detail.access.canManageAttempts ? (
-                  <Button variant="secondary" onClick={() => void handleReopen()} disabled={isSaving || !detail.isFinalized}>
-                    Reopen Review
-                  </Button>
-                ) : null}
-              </div>
-            </SheetFooter>
-          ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
+                  {detail.access.canManualGrade && manualQuestions.length > 0 ? (
+                    <Button variant="secondary" onClick={() => void handleSaveDraft()} disabled={isSaving || detail.isFinalized}>
+                      Save Draft Review
+                    </Button>
+                  ) : null}
+                  {detail.access.canManualGrade && manualQuestions.length > 0 ? (
+                    <Button onClick={() => void handleGrade()} disabled={isSaving || detail.isFinalized}>
+                      {isSaving ? "Saving..." : detail.status === "GRADED" ? "Update Grade" : "Submit Grade"}
+                    </Button>
+                  ) : null}
+                  {detail.access.canManualGrade ? (
+                    <Button variant="secondary" onClick={() => void handleApplyOverride()} disabled={isSaving || detail.isFinalized}>
+                      Apply Override
+                    </Button>
+                  ) : null}
+                  {detail.access.canManualGrade || detail.access.canManageAttempts ? (
+                    <Button onClick={() => void handleFinalize()} disabled={isSaving || detail.isFinalized || detail.status !== "GRADED"}>
+                      Finalize Review
+                    </Button>
+                  ) : null}
+                  {detail.access.canManageAttempts ? (
+                    <Button variant="secondary" onClick={() => setReopenDialogOpen(true)} disabled={isSaving || !detail.isFinalized}>
+                      Reopen Review
+                    </Button>
+                  ) : null}
+                </div>
+              </SheetFooter>
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Reopen Finalized Review</DialogTitle>
+            <DialogDescription>
+              Add a clear audit note explaining why this finalized review is being returned to active review.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Reopening unlocks grading changes and records this action in review history.
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Reopen Reason</label>
+              <textarea
+                className="min-h-28 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0d3b84]"
+                value={reopenReason}
+                onChange={(event) => setReopenReason(event.target.value)}
+                placeholder="Explain what changed, what needs correction, or why the review must be reopened."
+              />
+              <p className="text-xs text-slate-500">Minimum 10 characters. Keep the reason specific enough for audit history.</p>
+            </div>
+          </DialogBody>
+          <DialogFooter className="sm:justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setReopenDialogOpen(false);
+                setReopenReason("");
+              }}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void handleReopen()} disabled={isSaving || reopenReason.trim().length < 10}>
+              {isSaving ? "Reopening..." : "Confirm Reopen"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
