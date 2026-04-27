@@ -111,6 +111,44 @@ export function resolveCurriculumStageItemAvailability(
   });
   const now = input.now ?? new Date();
 
+  // MANUAL release is always enforced — the admin gate must be respected
+  // regardless of whether the learner previously accessed the item.
+  if (release.releaseType === "MANUAL") {
+    if (!input.manualReleaseAt) {
+      return {
+        availabilityStatus: "LOCKED",
+        availabilityReason: buildAvailabilityReason({
+          type: "MANUAL_RELEASE_REQUIRED",
+          message: "Your academy team will release this item manually.",
+          unlocksAt: null,
+          prerequisiteStageItemId: null,
+          prerequisiteStageId: null,
+          prerequisiteModuleId: null,
+          prerequisiteTitle: null,
+          requiredScorePercent: null,
+          batchOffsetDays: null,
+        }),
+        release,
+      };
+    }
+
+    return {
+      availabilityStatus: "AVAILABLE",
+      availabilityReason: buildAvailabilityReason({
+        type: "MANUALLY_RELEASED",
+        message: `Released by your academy team on ${formatDateTime(input.manualReleaseAt)}.`,
+        unlocksAt: input.manualReleaseAt,
+        prerequisiteStageItemId: null,
+        prerequisiteStageId: null,
+        prerequisiteModuleId: null,
+        prerequisiteTitle: null,
+        requiredScorePercent: null,
+        batchOffsetDays: null,
+      }),
+      release,
+    };
+  }
+
   if (input.progressStatus !== "NOT_STARTED") {
     return {
       availabilityStatus: "AVAILABLE",
@@ -214,42 +252,6 @@ export function resolveCurriculumStageItemAvailability(
         release,
       };
     }
-  }
-
-  if (release.releaseType === "MANUAL") {
-    if (!input.manualReleaseAt) {
-      return {
-        availabilityStatus: "LOCKED",
-        availabilityReason: buildAvailabilityReason({
-          type: "MANUAL_RELEASE_REQUIRED",
-          message: "Your academy team will release this item manually.",
-          unlocksAt: null,
-          prerequisiteStageItemId: null,
-          prerequisiteStageId: null,
-          prerequisiteModuleId: null,
-          prerequisiteTitle: null,
-          requiredScorePercent: null,
-          batchOffsetDays: null,
-        }),
-        release,
-      };
-    }
-
-    return {
-      availabilityStatus: "AVAILABLE",
-      availabilityReason: buildAvailabilityReason({
-        type: "MANUALLY_RELEASED",
-        message: `Released by your academy team on ${formatDateTime(input.manualReleaseAt)}.`,
-        unlocksAt: input.manualReleaseAt,
-        prerequisiteStageItemId: null,
-        prerequisiteStageId: null,
-        prerequisiteModuleId: null,
-        prerequisiteTitle: null,
-        requiredScorePercent: null,
-        batchOffsetDays: null,
-      }),
-      release,
-    };
   }
 
   return {
