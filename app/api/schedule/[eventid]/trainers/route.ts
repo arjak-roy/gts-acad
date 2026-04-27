@@ -4,6 +4,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { assignTrainerSchema } from "@/lib/validation-schemas/schedule";
 import { listTrainerAssignments, assignTrainerToSession } from "@/services/schedule";
+import type { TrainerSessionRoleValue } from "@/services/schedule";
 
 type RouteContext = {
   params: {
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const body = await request.json();
     const input = assignTrainerSchema.parse(body);
     const result = await assignTrainerToSession(
-      { scheduleEventId: params.eventid, trainerProfileId: input.trainerProfileId, role: input.role as any },
+      { scheduleEventId: params.eventid, trainerProfileId: input.trainerProfileId, role: input.role as TrainerSessionRoleValue },
       session.userId,
     );
     return apiSuccess(result, { status: 201 });

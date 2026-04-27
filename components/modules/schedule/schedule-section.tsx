@@ -1091,7 +1091,7 @@ export function ScheduleSection({ title, description }: { title: string; descrip
       meetingUrl: event.meetingUrl ?? "",
       liveProvider: event.liveProvider ?? "MANUAL",
       linkedAssessmentPoolId: event.linkedAssessmentPoolId ?? "",
-      sessionType: (event as any).sessionType ?? "",
+      sessionType: (event as Record<string, unknown>).sessionType as SessionType | "" ?? "",
       trainers: [],
       isRecurring: false,
       frequency: "WEEKLY",

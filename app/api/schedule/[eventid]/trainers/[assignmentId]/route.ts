@@ -4,6 +4,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { requirePermission } from "@/lib/auth/route-guards";
 import { updateTrainerRoleSchema } from "@/lib/validation-schemas/schedule";
 import { removeTrainerFromSession, updateTrainerSessionRole } from "@/services/schedule";
+import type { TrainerSessionRoleValue } from "@/services/schedule";
 
 type RouteContext = {
   params: {
@@ -17,7 +18,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const session = await requirePermission(request, "schedule.edit");
     const body = await request.json();
     const input = updateTrainerRoleSchema.parse(body);
-    const result = await updateTrainerSessionRole(params.assignmentId, input.role as any, session.userId);
+    const result = await updateTrainerSessionRole(params.assignmentId, input.role as TrainerSessionRoleValue, session.userId);
     return apiSuccess(result);
   } catch (error) {
     return apiError(error);
