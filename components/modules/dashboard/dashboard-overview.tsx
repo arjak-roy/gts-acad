@@ -75,6 +75,7 @@ const DASHBOARD_WIDGET_IDS = [
   "recent-activity",
   "trainer-workload",
   "delivery-coverage",
+  "assessment-analytics",
   "quick-actions",
 ] as const;
 
@@ -551,6 +552,12 @@ export function DashboardOverview({
   const pathname = usePathname();
   const { user } = useRbac();
   const [statsState, setStatsState] = useState(stats);
+  const [assessmentAnalyticsWidgets, setAssessmentAnalyticsWidgets] = useState<{
+    averageQuizScore: number;
+    passRate: number;
+    totalQuizAttempts: number;
+    pendingReviewCount: number;
+  } | null>(null);
   const [draftFilters, setDraftFilters] = useState<DashboardFilterDraft>(() => toDraftFilters(stats.filters));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
@@ -589,6 +596,22 @@ export function DashboardOverview({
 
     saveDashboardWidgetPreferences(widgetStorageKey, resolvedWidgetPreferences);
   }, [hasLoadedWidgetPreferences, resolvedWidgetPreferences, widgetStorageKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAssessmentWidgets() {
+      try {
+        const res = await fetch("/api/assessment-analytics/widgets");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.data) setAssessmentAnalyticsWidgets(json.data);
+      } catch {
+        // Non-critical widget - silently fail
+      }
+    }
+    loadAssessmentWidgets();
+    return () => { cancelled = true; };
+  }, [statsState.filters]);
 
   const visibleCourses = useMemo(() => {
     if (!draftFilters.programType) {
@@ -1073,6 +1096,41 @@ export function DashboardOverview({
       ),
     },
     {
+      id: "assessment-analytics",
+      title: "Assessment Analytics",
+      description: "Quiz performance overview including pass rates, average scores, and pending reviews.",
+      defaultSize: "md",
+      allowedSizes: [...DASHBOARD_WIDGET_SIZES],
+      content: assessmentAnalyticsWidgets ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Total Attempts</p>
+            <p className="mt-2 text-2xl font-black tracking-tight text-primary">{assessmentAnalyticsWidgets.totalQuizAttempts.toLocaleString("en-IN")}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Average Score</p>
+            <p className="mt-2 text-2xl font-black tracking-tight text-primary">{assessmentAnalyticsWidgets.averageQuizScore}%</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Pass Rate</p>
+            <p className={cn("mt-2 text-2xl font-black tracking-tight", assessmentAnalyticsWidgets.passRate >= 70 ? "text-green-600" : assessmentAnalyticsWidgets.passRate >= 40 ? "text-yellow-600" : "text-red-600")}>{assessmentAnalyticsWidgets.passRate}%</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Pending Review</p>
+            <p className="mt-2 text-2xl font-black tracking-tight text-primary">{assessmentAnalyticsWidgets.pendingReviewCount.toLocaleString("en-IN")}</p>
+          </div>
+          <div className="sm:col-span-2 mt-1">
+            <Link href="/assessments/analytics" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              View Full Analytics
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <WidgetEmptyState message="Assessment analytics data is loading or unavailable." />
+      ),
+    },
+    {
       id: "delivery-coverage",
       title: "Delivery Coverage",
       description: "Operational readiness across curriculum, resources, assessment pools, and learner movement.",
@@ -1100,6 +1158,7 @@ export function DashboardOverview({
       ),
     },
   ], [
+    assessmentAnalyticsWidgets,
     learnerProgressPeak,
     learnerProgressFunnelStages,
     peakCompleted,

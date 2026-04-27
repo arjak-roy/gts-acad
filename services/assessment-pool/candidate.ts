@@ -49,6 +49,7 @@ const DRAFT_FINALIZATION_TOLERANCE_MS = 30_000;
 type ResolvedAttemptRecord = {
   id: string;
   assessmentId: string;
+  attemptNumber: number;
   status: AssessmentAttemptStatus;
   answers: Prisma.JsonValue;
   submittedAt: Date;
@@ -640,16 +641,16 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
 
   const assessmentId = linkedEvent?.linkedAssessmentId ?? fallbackAssessment?.id ?? null;
   const attemptRecord = assessmentId
-    ? await prisma.assessmentAttempt.findUnique({
+    ? await prisma.assessmentAttempt.findFirst({
         where: {
-          assessmentId_learnerId: {
-            assessmentId,
-            learnerId: learner.id,
-          },
+          assessmentId,
+          learnerId: learner.id,
         },
+        orderBy: { attemptNumber: "desc" },
         select: {
           id: true,
           assessmentId: true,
+          attemptNumber: true,
           status: true,
           answers: true,
           startedAt: true,
@@ -814,6 +815,24 @@ export async function getCandidateAssessmentDetailService(options: {
 
   const availabilityStatus = resolveAvailabilityStatus(context, now);
   const hasFinalAttempt = Boolean(context.attempt && context.attempt.status !== AssessmentAttemptStatus.DRAFT);
+
+  // Check for retake grant availability
+  let hasRetakeGrant = false;
+  if (hasFinalAttempt) {
+    const retakeGrant = await prisma.assessmentRetakeGrant.findFirst({
+      where: {
+        learnerId: context.learnerId,
+        assessmentPoolId: context.pool.id,
+        batchId: context.batchId,
+        consumedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date(now) } }],
+      },
+      select: { id: true },
+    });
+    hasRetakeGrant = Boolean(retakeGrant);
+  }
+  const canAttempt = !hasFinalAttempt || hasRetakeGrant;
+
   const isClosed = availabilityStatus === "CLOSED" || availabilityStatus === "EXPIRED" || availabilityStatus === "LOCKED";
   const isOpen = availabilityStatus === "OPEN";
   const draftDeadline = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT
@@ -825,7 +844,7 @@ export async function getCandidateAssessmentDetailService(options: {
       })
     : { deadlineAt: null, deadlineSource: "NONE" as const };
 
-  if (isOpen && context.supportsInAppAttempt && !hasFinalAttempt) {
+  if (isOpen && context.supportsInAppAttempt && canAttempt) {
     try {
       await markCurriculumAssessmentInProgressForLearnerService({
         learnerId: context.learnerId,
@@ -865,12 +884,13 @@ export async function getCandidateAssessmentDetailService(options: {
     availabilityMessage: getAvailabilityMessage(context, now),
     questionCount: context.questions.length,
     questions:
-      context.supportsInAppAttempt && !hasFinalAttempt && (isOpen || context.attempt?.status === AssessmentAttemptStatus.DRAFT)
+      context.supportsInAppAttempt && canAttempt && (isOpen || context.attempt?.status === AssessmentAttemptStatus.DRAFT)
         ? context.questions.map(sanitizeQuestion)
         : [],
     savedAnswers: getDraftSavedAnswers(context.attemptRecord),
     attempt: context.attempt,
     attemptHistory: context.attemptHistory,
+    hasRetakeGrant,
   };
 }
 
@@ -1008,8 +1028,22 @@ async function finalizeCandidateAssessmentAttemptService(options: {
   const existingDraft = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT ? context.attemptRecord : null;
   const hasFinalAttempt = Boolean(context.attempt && context.attempt.status !== AssessmentAttemptStatus.DRAFT);
 
-  if (hasFinalAttempt) {
-    throw new Error("Assessment already submitted.");
+  if (hasFinalAttempt && !existingDraft) {
+    // Check for available retake grant
+    const retakeGrant = await prisma.assessmentRetakeGrant.findFirst({
+      where: {
+        learnerId: context.learnerId,
+        assessmentPoolId: context.pool.id,
+        batchId: context.batchId,
+        consumedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { id: true },
+    });
+
+    if (!retakeGrant) {
+      throw new Error("Assessment already submitted.");
+    }
   }
 
   if (!context.supportsInAppAttempt) {
@@ -1074,21 +1108,35 @@ async function finalizeCandidateAssessmentAttemptService(options: {
       const resolvedAssessmentId = await resolveAssessmentIdForContext(tx, context);
 
       if (!existingDraft) {
-        const existingAttempt = await tx.assessmentAttempt.findUnique({
+        const existingAttempt = await tx.assessmentAttempt.findFirst({
           where: {
-            assessmentId_learnerId: {
-              assessmentId: resolvedAssessmentId,
-              learnerId: context.learnerId,
-            },
+            assessmentId: resolvedAssessmentId,
+            learnerId: context.learnerId,
           },
+          orderBy: { attemptNumber: "desc" },
           select: {
             id: true,
             status: true,
+            attemptNumber: true,
           },
         });
 
         if (existingAttempt && existingAttempt.status !== AssessmentAttemptStatus.DRAFT) {
-          throw new Error("Assessment already submitted.");
+          // Check for available retake grant
+          const retakeGrant = await tx.assessmentRetakeGrant.findFirst({
+            where: {
+              learnerId: context.learnerId,
+              assessmentPoolId: context.pool.id,
+              batchId: context.batchId,
+              consumedAt: null,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            },
+            select: { id: true },
+          });
+
+          if (!retakeGrant) {
+            throw new Error("Assessment already submitted.");
+          }
         }
       }
 
@@ -1134,6 +1182,7 @@ async function finalizeCandidateAssessmentAttemptService(options: {
               assessmentPoolId: context.pool.id,
               learnerId: context.learnerId,
               batchId: context.batchId,
+              attemptNumber: (context.attemptRecord?.attemptNumber ?? 0) + 1,
               status: report.requiresManualReview ? AssessmentAttemptStatus.PENDING_REVIEW : AssessmentAttemptStatus.GRADED,
               answers: normalizedAnswers as Prisma.InputJsonValue,
               gradingReport: report as Prisma.InputJsonValue,
@@ -1166,6 +1215,58 @@ async function finalizeCandidateAssessmentAttemptService(options: {
               requiresManualReview: true,
             },
           });
+
+      // Consume retake grant if this is a retake attempt
+      if (!existingDraft && context.attemptRecord && context.attemptRecord.status !== AssessmentAttemptStatus.DRAFT) {
+        const retakeGrant = await tx.assessmentRetakeGrant.findFirst({
+          where: {
+            learnerId: context.learnerId,
+            assessmentPoolId: context.pool.id,
+            batchId: context.batchId,
+            consumedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
+          select: { id: true },
+        });
+        if (retakeGrant) {
+          await tx.assessmentRetakeGrant.update({
+            where: { id: retakeGrant.id },
+            data: { consumedAt: submittedAt, consumedAttemptId: attempt.id },
+          });
+        }
+      }
+
+      // Write normalized question results for analytics
+      if (report.results && report.results.length > 0) {
+        const answersMap = new Map(normalizedAnswers.map((a) => [a.questionId, a.answer]));
+        const questionsMap = new Map(context.questions.map((q) => [q.id, q]));
+        const questionResultRows = report.results
+          .filter((qr) => qr.questionId)
+          .map((qr) => {
+            const submittedAnswer = answersMap.get(qr.questionId);
+            const question = questionsMap.get(qr.questionId);
+            const isSkipped = submittedAnswer === undefined || submittedAnswer === null;
+            return {
+              attemptId: attempt.id,
+              assessmentPoolId: context.pool.id,
+              questionId: qr.questionId,
+              learnerId: context.learnerId,
+              questionType: question?.questionType ?? QuestionType.MCQ,
+              isCorrect: qr.isCorrect ?? false,
+              isSkipped,
+              marksAwarded: qr.marksAwarded ?? 0,
+              maxMarks: qr.maxMarks ?? 0,
+              requiresManualReview: qr.requiresManualReview ?? false,
+              submittedAnswer: (isSkipped ? Prisma.JsonNull : submittedAnswer) as Prisma.InputJsonValue,
+            };
+          });
+        if (questionResultRows.length > 0) {
+          await tx.attemptQuestionResult.createMany({
+            data: questionResultRows,
+            skipDuplicates: true,
+          });
+        }
+      }
 
       if (!report.requiresManualReview) {
         await tx.assessmentScore.upsert({
@@ -1238,7 +1339,21 @@ export async function saveCandidateAssessmentDraftService(options: {
   const hasFinalAttempt = Boolean(context.attempt && context.attempt.status !== AssessmentAttemptStatus.DRAFT);
 
   if (hasFinalAttempt) {
-    throw new Error("Assessment already submitted.");
+    // Check for available retake grant before rejecting
+    const retakeGrant = await prisma.assessmentRetakeGrant.findFirst({
+      where: {
+        learnerId: context.learnerId,
+        assessmentPoolId: context.pool.id,
+        batchId: context.batchId,
+        consumedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { id: true },
+    });
+
+    if (!retakeGrant) {
+      throw new Error("Assessment already submitted.");
+    }
   }
 
   if (!context.supportsInAppAttempt) {
@@ -1288,17 +1403,17 @@ export async function saveCandidateAssessmentDraftService(options: {
     const resolvedAssessmentId = await resolveAssessmentIdForContext(tx, context);
     const existingAttempt = context.attemptRecord?.status === AssessmentAttemptStatus.DRAFT
       ? context.attemptRecord
-      : await tx.assessmentAttempt.findUnique({
+      : await tx.assessmentAttempt.findFirst({
           where: {
-            assessmentId_learnerId: {
-              assessmentId: resolvedAssessmentId,
-              learnerId: context.learnerId,
-            },
+            assessmentId: resolvedAssessmentId,
+            learnerId: context.learnerId,
           },
+          orderBy: { attemptNumber: "desc" },
           select: {
             id: true,
             status: true,
             assessmentId: true,
+            attemptNumber: true,
             startedAt: true,
             deadlineAt: true,
           },
@@ -1340,6 +1455,7 @@ export async function saveCandidateAssessmentDraftService(options: {
             assessmentPoolId: context.pool.id,
             learnerId: context.learnerId,
             batchId: context.batchId,
+            attemptNumber: (context.attemptRecord?.attemptNumber ?? 0) + 1,
             status: AssessmentAttemptStatus.DRAFT,
             answers: normalizedAnswers as Prisma.InputJsonValue,
             totalMarks: context.pool.totalMarks,

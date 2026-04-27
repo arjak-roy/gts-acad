@@ -179,6 +179,25 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       }
     }
 
+    // Check for available retake grants
+    const retakeGrantPoolIds = new Set<string>();
+    if (assessmentPoolIds.length > 0) {
+      const now = new Date();
+      const availableGrants = await prisma.assessmentRetakeGrant.findMany({
+        where: {
+          learnerId: profile.id,
+          batchId,
+          assessmentPoolId: { in: assessmentPoolIds },
+          consumedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        select: { assessmentPoolId: true },
+      });
+      for (const grant of availableGrants) {
+        retakeGrantPoolIds.add(grant.assessmentPoolId);
+      }
+    }
+
     const candidateAssessments = assessments.map((assessment) => {
       const linkedEvent = selectLinkedAssessmentEvent(scheduleResponse.items, assessment.assessmentPoolId);
       const curriculumContext = curriculumAssessmentContextByPoolId.get(assessment.assessmentPoolId) ?? null;
@@ -199,6 +218,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         deadlineSource: resolvedWindow.deadlineSource,
         curriculumContext: curriculumContext ? serializeCurriculumAssessmentContext(curriculumContext) : null,
         latestAttempt: latestAttemptByPoolId.get(assessment.assessmentPoolId) ?? null,
+        hasRetakeGrant: retakeGrantPoolIds.has(assessment.assessmentPoolId),
       };
     });
 

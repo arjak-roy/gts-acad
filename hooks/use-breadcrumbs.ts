@@ -69,11 +69,8 @@ export function useBreadcrumbs(detailLabel?: string): BreadcrumbItem[] {
         : undefined;
 
       if (subLabel) {
-        // Replace the parent item with the full sub-route label
-        items[items.length - 1] = {
-          label: subLabel,
-          href: builtPath,
-        };
+        // Keep the parent item as a link and add the sub-route as a new crumb
+        items.push({ label: subLabel, href: builtPath });
         continue;
       }
 

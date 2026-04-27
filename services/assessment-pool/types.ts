@@ -139,6 +139,7 @@ export type CandidateAssessmentDetail = {
   savedAnswers: CandidateAssessmentSavedAnswer[];
   attempt: CandidateAssessmentAttemptSummary | null;
   attemptHistory: CandidateAssessmentAttemptSummary[];
+  hasRetakeGrant: boolean;
 };
 
 export type CandidateAssessmentDraftSaveResult = {
