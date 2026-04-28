@@ -31,6 +31,7 @@ import type {
   CandidateAssessmentSubmissionResult,
   QuestionDetail,
 } from "@/services/assessment-pool/types";
+import { seededRng, deterministicShuffle } from "@/lib/assessment-scoring";
 import { recomputeLearnerReadiness } from "@/services/readiness-service";
 
 const SUPPORTED_IN_APP_QUESTION_TYPES = new Set<QuestionType>([
@@ -85,6 +86,8 @@ type CandidateAssessmentContext = {
     questionType: QuestionType;
     difficultyLevel: "EASY" | "MEDIUM" | "HARD";
     totalMarks: number;
+    /** Effective marks for the subset of questions actually delivered. Equals totalMarks when no randomSubsetCount is set. */
+    effectiveTotalMarks: number;
     passingMarks: number;
     timeLimitMinutes: number | null;
   };
@@ -516,6 +519,9 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
             passingMarks: true,
             timeLimitMinutes: true,
             status: true,
+            shuffleQuestions: true,
+            shuffleOptions: true,
+            randomSubsetCount: true,
             questions: {
               orderBy: {
                 sortOrder: "asc",
@@ -559,6 +565,9 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
             totalMarks: true,
             passingMarks: true,
             timeLimitMinutes: true,
+            shuffleQuestions: true,
+            shuffleOptions: true,
+            randomSubsetCount: true,
             questions: {
               orderBy: {
                 sortOrder: "asc",
@@ -695,6 +704,40 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
     fallbackAssessmentId: fallbackAssessment?.id ?? null,
   });
 
+  // Apply deterministic per-candidate randomization so the question set is stable
+  // across page refreshes for the same candidate, without persisting the selection.
+  const rngSeed = `${learner.id}:${pool.id}`;
+
+  let deliveredQuestions = pool.questions as QuestionDetail[];
+
+  if (pool.shuffleQuestions) {
+    deliveredQuestions = deterministicShuffle(deliveredQuestions, seededRng(rngSeed));
+  }
+
+  if (pool.randomSubsetCount !== null && pool.randomSubsetCount > 0 && pool.randomSubsetCount < deliveredQuestions.length) {
+    // Shuffle first (if not already shuffled) to get a stable random subset.
+    const shuffledForSubset = pool.shuffleQuestions
+      ? deliveredQuestions
+      : deterministicShuffle(deliveredQuestions, seededRng(`${rngSeed}:subset`));
+    deliveredQuestions = shuffledForSubset.slice(0, pool.randomSubsetCount);
+  }
+
+  if (pool.shuffleOptions) {
+    const optionsRng = seededRng(`${rngSeed}:options`);
+    deliveredQuestions = deliveredQuestions.map((question) => {
+      if (question.questionType !== "MCQ" || !Array.isArray(question.options)) {
+        return question;
+      }
+      return { ...question, options: deterministicShuffle(question.options as unknown[], optionsRng) };
+    });
+  }
+
+  // Effective total marks is the sum of delivered questions' marks.
+  // This differs from pool.totalMarks when a random subset is delivered.
+  const effectiveTotalMarks = deliveredQuestions.length > 0
+    ? deliveredQuestions.reduce((sum, q) => sum + q.marks, 0)
+    : pool.totalMarks;
+
   return {
     learnerId: learner.id,
     batchId,
@@ -715,10 +758,11 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
       questionType: pool.questionType,
       difficultyLevel: pool.difficultyLevel,
       totalMarks: pool.totalMarks,
+      effectiveTotalMarks,
       passingMarks: pool.passingMarks,
       timeLimitMinutes: pool.timeLimitMinutes,
     },
-    questions: pool.questions as QuestionDetail[],
+    questions: deliveredQuestions,
     linkedAssessmentId: linkedEvent?.linkedAssessmentId ?? null,
     linkedEventType: linkedEvent?.type === "TEST" ? linkedEvent.type : null,
     linkedClassMode: linkedEvent?.classMode ?? null,
@@ -758,7 +802,7 @@ async function resolveCandidateAssessmentContext(userId: string, batchId: string
         })
       : null,
     attemptHistory,
-    supportsInAppAttempt: pool.questions.every((question) => SUPPORTED_IN_APP_QUESTION_TYPES.has(question.questionType)),
+    supportsInAppAttempt: deliveredQuestions.every((question) => SUPPORTED_IN_APP_QUESTION_TYPES.has(question.questionType)),
   };
 }
 
@@ -1099,6 +1143,7 @@ async function finalizeCandidateAssessmentAttemptService(options: {
       questionId: answer.questionId,
       answer: answer.answer ?? null,
     })),
+    { overrideTotalMarks: context.pool.effectiveTotalMarks },
   );
   const submittedAt = new Date();
   const feedback = buildCandidateAttemptFeedback(report);

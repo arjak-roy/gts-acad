@@ -721,19 +721,32 @@ export function AssessmentDetailSheet({
               </section>
 
               <div className="rounded-lg border border-[#dbe6f6] bg-[#f5f9ff] px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Question Progress</p>
-                    <p className="mt-1 text-sm text-slate-700">
-                      {detail.questionCount > 0
-                        ? `${detail.questionCount} question${detail.questionCount === 1 ? "" : "s"} added. Publish is ready when content is final.`
-                        : "No questions added yet. Add at least one question to publish."}
-                    </p>
-                  </div>
-                  <Badge variant={detail.questionCount > 0 ? "success" : "warning"}>
-                    {detail.questionCount > 0 ? "Publish Ready" : "Needs Questions"}
-                  </Badge>
-                </div>
+                {(() => {
+                  const sumMarks = detail.questions.reduce((total, q) => total + q.marks, 0);
+                  const hasMarksMismatch = detail.questionCount > 0 && sumMarks !== detail.totalMarks;
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Question Progress</p>
+                          <p className="mt-1 text-sm text-slate-700">
+                            {detail.questionCount > 0
+                              ? `${detail.questionCount} question${detail.questionCount === 1 ? "" : "s"} added. Publish is ready when content is final.`
+                              : "No questions added yet. Add at least one question to publish."}
+                          </p>
+                        </div>
+                        <Badge variant={detail.questionCount > 0 && !hasMarksMismatch ? "success" : "warning"}>
+                          {hasMarksMismatch ? "Marks Mismatch" : detail.questionCount > 0 ? "Publish Ready" : "Needs Questions"}
+                        </Badge>
+                      </div>
+                      {hasMarksMismatch ? (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Question marks sum to <strong>{sumMarks}</strong>, but pool total is <strong>{detail.totalMarks}</strong>. Adjust question marks or pool total marks before publishing.
+                        </p>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
 
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
@@ -836,9 +849,16 @@ export function AssessmentDetailSheet({
                 {detail.status === "DRAFT" ? (
                   <>
                     <CanAccess permission="assessment_pool.publish">
-                      <Button size="sm" onClick={handlePublish} disabled={isPublishing || detail.questionCount < 1 || isDeletingAssessment}>
-                        {isPublishing ? "Publishing..." : "Publish Assessment"}
-                      </Button>
+                      {(() => {
+                        const sumMarks = detail.questions.reduce((total, q) => total + q.marks, 0);
+                        const hasMarksMismatch = detail.questionCount > 0 && sumMarks !== detail.totalMarks;
+                        const isDisabled = isPublishing || detail.questionCount < 1 || hasMarksMismatch || isDeletingAssessment;
+                        return (
+                          <Button size="sm" onClick={handlePublish} disabled={isDisabled}>
+                            {isPublishing ? "Publishing..." : "Publish Assessment"}
+                          </Button>
+                        );
+                      })()}
                     </CanAccess>
                     {detail.questionCount < 1 ? (
                       <p className="text-xs text-slate-500">Publish is enabled after at least one question is added.</p>

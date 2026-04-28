@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma, isDatabaseConfigured } from "@/lib/prisma-client";
+import { clampAttemptScore } from "@/lib/assessment-scoring";
 import type { QuestionDetail, GradeResult, GradingReport } from "@/services/assessment-pool/types";
 
 type PassCriteriaConfig = {
@@ -37,20 +38,6 @@ function normalizeTrueFalseValue(value: unknown): boolean | null {
   }
 
   return null;
-}
-
-function clampAttemptScore(marksObtained: number, totalMarks: number) {
-  const normalizedTotalMarks = Math.max(0, totalMarks);
-  const normalizedMarksObtained = Math.min(Math.max(0, marksObtained), normalizedTotalMarks);
-  const rawPercentage = normalizedTotalMarks > 0
-    ? Math.round((normalizedMarksObtained / normalizedTotalMarks) * 100)
-    : 0;
-  const normalizedPercentage = Math.min(Math.max(0, rawPercentage), 100);
-
-  return {
-    marksObtained: normalizedMarksObtained,
-    percentage: normalizedPercentage,
-  };
 }
 
 /**
@@ -143,6 +130,7 @@ function gradeQuestion(question: QuestionDetail, answer: unknown): GradeResult |
 export async function gradeSubmissionService(
   poolId: string,
   answers: { questionId: string; answer: unknown }[],
+  options?: { overrideTotalMarks?: number },
 ): Promise<GradingReport> {
   if (!isDatabaseConfigured) {
     throw new Error("Database not configured.");
@@ -202,7 +190,8 @@ export async function gradeSubmissionService(
     }
   }
 
-  const normalizedScore = clampAttemptScore(marksObtained, pool.totalMarks);
+  const effectiveTotalMarks = options?.overrideTotalMarks ?? pool.totalMarks;
+  const normalizedScore = clampAttemptScore(marksObtained, effectiveTotalMarks);
   const criteria = (pool.passCriteriaConfig as PassCriteriaConfig | null) ?? null;
   const mandatoryIds = new Set([
     ...pool.questions.filter((question) => question.isMandatory).map((question) => question.id),
@@ -219,8 +208,9 @@ export async function gradeSubmissionService(
     return result.isCorrect === true;
   });
 
+  const deliveredCount = answers.length;
   const completionRequirement = criteria?.minCompletionRequirement;
-  const completionRatio = pool.questions.length > 0 ? (submittedQuestionIds.size / pool.questions.length) * 100 : 100;
+  const completionRatio = deliveredCount > 0 ? (submittedQuestionIds.size / deliveredCount) * 100 : 100;
   const meetsCompletionRule = completionRequirement === undefined || completionRatio >= completionRequirement;
 
   const minMarksThreshold = criteria?.minMarks ?? pool.passingMarks;
@@ -232,7 +222,7 @@ export async function gradeSubmissionService(
   const passed = meetsMarksRule && meetsPercentageRule && meetsMandatoryQuestionRule && meetsCompletionRule;
 
   return {
-    totalMarks: pool.totalMarks,
+    totalMarks: effectiveTotalMarks,
     marksObtained: normalizedScore.marksObtained,
     percentage: normalizedScore.percentage,
     passed,

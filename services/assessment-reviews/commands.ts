@@ -9,6 +9,7 @@ import type {
   UpdateAssessmentAttemptStatusInput,
 } from "@/lib/validation-schemas/assessment-reviews";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
+import { clampAttemptScore } from "@/lib/assessment-scoring";
 import { buildCandidateAttemptFeedback } from "@/services/assessment-pool/candidate-attempt-feedback";
 import { gradeSubmissionService } from "@/services/assessment-pool/grading";
 import { sendCandidateAssessmentResultNotification } from "@/services/candidate-notifications";
@@ -26,20 +27,6 @@ import { getAssessmentReviewDetailService } from "@/services/assessment-reviews/
 import { recomputeLearnerReadiness } from "@/services/readiness-service";
 
 const MANUAL_REVIEW_QUESTION_TYPES = new Set(["ESSAY", "MULTI_INPUT_REASONING"]);
-
-function clampAttemptScore(marksObtained: number, totalMarks: number) {
-  const normalizedTotalMarks = Math.max(0, totalMarks);
-  const normalizedMarksObtained = Math.min(Math.max(0, marksObtained), normalizedTotalMarks);
-  const rawPercentage = normalizedTotalMarks > 0
-    ? Math.round((normalizedMarksObtained / normalizedTotalMarks) * 100)
-    : 0;
-  const normalizedPercentage = Math.min(Math.max(0, rawPercentage), 100);
-
-  return {
-    marksObtained: normalizedMarksObtained,
-    percentage: normalizedPercentage,
-  };
-}
 
 function normalizeQuestionScores(questionScores: GradeAssessmentAttemptInput["questionScores"]) {
   const deduplicatedScores = new Map<string, GradeAssessmentAttemptInput["questionScores"][number]>();

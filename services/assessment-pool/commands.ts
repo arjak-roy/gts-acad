@@ -78,6 +78,9 @@ export async function createAssessmentPoolService(
       passingMarks: input.passingMarks ?? 40,
       passCriteriaConfig: toNullableJsonInput(input.passCriteriaConfig),
       timeLimitMinutes: input.timeLimitMinutes ?? null,
+      shuffleQuestions: input.shuffleQuestions ?? false,
+      shuffleOptions: input.shuffleOptions ?? false,
+      randomSubsetCount: input.randomSubsetCount ?? null,
       createdById: options?.actorUserId ?? null,
     },
     select: {
@@ -130,6 +133,9 @@ export async function updateAssessmentPoolService(
       ...(input.passCriteriaConfig !== undefined && { passCriteriaConfig: toNullableJsonInput(input.passCriteriaConfig) }),
       ...(input.timeLimitMinutes !== undefined && { timeLimitMinutes: input.timeLimitMinutes }),
       ...(input.status !== undefined && { status: input.status as AssessmentPoolCreateResult["status"] }),
+      ...(input.shuffleQuestions !== undefined && { shuffleQuestions: input.shuffleQuestions }),
+      ...(input.shuffleOptions !== undefined && { shuffleOptions: input.shuffleOptions }),
+      ...(input.randomSubsetCount !== undefined && { randomSubsetCount: input.randomSubsetCount }),
     },
     select: {
       id: true,
@@ -157,6 +163,33 @@ export async function publishAssessmentPoolService(
 ): Promise<AssessmentPoolCreateResult> {
   if (!isDatabaseConfigured) {
     throw new Error("Database not configured.");
+  }
+
+  // Validate before publishing: must have at least one question, and
+  // the sum of question marks must equal pool.totalMarks.
+  const draft = await prisma.assessmentPool.findUnique({
+    where: { id: poolId },
+    select: {
+      totalMarks: true,
+      _count: { select: { questions: true } },
+      questions: { select: { marks: true } },
+    },
+  });
+
+  if (!draft) {
+    throw new Error("Assessment pool not found.");
+  }
+
+  if (draft._count.questions < 1) {
+    throw new Error("Cannot publish: the assessment must have at least one question.");
+  }
+
+  const sumQuestionMarks = draft.questions.reduce((total, q) => total + q.marks, 0);
+  if (sumQuestionMarks !== draft.totalMarks) {
+    throw new Error(
+      `Cannot publish: the sum of question marks (${sumQuestionMarks}) does not match the pool total marks (${draft.totalMarks}). ` +
+      `Adjust question marks or update the pool total marks before publishing.`,
+    );
   }
 
   const pool = await prisma.assessmentPool.update({
