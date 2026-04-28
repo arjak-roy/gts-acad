@@ -39,6 +39,20 @@ function normalizeTrueFalseValue(value: unknown): boolean | null {
   return null;
 }
 
+function clampAttemptScore(marksObtained: number, totalMarks: number) {
+  const normalizedTotalMarks = Math.max(0, totalMarks);
+  const normalizedMarksObtained = Math.min(Math.max(0, marksObtained), normalizedTotalMarks);
+  const rawPercentage = normalizedTotalMarks > 0
+    ? Math.round((normalizedMarksObtained / normalizedTotalMarks) * 100)
+    : 0;
+  const normalizedPercentage = Math.min(Math.max(0, rawPercentage), 100);
+
+  return {
+    marksObtained: normalizedMarksObtained,
+    percentage: normalizedPercentage,
+  };
+}
+
 /**
  * Auto-grade objective question types where the correct answer can be resolved immediately.
  * Returns null for question types that require manual review.
@@ -188,7 +202,7 @@ export async function gradeSubmissionService(
     }
   }
 
-  const percentage = pool.totalMarks > 0 ? Math.round((marksObtained / pool.totalMarks) * 100) : 0;
+  const normalizedScore = clampAttemptScore(marksObtained, pool.totalMarks);
   const criteria = (pool.passCriteriaConfig as PassCriteriaConfig | null) ?? null;
   const mandatoryIds = new Set([
     ...pool.questions.filter((question) => question.isMandatory).map((question) => question.id),
@@ -210,16 +224,17 @@ export async function gradeSubmissionService(
   const meetsCompletionRule = completionRequirement === undefined || completionRatio >= completionRequirement;
 
   const minMarksThreshold = criteria?.minMarks ?? pool.passingMarks;
-  const meetsMarksRule = marksObtained >= minMarksThreshold;
+  const meetsMarksRule = normalizedScore.marksObtained >= minMarksThreshold;
 
-  const meetsPercentageRule = criteria?.minPercentageScore === undefined || percentage >= criteria.minPercentageScore;
+  const meetsPercentageRule = criteria?.minPercentageScore === undefined
+    || normalizedScore.percentage >= criteria.minPercentageScore;
 
   const passed = meetsMarksRule && meetsPercentageRule && meetsMandatoryQuestionRule && meetsCompletionRule;
 
   return {
     totalMarks: pool.totalMarks,
-    marksObtained,
-    percentage,
+    marksObtained: normalizedScore.marksObtained,
+    percentage: normalizedScore.percentage,
     passed,
     requiresManualReview,
     results,

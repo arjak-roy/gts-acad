@@ -27,6 +27,20 @@ import { recomputeLearnerReadiness } from "@/services/readiness-service";
 
 const MANUAL_REVIEW_QUESTION_TYPES = new Set(["ESSAY", "MULTI_INPUT_REASONING"]);
 
+function clampAttemptScore(marksObtained: number, totalMarks: number) {
+  const normalizedTotalMarks = Math.max(0, totalMarks);
+  const normalizedMarksObtained = Math.min(Math.max(0, marksObtained), normalizedTotalMarks);
+  const rawPercentage = normalizedTotalMarks > 0
+    ? Math.round((normalizedMarksObtained / normalizedTotalMarks) * 100)
+    : 0;
+  const normalizedPercentage = Math.min(Math.max(0, rawPercentage), 100);
+
+  return {
+    marksObtained: normalizedMarksObtained,
+    percentage: normalizedPercentage,
+  };
+}
+
 function normalizeQuestionScores(questionScores: GradeAssessmentAttemptInput["questionScores"]) {
   const deduplicatedScores = new Map<string, GradeAssessmentAttemptInput["questionScores"][number]>();
 
@@ -274,8 +288,10 @@ export async function gradeAssessmentAttemptService(options: {
     questionScores: options.input.questionScores,
     requireAllManualScores: !options.input.draft,
   });
-  const marksObtained = results.reduce((total, result) => total + result.marksAwarded, 0);
-  const percentage = attempt.totalMarks > 0 ? Math.round((marksObtained / attempt.totalMarks) * 100) : 0;
+  const rawMarksObtained = results.reduce((total, result) => total + result.marksAwarded, 0);
+  const normalizedScore = clampAttemptScore(rawMarksObtained, attempt.totalMarks);
+  const marksObtained = normalizedScore.marksObtained;
+  const percentage = normalizedScore.percentage;
   const passed = marksObtained >= attempt.assessmentPool.passingMarks;
   const gradedAt = new Date();
   const reviewerFeedback = options.input.reviewerFeedback.trim() || null;
