@@ -75,7 +75,7 @@ const navGroups: NavGroup[] = [
   },
   {
     // Day-to-day delivery — how learning is conducted.
-    label: "Delivery",
+    label: "Calendar",
     items: [
       { href: "/schedule", label: "Schedule", icon: CalendarDays, requiredPermission: routePermissionMap["/schedule"] },
       { href: "/trainer-sessions", label: "Trainer Sessions", icon: CalendarClock, requiredPermission: routePermissionMap["/trainer-sessions"] },
