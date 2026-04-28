@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, BookOpen, Building2, CalendarCheck, ClipboardList, FolderKanban, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, Network, Settings, Shield, UserCog, Users, Wallet } from "lucide-react";
+import { Award, BarChart3, BookOpen, Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, FolderOpen, GraduationCap, HeartPulse, HelpCircle, Layers, LayoutDashboard, Mail, Mic2, ScrollText, Settings, Shield, UserCheck, UserCog, Users, Wallet, Workflow } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,51 +40,89 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
-    label: "Main",
+    // Top-level monitoring and summary views.
+    label: "Home",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, requiredPermission: routePermissionMap["/dashboard"] },
-      { href: "/learners", label: "Learners", icon: Users, requiredPermission: routePermissionMap["/learners"] },
-      { href: "/courses", label: "Courses", icon: BookOpen, requiredPermission: routePermissionMap["/courses"] },
-      { href: "/programs", label: "Programs", icon: BookOpen, requiredPermission: routePermissionMap["/programs"] },
-      { href: "/batches", label: "Batches", icon: Layers, requiredPermission: routePermissionMap["/batches"] },
-      { href: "/centers", label: "Centers", icon: Building2, requiredPermission: routePermissionMap["/centers"] },
-      { href: "/trainers", label: "Trainers", icon: UserCog, requiredPermission: routePermissionMap["/trainers"] },
-      { href: "/overview", label: "Overview", icon: Network, requiredPermission: routePermissionMap["/overview"] },
+      { href: "/overview", label: "Overview", icon: BarChart3, requiredPermission: routePermissionMap["/overview"] },
     ],
   },
   {
-    label: "Academics",
+    // All humans enrolled or teaching in the academy.
+    label: "People",
     items: [
-      { href: "/course-builder", label: "Resource Repository", icon: FolderKanban, requiredPermission: routePermissionMap["/course-builder"] },
-      { href: "/curriculum-builder", label: "Curriculum Builder", icon: Layers, requiredPermission: routePermissionMap["/curriculum-builder"] },
-      { href: "/schedule", label: "Schedule", icon: CalendarCheck, requiredPermission: routePermissionMap["/schedule"] },
-      { href: "/trainer-sessions", label: "Trainer Sessions", icon: CalendarCheck, requiredPermission: routePermissionMap["/trainer-sessions"] },
-      { href: "/attendance", label: "Attendance", icon: CalendarCheck, requiredPermission: routePermissionMap["/attendance"] },
-      { href: "/assessments", label: "Assessments", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments"] },
-      { href: "/assessments/reviews", label: "Assessment Reviews", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments/reviews"] },
-      { href: "/certifications", label: "Certifications", icon: Award, requiredPermission: routePermissionMap["/certifications"] },
-      { href: "/readiness", label: "Readiness Engine", icon: HeartPulse, requiredPermission: routePermissionMap["/readiness"] },
+      { href: "/learners", label: "Learners", icon: Users, requiredPermission: routePermissionMap["/learners"] },
+      { href: "/trainers", label: "Trainers", icon: UserCheck, requiredPermission: routePermissionMap["/trainers"] },
+    ],
+  },
+  {
+    // Structural scaffolding — what the academy offers and where.
+    label: "Academy",
+    items: [
+      { href: "/courses", label: "Courses", icon: BookOpen, requiredPermission: routePermissionMap["/courses"] },
+      { href: "/programs", label: "Programs", icon: GraduationCap, requiredPermission: routePermissionMap["/programs"] },
+      { href: "/batches", label: "Batches", icon: Layers, requiredPermission: routePermissionMap["/batches"] },
+      { href: "/centers", label: "Centers", icon: Building2, requiredPermission: routePermissionMap["/centers"] },
+    ],
+  },
+  {
+    // Authoring tools — what gets taught.
+    label: "Content",
+    items: [
+      { href: "/course-builder", label: "Learning Resources", icon: FolderOpen, requiredPermission: routePermissionMap["/course-builder"] },
+      { href: "/curriculum-builder", label: "Curriculum Builder", icon: Workflow, requiredPermission: routePermissionMap["/curriculum-builder"] },
+    ],
+  },
+  {
+    // Day-to-day delivery — how learning is conducted.
+    label: "Delivery",
+    items: [
+      { href: "/schedule", label: "Schedule", icon: CalendarDays, requiredPermission: routePermissionMap["/schedule"] },
+      { href: "/trainer-sessions", label: "Trainer Sessions", icon: CalendarClock, requiredPermission: routePermissionMap["/trainer-sessions"] },
+      { href: "/attendance", label: "Attendance", icon: ClipboardCheck, requiredPermission: routePermissionMap["/attendance"] },
       { href: "/language-lab", label: "Language Lab", icon: Mic2, requiredPermission: routePermissionMap["/language-lab"] },
     ],
   },
   {
-    label: "Back Office",
+    // How learners are evaluated, reviewed, and graduated.
+    label: "Assessment",
     items: [
-      { href: "/users", label: "Users", icon: UserCog, requiredPermission: routePermissionMap["/users"] },
+      { href: "/assessments", label: "Assessments", icon: ClipboardList, requiredPermission: routePermissionMap["/assessments"] },
+      { href: "/assessments/reviews", label: "Review Queue", icon: CalendarCheck, requiredPermission: routePermissionMap["/assessments/reviews"] },
+      { href: "/certifications", label: "Certifications", icon: Award, requiredPermission: routePermissionMap["/certifications"] },
+      { href: "/readiness", label: "Placement Readiness", icon: HeartPulse, requiredPermission: routePermissionMap["/readiness"] },
+    ],
+  },
+  {
+    // Finance and learner support workflows.
+    label: "Operations",
+    items: [
       { href: "/payments", label: "Fees & Payments", icon: Wallet, requiredPermission: routePermissionMap["/payments"] },
       { href: "/support", label: "Support Tickets", icon: HelpCircle, requiredPermission: routePermissionMap["/support"] },
-      { href: "/logs-actions", label: "Logs & Actions", icon: ClipboardList, requiredPermission: routePermissionMap["/logs-actions"] },
-      { href: "/settings", label: "Application Settings", icon: Settings, requiredPermission: routePermissionMap["/settings"], matchMode: "exact" },
-      { href: "/settings/email-templates", label: "Email Settings", icon: Mail, requiredPermission: routePermissionMap["/settings/email-templates"] },
+    ],
+  },
+  {
+    // Platform administration — staff, permissions, audit, and configuration.
+    label: "System",
+    items: [
+      { href: "/users", label: "Staff Users", icon: UserCog, requiredPermission: routePermissionMap["/users"] },
       { href: "/roles", label: "Roles & Permissions", icon: Shield, requiredPermission: routePermissionMap["/roles"] },
+      { href: "/logs-actions", label: "Audit Logs", icon: ScrollText, requiredPermission: routePermissionMap["/logs-actions"] },
+      { href: "/settings", label: "Settings", icon: Settings, requiredPermission: routePermissionMap["/settings"], matchMode: "exact" },
+      { href: "/settings/email-templates", label: "Email Templates", icon: Mail, requiredPermission: routePermissionMap["/settings/email-templates"] },
     ],
   },
 ];
 
 const sidebarLoadingGroups = [
-  { labelWidth: "w-16", itemCount: 4 },
-  { labelWidth: "w-20", itemCount: 5 },
+  { labelWidth: "w-12", itemCount: 2 },
+  { labelWidth: "w-16", itemCount: 2 },
+  { labelWidth: "w-20", itemCount: 4 },
+  { labelWidth: "w-16", itemCount: 2 },
+  { labelWidth: "w-20", itemCount: 4 },
   { labelWidth: "w-24", itemCount: 4 },
+  { labelWidth: "w-24", itemCount: 2 },
+  { labelWidth: "w-16", itemCount: 5 },
 ];
 
 function SidebarNavLoading() {
