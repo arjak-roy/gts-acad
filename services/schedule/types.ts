@@ -68,6 +68,7 @@ export type ScheduleEventListItem = {
   seriesId: string | null;
   occurrenceIndex: number;
   isRecurring: boolean;
+  assignedTrainers: { trainerName: string; role: TrainerSessionRoleValue }[];
 };
 
 export type ScheduleEventListResponse = {

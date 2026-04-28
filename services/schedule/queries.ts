@@ -126,6 +126,13 @@ export async function listScheduleEventsService(input: ListScheduleEventsQueryIn
             title: true,
           },
         },
+        trainerAssignments: {
+          where: { removedAt: null },
+          select: {
+            role: true,
+            trainer: { select: { user: { select: { name: true } } } },
+          },
+        },
       },
       orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
       skip,
@@ -135,6 +142,7 @@ export async function listScheduleEventsService(input: ListScheduleEventsQueryIn
   const mappedItems = items as Array<EventRecord & {
     batch: { code: string; name: string };
     linkedAssessmentPool: { code: string; title: string } | null;
+    trainerAssignments: { role: string; trainer: { user: { name: string } } }[];
   }>;
 
   return {

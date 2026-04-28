@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, MoreHorizontal, Plus, Video } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, MoreHorizontal, Plus, Users, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +73,7 @@ type ScheduleEvent = {
   seriesId: string | null;
   occurrenceIndex: number;
   isRecurring: boolean;
+  assignedTrainers: { trainerName: string; role: string }[];
 };
 
 type EventActionHandlers = {
@@ -609,6 +610,12 @@ function MonthCalendarView({
                         {event.title}
                       </button>
                       {renderEventActions ? <div className="shrink-0">{renderEventActions(event, { compact: true })}</div> : null}
+                      {event.assignedTrainers.length > 0 ? (
+                        <p className={cn("truncate pl-1 text-[9px] font-medium leading-tight opacity-60", style.text)}>
+                          {event.assignedTrainers[0].trainerName}
+                          {event.assignedTrainers.length > 1 ? ` +${event.assignedTrainers.length - 1}` : ""}
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -731,6 +738,12 @@ function WeekCalendarView({
                             <p className={cn("mt-0.5 text-[10px] font-medium opacity-60", style.text)}>
                               {formatTime(event.startsAt)}
                             </p>
+                            {event.assignedTrainers.length > 0 ? (
+                              <p className={cn("mt-0.5 truncate text-[9px] font-medium opacity-50", style.text)}>
+                                {event.assignedTrainers[0].trainerName}
+                                {event.assignedTrainers.length > 1 ? ` +${event.assignedTrainers.length - 1}` : ""}
+                              </p>
+                            ) : null}
                           </button>
                           {renderEventActions ? <div className="shrink-0">{renderEventActions(event, { compact: true })}</div> : null}
                         </div>
@@ -885,6 +898,16 @@ function DayCalendarView({
                                 <span className="flex items-center gap-1">
                                   <ClipboardList className="h-3 w-3" />
                                   {event.linkedAssessmentPoolCode ?? event.linkedAssessmentPoolTitle}
+                                </span>
+                              ) : null}
+                              {event.assignedTrainers.length > 0 ? (
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {event.assignedTrainers
+                                    .slice(0, 2)
+                                    .map((t) => t.trainerName)
+                                    .join(", ")}
+                                  {event.assignedTrainers.length > 2 ? ` +${event.assignedTrainers.length - 2} more` : ""}
                                 </span>
                               ) : null}
                             </div>

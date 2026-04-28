@@ -92,6 +92,7 @@ function resolveAssessmentMode(classMode: BatchMode | null) {
 export function mapScheduleEvent(item: EventRecord & {
   batch: { code: string; name: string };
   linkedAssessmentPool?: { code: string; title: string } | null;
+  trainerAssignments?: { role: string; trainer: { user: { name: string } } }[];
 }): ScheduleEventListItem {
   return {
     id: item.id,
@@ -120,6 +121,13 @@ export function mapScheduleEvent(item: EventRecord & {
     seriesId: item.seriesId,
     occurrenceIndex: item.occurrenceIndex,
     isRecurring: Boolean(item.seriesId),
+    assignedTrainers: (item.trainerAssignments ?? [])
+      .slice()
+      .sort((a, b) => {
+        const order: Record<string, number> = { PRIMARY: 0, CO_TRAINER: 1, REVIEWER: 2 };
+        return (order[a.role] ?? 9) - (order[b.role] ?? 9);
+      })
+      .map((a) => ({ trainerName: a.trainer.user.name, role: a.role as import("@/services/schedule/types").TrainerSessionRoleValue })),
   };
 }
 
