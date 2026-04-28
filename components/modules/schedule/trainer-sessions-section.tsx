@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, Clock } from "lucide-react";
 import { toast } from "sonner";
 
@@ -96,6 +96,8 @@ export function TrainerSessionsSection() {
   const [upcomingEvents, setUpcomingEvents] = useState<TrainerCalendarEvent[]>([]);
   const [pastEvents, setPastEvents] = useState<TrainerCalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const activeRequestRef = useRef(0);
+  const activeControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -111,21 +113,43 @@ export function TrainerSessionsSection() {
   }, []);
 
   const loadTrainerData = useCallback(async (trainerId: string) => {
+    activeControllerRef.current?.abort();
+
     if (!trainerId) {
+      activeRequestRef.current += 1;
       setStats(null);
       setUpcomingEvents([]);
       setPastEvents([]);
+      setLoading(false);
       return;
     }
+
+    const requestId = activeRequestRef.current + 1;
+    activeRequestRef.current = requestId;
+    const controller = new AbortController();
+    activeControllerRef.current = controller;
+
     setLoading(true);
+
     try {
+      const now = Date.now();
+      const rangeStart = new Date(now - 120 * 24 * 60 * 60 * 1000).toISOString();
+      const rangeEnd = new Date(now + 120 * 24 * 60 * 60 * 1000).toISOString();
+
       const [statsRes, calendarRes] = await Promise.all([
-        fetch(`/api/trainers/${trainerId}/calendar/stats`, { cache: "no-store" }),
-        fetch(`/api/trainers/${trainerId}/calendar?from=${new Date().toISOString()}&to=${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()}`, { cache: "no-store" }),
+        fetch(`/api/trainers/${trainerId}/calendar/stats`, { cache: "no-store", signal: controller.signal }),
+        fetch(`/api/trainers/${trainerId}/calendar?from=${rangeStart}&to=${rangeEnd}`, { cache: "no-store", signal: controller.signal }),
       ]);
+
+      if (requestId !== activeRequestRef.current) {
+        return;
+      }
 
       if (statsRes.ok) {
         const statsPayload = await statsRes.json();
+        if (requestId !== activeRequestRef.current) {
+          return;
+        }
         setStats(normalizeTrainerStats(statsPayload.data));
       } else {
         setStats(null);
@@ -133,21 +157,46 @@ export function TrainerSessionsSection() {
 
       if (calendarRes.ok) {
         const calendarPayload = await calendarRes.json();
+        if (requestId !== activeRequestRef.current) {
+          return;
+        }
         const events: TrainerCalendarEvent[] = calendarPayload.data ?? [];
         const now = new Date();
         setUpcomingEvents(events.filter((e) => new Date(e.startsAt) >= now).slice(0, 20));
         setPastEvents(events.filter((e) => new Date(e.startsAt) < now).slice(0, 20));
+      } else {
+        setUpcomingEvents([]);
+        setPastEvents([]);
       }
-    } catch {
+
+      if (!statsRes.ok || !calendarRes.ok) {
+        toast.error("Failed to load complete trainer calendar data.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+
+      if (requestId === activeRequestRef.current) {
+        setStats(null);
+        setUpcomingEvents([]);
+        setPastEvents([]);
+      }
       toast.error("Failed to load trainer calendar data.");
     } finally {
-      setLoading(false);
+      if (requestId === activeRequestRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (selectedTrainer) void loadTrainerData(selectedTrainer);
+    void loadTrainerData(selectedTrainer);
   }, [selectedTrainer, loadTrainerData]);
+
+  useEffect(() => () => {
+    activeControllerRef.current?.abort();
+  }, []);
 
   return (
     <div className="space-y-6">

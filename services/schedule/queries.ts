@@ -205,6 +205,7 @@ export async function listScheduleTrainerOptionsService(): Promise<ScheduleConte
       OR: [
         { leadBatches: { some: {} } },
         { batches: { some: {} } },
+        { sessionAssignments: { some: { removedAt: null } } },
       ],
     },
     select: {
