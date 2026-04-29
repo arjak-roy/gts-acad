@@ -442,7 +442,7 @@ function isAssessmentWindowPending(context: CandidateAssessmentContext, now: num
     return context.opensAt.getTime() > now;
   }
 
-  return !context.closesAt;
+  return hasUnpublishedAssessmentWindow(context);
 }
 
 function resolveAvailabilityStatus(context: CandidateAssessmentContext, now: number): CandidateAssessmentDetail["availabilityStatus"] {
@@ -829,7 +829,7 @@ function getAvailabilityMessage(context: CandidateAssessmentContext, now: number
     return "This assessment includes question types that are not supported in the candidate app yet.";
   }
 
-  if (!context.opensAt && !context.closesAt) {
+  if (hasUnpublishedAssessmentWindow(context)) {
     return context.curriculumContext?.availabilityReason.message ?? "This assessment is mapped to your batch, but its start time has not been published yet.";
   }
 
@@ -1108,7 +1108,7 @@ async function finalizeCandidateAssessmentAttemptService(options: {
     throw new Error(context.curriculumContext.availabilityReason.message);
   }
 
-  if (!context.opensAt && !context.closesAt) {
+  if (hasUnpublishedAssessmentWindow(context)) {
     throw new Error("Invalid request: assessment start time has not been published yet.");
   }
 
@@ -1419,7 +1419,7 @@ export async function saveCandidateAssessmentDraftService(options: {
     throw new Error(context.curriculumContext.availabilityReason.message);
   }
 
-  if (!context.opensAt && !context.closesAt) {
+  if (hasUnpublishedAssessmentWindow(context)) {
     throw new Error("Invalid request: assessment start time has not been published yet.");
   }
 
