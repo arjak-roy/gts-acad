@@ -102,6 +102,16 @@ type CandidateAssessmentContext = {
   supportsInAppAttempt: boolean;
 };
 
+function isImplicitlyOpenViaCurriculum(context: CandidateAssessmentContext) {
+  return context.curriculumContext?.availabilityStatus === "AVAILABLE"
+    && !context.opensAt
+    && !context.closesAt;
+}
+
+function hasUnpublishedAssessmentWindow(context: CandidateAssessmentContext) {
+  return !context.opensAt && !context.closesAt && !isImplicitlyOpenViaCurriculum(context);
+}
+
 function buildFallbackAssessmentTitle(mappingId: string, title: string) {
   return `${FALLBACK_ASSESSMENT_PREFIX}${mappingId}] ${title}`;
 }

@@ -1,34 +1,60 @@
+# .gitlab-ci.yml
+#
+# Single-service pipeline: Admin (Next.js full-stack)
+#
+# Admin: apps/admin-app/Dockerfile → ECR dev-gts_academy_admin
+#
+# Pipeline behaviour (GitLab CE compatible):
+#   Feature branch / MR  → validate only (lint + typecheck, no build/deploy)
+#   Merge to main         → validate → build → deploy_dev (automatic)
+#   Promote to UAT / Prod → manual click in GitLab UI
+#
+# Branch protection (configured in GitLab Settings → Repository):
+#   main:    push=No one, merge=Maintainers, force push=off
+#   develop: push=No one, merge=Maintainers, force push=off
+#   uat:     push=No one, merge=Maintainers, force push=off
+#
+# Merge request settings (Settings → Merge Requests):
+#   Pipeline must succeed, all discussions resolved, squash default on
+#
+# PRE-REQUISITES:
+#   GitLab CI variables (project level):
+#     DEV_ECS_SERVICE, DEV_APP_URL (same pattern for UAT/PROD)
+#   GitLab CI variables (group level):
+#     DEV_AWS_ACCOUNT_ID, DEV_DEPLOY_ROLE (same pattern for UAT/PROD)
+
+# ── WORKFLOW ───────────────────────────────────────────────────────────────────
+# Controls WHEN a pipeline is created. Prevents empty/duplicate pipelines.
+#   - MR exists → run validate only (gives developer feedback)
+#   - Push to main → run full pipeline (validate → build → deploy)
+#   - Feature branch without MR → no pipeline at all
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_IID                          # MR pipeline
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH        # main branch
+
 include:
-  # Using the centralized template from ci-templates project
   - project: '2c-devops/ci-templates'
     ref: main
     file: '/ecs-oidc-deploy.yml'
 
-variables:
-  # =====================================================================
-  # PROJECT CONFIGURATION
-  # =====================================================================
-  SERVICE_NAME: gts_academy_admin
-  ECR_REPOSITORY_NAME: dev-gts_academy_admin
+default:
+  tags:
+    - dev
 
-  
-  # =====================================================================
-  # AWS CONFIGURATION (Overrides for this project)
-  # =====================================================================
+variables:
   AWS_REGION: ap-south-1
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
-  IMAGE_NAME: $ECR_REPOSITORY_NAME
-  IMAGE_TAG: "latest"
+  IMAGE_NAME: dev-gts_academy_admin
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
 
-  DEV_ECR: $DEV_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-  UAT_ECR: $UAT_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  DEV_ECR:  $DEV_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  UAT_ECR:  $UAT_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
   PROD_ECR: $PROD_AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-# =====================================================================
-# PIPELINE DEFINITION
-# =====================================================================
 stages:
+  - validate
   - build
   - deploy_dev
   - promote_uat
@@ -36,17 +62,83 @@ stages:
   - promote_prod
   - deploy_prod
 
+# ── VALIDATE ───────────────────────────────────────────────────────────────────
+# Runs on BOTH MRs and main. Gives developers fast feedback before merge.
+# These jobs use a lightweight node image (no Docker-in-Docker needed).
+
+.validate_base:
+  stage: validate
+  image: node:24-alpine
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@9.15.4 --activate
+    - pnpm install --frozen-lockfile
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - apps/admin-app/node_modules/
+      - packages/database/node_modules/
+    policy: pull-push
+
+lint:
+  extends: .validate_base
+  script:
+    - pnpm run lint
+  allow_failure: true   # TODO: remove once all lint errors are fixed
+
+typecheck:
+  extends: .validate_base
+  script:
+    - pnpm run db:generate
+    - pnpm run typecheck
+  allow_failure: true   # TODO: remove once all type errors are fixed
+
+# ── BUILD ──────────────────────────────────────────────────────────────────────
+# Only runs on main (after merge). Tags images with commit SHA for traceability.
+# Also pushes :latest for Docker layer caching on next build.
+# .build_image_base doesn't honor DOCKERFILE variable — override script.
+
 build_image:
   extends: .build_image_base
   stage: build
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:
     AWS_ROLE_ARN: $DEV_DEPLOY_ROLE
     TARGET_ECR: $DEV_ECR
+    DOCKERFILE: apps/admin-app/Dockerfile
+  script:
+    - !reference [.oidc_assume_role, script]
+    - echo "Login to ${TARGET_ECR}"
+    - aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${TARGET_ECR}"
+    - echo "Pulling cache image..."
+    - docker pull "${TARGET_ECR}/${IMAGE_NAME}:latest" 2>/dev/null || echo "No cache image found, building from scratch"
+    - echo "Building image from ${DOCKERFILE} (tag=${IMAGE_TAG})..."
+    - |
+      docker build \
+        -f "${DOCKERFILE}" \
+        --cache-from "${TARGET_ECR}/${IMAGE_NAME}:latest" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+        -t "${IMAGE_NAME}:latest" .
+    - docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${TARGET_ECR}/${IMAGE_NAME}:${IMAGE_TAG}"
+    - docker tag "${IMAGE_NAME}:latest" "${TARGET_ECR}/${IMAGE_NAME}:latest"
+    - echo "Pushing images..."
+    - docker push "${TARGET_ECR}/${IMAGE_NAME}:${IMAGE_TAG}"
+    - docker push "${TARGET_ECR}/${IMAGE_NAME}:latest"
+    - echo "Verify image pushed successfully"
+    - aws ecr describe-images --repository-name "${IMAGE_NAME}" --image-ids imageTag="${IMAGE_TAG}" --region "${AWS_REGION}" --output json > /dev/null
+
+# ── DEPLOY DEV ─────────────────────────────────────────────────────────────────
+# Automatic after build succeeds.
 
 deploy_dev:
   extends: .ecs_deploy_base
   stage: deploy_dev
   needs: [build_image]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   environment:
     name: dev
     url: $DEV_APP_URL
@@ -55,21 +147,32 @@ deploy_dev:
     CLUSTER: "dev-ecs-cluster"
     SERVICE: $DEV_ECS_SERVICE
 
+# ── PROMOTE TO UAT ─────────────────────────────────────────────────────────────
+# Manual — copies the tested dev image to UAT ECR.
+
 promote_to_uat:
   extends: .ecr_promote_base
   stage: promote_uat
   needs: [deploy_dev]
-  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - when: never
   variables:
     AWS_ROLE_ARN: $UAT_DEPLOY_ROLE
     SOURCE_ECR: $DEV_ECR
     TARGET_ECR: $UAT_ECR
 
+# ── DEPLOY UAT ─────────────────────────────────────────────────────────────────
+
 deploy_uat:
   extends: .ecs_deploy_base
   stage: deploy_uat
   needs: [promote_to_uat]
-  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - when: never
   environment:
     name: uat
     url: $UAT_APP_URL
@@ -78,11 +181,13 @@ deploy_uat:
     CLUSTER: "uat-ecs-cluster"
     SERVICE: $UAT_ECS_SERVICE
 
+# ── PROMOTE TO PROD ────────────────────────────────────────────────────────────
+# Manual, main branch only. Copies UAT-tested image to Prod ECR.
+
 promote_to_prod:
   extends: .ecr_promote_base
   stage: promote_prod
   needs: [deploy_uat]
-  when: manual
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
@@ -92,11 +197,13 @@ promote_to_prod:
     SOURCE_ECR: $UAT_ECR
     TARGET_ECR: $PROD_ECR
 
+# ── DEPLOY PROD ────────────────────────────────────────────────────────────────
+# Manual, main branch only. Deploys promoted image to production ECS.
+
 deploy_prod:
   extends: .ecs_deploy_base
   stage: deploy_prod
   needs: [promote_to_prod]
-  when: manual
   timeout: 30m
   retry:
     max: 1
