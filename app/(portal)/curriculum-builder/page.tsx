@@ -65,6 +65,11 @@ type AssessmentOption = {
   status: string;
   questionType: string;
   difficultyLevel: string;
+  isLinkedToCourse: boolean;
+};
+
+type CourseAssessmentLinkOption = {
+  assessmentPoolId: string;
 };
 
 type CurriculumItemType = "CONTENT" | "ASSESSMENT";
@@ -2488,7 +2493,7 @@ export default function CurriculumBuilderPage() {
     setIsLoadingReferences(true);
 
     try {
-      const [contentResult, folderResult, assessmentResult] = await Promise.allSettled([
+      const [contentResult, folderResult, assessmentResult, courseAssessmentLinkResult] = await Promise.allSettled([
         fetch(`/api/course-content?courseId=${courseId}`, { cache: "no-store" }).then((response) => readApiData<Array<{
           id: string;
           title: string;
@@ -2510,6 +2515,7 @@ export default function CurriculumBuilderPage() {
           questionType: string;
           difficultyLevel: string;
         }>>(response, "Failed to load assessment pool.")),
+        fetch(`/api/course-assessment-link?courseId=${encodeURIComponent(courseId)}`, { cache: "no-store" }).then((response) => readApiData<CourseAssessmentLinkOption[]>(response, "Failed to load course assessment assignments.")),
       ]);
 
       if (contentResult.status === "fulfilled") {
@@ -2527,7 +2533,18 @@ export default function CurriculumBuilderPage() {
       }
 
       if (assessmentResult.status === "fulfilled") {
-        setAssessmentOptions(assessmentResult.value.filter((item) => item.status !== "ARCHIVED"));
+        const linkedAssessmentPoolIds = courseAssessmentLinkResult.status === "fulfilled"
+          ? new Set(courseAssessmentLinkResult.value.map((item) => item.assessmentPoolId))
+          : null;
+
+        setAssessmentOptions(
+          assessmentResult.value
+            .filter((item) => item.status !== "ARCHIVED")
+            .map((item) => ({
+              ...item,
+              isLinkedToCourse: linkedAssessmentPoolIds ? linkedAssessmentPoolIds.has(item.id) : true,
+            })),
+        );
       } else {
         setAssessmentOptions([]);
         toast.error(assessmentResult.reason instanceof Error ? assessmentResult.reason.message : "Failed to load assessment pool.");

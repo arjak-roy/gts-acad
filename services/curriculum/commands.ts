@@ -1011,6 +1011,8 @@ export async function createCurriculumStageItemsService(
     }));
   }
 
+  let autoLinkedAssessmentPoolIds: string[] = [];
+
   const stageItems = await prisma.$transaction(async (tx) => {
     const stage = await ensureStageExists(tx, input.stageId);
     const curriculumId = stage.module.curriculumId;
@@ -1041,6 +1043,35 @@ export async function createCurriculumStageItemsService(
 
       if (pools.length !== assessmentPoolIds.length) {
         throw new Error("One or more selected assessments could not be found.");
+      }
+
+      const existingLinks = await tx.courseAssessmentLink.findMany({
+        where: {
+          courseId,
+          assessmentPoolId: { in: assessmentPoolIds },
+        },
+        select: { assessmentPoolId: true },
+      });
+      const linkedAssessmentPoolIds = new Set(existingLinks.map((link) => link.assessmentPoolId));
+
+      autoLinkedAssessmentPoolIds = assessmentPoolIds.filter((assessmentPoolId) => !linkedAssessmentPoolIds.has(assessmentPoolId));
+
+      if (autoLinkedAssessmentPoolIds.length > 0) {
+        const lastCourseAssessmentLink = await tx.courseAssessmentLink.findFirst({
+          where: { courseId },
+          orderBy: [{ sortOrder: "desc" }, { createdAt: "desc" }],
+          select: { sortOrder: true },
+        });
+
+        await tx.courseAssessmentLink.createMany({
+          data: autoLinkedAssessmentPoolIds.map((assessmentPoolId, index) => ({
+            courseId,
+            assessmentPoolId,
+            sortOrder: (lastCourseAssessmentLink?.sortOrder ?? -1) + index + 1,
+            isRequired: false,
+          })),
+          skipDuplicates: true,
+        });
       }
     }
 
@@ -1092,6 +1123,7 @@ export async function createCurriculumStageItemsService(
       itemType: input.itemType,
       contentIds: input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [],
       assessmentPoolIds: input.itemType === "ASSESSMENT" ? normalizeReferenceIds(input.assessmentPoolIds) : [],
+      autoLinkedAssessmentPoolIds,
     },
   });
 
