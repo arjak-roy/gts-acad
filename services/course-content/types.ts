@@ -42,6 +42,8 @@ export type ContentDetail = ContentListItem & {
   isAiGenerated: boolean;
   aiGenerationMetadata: unknown;
   createdByName: string | null;
+  linkedResourceId: string | null;
+  linkedResourceCurrentVersionNumber: number | null;
   updatedAt: Date;
   batchCount: number;
 };

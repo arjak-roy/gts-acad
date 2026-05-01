@@ -26,6 +26,9 @@ type LearningResourceHistorySheetProps = {
   onOpenChange: (open: boolean) => void;
   refreshToken?: number;
   onRestored: () => void;
+  historyPath?: string | null;
+  restorePath?: string | null;
+  restorePermission?: string;
 };
 
 export function LearningResourceHistorySheet({
@@ -35,6 +38,9 @@ export function LearningResourceHistorySheet({
   onOpenChange,
   refreshToken = 0,
   onRestored,
+  historyPath,
+  restorePath,
+  restorePermission = "learning_resources.edit",
 }: LearningResourceHistorySheetProps) {
   const [versions, setVersions] = useState<LearningResourceVersionDetail[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
@@ -43,7 +49,9 @@ export function LearningResourceHistorySheet({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !resourceId) {
+    const effectiveHistoryPath = historyPath ?? (resourceId ? `/api/learning-resources/${resourceId}/history` : null);
+
+    if (!open || !effectiveHistoryPath) {
       return;
     }
 
@@ -54,7 +62,7 @@ export function LearningResourceHistorySheet({
       setError(null);
 
       try {
-        const response = await fetch(`/api/learning-resources/${resourceId}/history`, { cache: "no-store" });
+        const response = await fetch(effectiveHistoryPath, { cache: "no-store" });
         const payload = await parseApiResponse<LearningResourceVersionDetail[]>(response, "Failed to load resource history.");
 
         if (!active) {
@@ -82,12 +90,14 @@ export function LearningResourceHistorySheet({
     return () => {
       active = false;
     };
-  }, [open, refreshToken, resourceId]);
+  }, [historyPath, open, refreshToken, resourceId]);
 
   const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null;
 
   const handleRestore = async () => {
-    if (!resourceId || !selectedVersion) {
+    const effectiveRestorePath = restorePath ?? (resourceId ? `/api/learning-resources/${resourceId}/restore` : null);
+
+    if (!effectiveRestorePath || !selectedVersion) {
       return;
     }
 
@@ -99,7 +109,7 @@ export function LearningResourceHistorySheet({
     setIsRestoring(true);
 
     try {
-      const response = await fetch(`/api/learning-resources/${resourceId}/restore`, {
+      const response = await fetch(effectiveRestorePath, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -240,7 +250,7 @@ export function LearningResourceHistorySheet({
 
         <SheetFooter>
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Close</Button>
-          <CanAccess permission="learning_resources.edit">
+          <CanAccess permission={restorePermission}>
             <Button type="button" onClick={handleRestore} disabled={!selectedVersion || isRestoring}>
               {isRestoring ? "Restoring..." : "Restore Version"}
             </Button>

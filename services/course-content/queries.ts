@@ -6,6 +6,7 @@ import { getCandidateCurriculaForBatchService } from "@/services/curriculum/quer
 import { markCurriculumContentCompletedForLearnerService } from "@/services/curriculum/progress";
 import { listCourseIdsForBatchIds } from "@/services/lms/hierarchy";
 import { getCandidateProfileByUserIdService } from "@/services/learners-service";
+import { listLearningResourceVersionsService, type LearningResourceVersionDetail } from "@/services/learning-resource-service";
 import type {
   AssignedSharedContentListItem,
   CandidateContentAccessContext,
@@ -324,6 +325,7 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
       folder: { select: { name: true } },
       course: { select: { name: true } },
       createdBy: { select: { name: true } },
+      learningResource: { select: { id: true, currentVersionNumber: true } },
       _count: { select: { batchContentMappings: true } },
     },
   });
@@ -356,10 +358,33 @@ export async function getContentByIdService(contentId: string): Promise<ContentD
     isAiGenerated: content.isAiGenerated,
     aiGenerationMetadata: content.aiGenerationMetadata,
     createdByName: content.createdBy?.name ?? null,
+    linkedResourceId: content.learningResource?.id ?? null,
+    linkedResourceCurrentVersionNumber: content.learningResource?.currentVersionNumber ?? null,
     createdAt: content.createdAt,
     updatedAt: content.updatedAt,
     batchCount: content._count.batchContentMappings,
   };
+}
+
+export async function listCourseContentVersionsService(contentId: string): Promise<LearningResourceVersionDetail[]> {
+  if (!isDatabaseConfigured) {
+    return [];
+  }
+
+  const content = await prisma.courseContent.findUnique({
+    where: { id: contentId },
+    select: {
+      learningResource: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!content?.learningResource?.id) {
+    return [];
+  }
+
+  return listLearningResourceVersionsService(content.learningResource.id);
 }
 
 export async function listAssignedSharedCourseContentService(courseId?: string): Promise<AssignedSharedContentListItem[]> {

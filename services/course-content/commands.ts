@@ -15,8 +15,9 @@ import {
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { AUDIT_ENTITY_TYPE, AUDIT_ACTION_TYPE } from "@/services/logs-actions/constants";
 import type { CreateContentInput, UpdateContentInput } from "@/lib/validation-schemas/course-content";
+import type { RestoreLearningResourceVersionInput } from "@/lib/validation-schemas/learning-resources";
 import { deleteStoredUploadAssetIfUnreferenced } from "@/services/file-upload";
-import { syncLearningResourceFromContentService } from "@/services/learning-resource-service";
+import { restoreLearningResourceVersionService, syncLearningResourceFromContentService } from "@/services/learning-resource-service";
 import { createAuditLogEntry } from "@/services/logs-actions-service";
 import type { ContentCreateResult } from "@/services/course-content/types";
 
@@ -387,6 +388,62 @@ export async function archiveContentService(
   });
 
   return content;
+}
+
+export async function restoreCourseContentVersionService(
+  contentId: string,
+  input: RestoreLearningResourceVersionInput,
+  options?: { actorUserId?: string },
+): Promise<ContentCreateResult> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const content = await prisma.courseContent.findUnique({
+    where: { id: contentId },
+    select: {
+      id: true,
+      courseId: true,
+      folderId: true,
+      title: true,
+      learningResource: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!content) {
+    throw new Error("Content not found.");
+  }
+
+  if (!content.learningResource?.id) {
+    throw new Error("No version history is available for this content item yet.");
+  }
+
+  const restoredResource = await restoreLearningResourceVersionService(content.learningResource.id, input, options);
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.COURSE_CONTENT,
+    entityId: content.id,
+    action: AUDIT_ACTION_TYPE.UPDATED,
+    message: `Content "${content.title}" restored from version history.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      restoredFromVersionId: input.versionId,
+      linkedResourceId: content.learningResource.id,
+      versionNumber: restoredResource.currentVersionNumber,
+    },
+  });
+
+  return {
+    id: content.id,
+    courseId: content.courseId,
+    folderId: content.folderId,
+    title: restoredResource.title,
+    contentType: restoredResource.contentType,
+    status: restoredResource.status,
+    fileName: null,
+  };
 }
 
 export async function cloneContentToCourseService(

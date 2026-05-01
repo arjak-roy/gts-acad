@@ -4,11 +4,12 @@ export {
 	listCourseContentService,
 	listAssignedSharedCourseContentService,
 	getContentByIdService,
+	listCourseContentVersionsService,
 	getCandidateAccessibleContentByIdService,
 	searchCourseContentService,
 } from "@/services/course-content/queries";
 export type { CourseContentSearchItem } from "@/services/course-content/queries";
-export { createContentService, updateContentService, deleteContentService, archiveContentService, cloneContentToCourseService } from "@/services/course-content/commands";
+export { createContentService, updateContentService, deleteContentService, archiveContentService, cloneContentToCourseService, restoreCourseContentVersionService } from "@/services/course-content/commands";
 
 export type {
 	AssignedSharedContentListItem,

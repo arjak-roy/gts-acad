@@ -4,6 +4,7 @@ import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState
 import { AlertCircle, CheckCircle2, FileText, Link2, Loader2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { clearStoredArticleDraft, formatStoredArticleDraftTime, readStoredArticleDraft, writeStoredArticleDraft } from "@/components/modules/course-builder/article-draft-storage";
 import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
 import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
@@ -35,6 +36,10 @@ type AddContentForm = {
   estimatedReadingMinutes: string;
   status: string;
   uploadMode: UploadMode;
+};
+
+type AddContentArticleDraft = Pick<AddContentForm, "title" | "description" | "bodyJson" | "bodyHtml" | "estimatedReadingMinutes" | "status"> & {
+  selectedFolderId: string;
 };
 
 type UploadConfig = {
@@ -355,11 +360,17 @@ export function AddContentSheet({
   const [richEditorOpen, setRichEditorOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [suggestedContentType, setSuggestedContentType] = useState<string | null>(null);
+  const [articleDraftRecoveredAt, setArticleDraftRecoveredAt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isArticleContent = form.contentType === "ARTICLE";
   const isLinkContent = form.contentType === "LINK";
   const isScormContent = form.contentType === "SCORM";
+  const hasArticleContent = Boolean(form.bodyHtml.trim()) || form.bodyJson.blocks.length > 0;
+  const articlePreviewHtml = form.bodyHtml || convertV1ToHtml(form.bodyJson);
+  const articleDraftStorageKey = useMemo(() => (
+    courseId ? `gts-course-content-article:add:${courseId}` : null
+  ), [courseId]);
   const isFileUploadMode = !isArticleContent && !isLinkContent && !isScormContent && form.uploadMode === "FILES";
   const uploadableFiles = selectedFiles.filter((item) => item.status !== "complete");
   const failedUploadCount = useMemo(
@@ -374,16 +385,32 @@ export function AddContentSheet({
   const canSubmit = isScormContent
     ? false
     : isArticleContent
-      ? Boolean(form.title.trim() && form.bodyJson.blocks.length > 0)
+      ? Boolean(form.title.trim() && hasArticleContent)
       : isFileUploadMode
         ? uploadableFiles.length > 0 && !hasInvalidFileTitles
         : Boolean(form.title.trim() && form.fileUrl.trim());
 
   useEffect(() => {
-    if (open) {
-      setSelectedFolderId(defaultFolderId ?? "");
+    if (!open) {
+      setArticleDraftRecoveredAt(null);
+      return;
     }
-  }, [defaultFolderId, open]);
+
+    const storedDraft = readStoredArticleDraft<AddContentArticleDraft>(articleDraftStorageKey);
+    if (!storedDraft) {
+      setSelectedFolderId(defaultFolderId ?? "");
+      setArticleDraftRecoveredAt(null);
+      return;
+    }
+
+    setForm({
+      ...createInitialForm(),
+      ...storedDraft.value,
+      contentType: "ARTICLE",
+    });
+    setSelectedFolderId(storedDraft.value.selectedFolderId || defaultFolderId || "");
+    setArticleDraftRecoveredAt(storedDraft.updatedAt);
+  }, [articleDraftStorageKey, defaultFolderId, open]);
 
   useEffect(() => {
     if (!open) {
@@ -450,6 +477,42 @@ export function AddContentSheet({
     setSuggestedContentType(inferred);
   }, [form.contentType, isFileUploadMode, selectedFiles]);
 
+  useEffect(() => {
+    if (!open || !articleDraftStorageKey) {
+      return;
+    }
+
+    if (!isArticleContent) {
+      clearStoredArticleDraft(articleDraftStorageKey);
+      return;
+    }
+
+    const draft: AddContentArticleDraft = {
+      title: form.title,
+      description: form.description,
+      bodyJson: form.bodyJson,
+      bodyHtml: form.bodyHtml,
+      estimatedReadingMinutes: form.estimatedReadingMinutes,
+      status: form.status,
+      selectedFolderId,
+    };
+
+    const hasMeaningfulDraft = Boolean(
+      draft.title.trim()
+      || draft.description.trim()
+      || draft.bodyHtml.trim()
+      || draft.bodyJson.blocks.length > 0
+      || draft.estimatedReadingMinutes.trim(),
+    );
+
+    if (!hasMeaningfulDraft) {
+      clearStoredArticleDraft(articleDraftStorageKey);
+      return;
+    }
+
+    writeStoredArticleDraft(articleDraftStorageKey, draft);
+  }, [articleDraftStorageKey, form, isArticleContent, open, selectedFolderId]);
+
   function handleSheetOpenChange(nextOpen: boolean) {
     if (isSubmitting) {
       return;
@@ -464,6 +527,10 @@ export function AddContentSheet({
       contentType: nextContentType,
       uploadMode: nextContentType === "LINK" ? "URL" : prev.contentType === "LINK" ? "FILES" : prev.uploadMode,
     }));
+
+    if (nextContentType !== "ARTICLE") {
+      setArticleDraftRecoveredAt(null);
+    }
 
     if (nextContentType === "LINK" || nextContentType === "SCORM" || nextContentType === "ARTICLE") {
       setIsDragging(false);
@@ -604,6 +671,8 @@ export function AddContentSheet({
       throw new Error(payload.error || "Failed to create authored lesson.");
     }
 
+    clearStoredArticleDraft(articleDraftStorageKey);
+    setArticleDraftRecoveredAt(null);
     toast.success("Authored lesson created.");
     onCreated();
     onOpenChange(false);
@@ -781,7 +850,11 @@ export function AddContentSheet({
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Source</p>
               <p className="mt-1 text-xs font-semibold text-slate-900">
                 {isArticleContent
-                  ? `${form.bodyJson.blocks.length} block${form.bodyJson.blocks.length === 1 ? "" : "s"}`
+                  ? form.bodyHtml.trim().length > 0
+                    ? "Lesson Studio draft"
+                    : form.bodyJson.blocks.length > 0
+                      ? `${form.bodyJson.blocks.length} block${form.bodyJson.blocks.length === 1 ? "" : "s"}`
+                      : "Pending"
                   : isFileUploadMode
                   ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}`
                   : form.fileUrl.trim().length > 0
@@ -911,12 +984,15 @@ export function AddContentSheet({
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Content Body</label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Lesson Studio</label>
+                    <p className="mt-1 text-xs text-slate-500">Use Lesson Studio as the main authoring space. The old block editor stays available below as a fallback.</p>
+                  </div>
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
+                    variant="default"
                     className="h-8 rounded-lg"
                     onClick={() => setRichEditorOpen(true)}
                     disabled={isSubmitting}
@@ -925,26 +1001,49 @@ export function AddContentSheet({
                     Open Lesson Studio
                   </Button>
                 </div>
-                {form.bodyHtml ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div
-                      className="prose prose-sm max-w-none text-slate-700"
-                      dangerouslySetInnerHTML={{ __html: form.bodyHtml }}
-                    />
+                {articleDraftRecoveredAt ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Recovered an unsaved article draft from {formatStoredArticleDraftTime(articleDraftRecoveredAt)}.
                   </div>
                 ) : (
-                  <AuthoredContentEditor
-                    value={form.bodyJson}
-                    onChange={(nextBodyJson) => setForm((prev) => ({ ...prev, bodyJson: nextBodyJson }))}
-                    disabled={isSubmitting}
-                  />
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={form.bodyHtml.trim().length > 0 ? "accent" : "info"}>
+                        {form.bodyHtml.trim().length > 0 ? "Lesson Studio" : "Legacy blocks"}
+                      </Badge>
+                      <Badge variant={hasArticleContent ? "default" : "warning"}>
+                        {hasArticleContent ? "Draft ready" : "Start your lesson"}
+                      </Badge>
+                    </div>
+                    {hasArticleContent ? (
+                      <div
+                        className="prose prose-sm mt-4 max-w-none text-slate-700"
+                        dangerouslySetInnerHTML={{ __html: articlePreviewHtml }}
+                      />
+                    ) : (
+                      <p className="mt-4 text-sm text-slate-600">Open Lesson Studio to build the lesson with outline, preview, and publish-readiness checks.</p>
+                    )}
+                  </div>
                 )}
+                <details className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-900">Use the legacy block editor instead</summary>
+                  <p className="mt-2 text-xs text-slate-500">Keep this for quick structured edits when you do not need the full studio workspace.</p>
+                  <div className="mt-4">
+                    <AuthoredContentEditor
+                      value={form.bodyJson}
+                      onChange={(nextBodyJson) => setForm((prev) => ({ ...prev, bodyJson: nextBodyJson }))}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </details>
               </div>
               <RichContentEditorSheet
                 open={richEditorOpen}
                 onOpenChange={setRichEditorOpen}
                 initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
                 courseId={courseId}
+                draftStorageKey={articleDraftStorageKey ? `${articleDraftStorageKey}:studio` : undefined}
+                draftLabel="article"
                 onSave={(html) => {
                   setForm((prev) => ({ ...prev, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument }));
                   setRichEditorOpen(false);

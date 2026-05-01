@@ -1,11 +1,13 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, UploadCloud, X } from "lucide-react";
+import { FileText, Loader2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { emptyAuthoredContentDocument, isV2Document, type AuthoredContentDocument } from "@/lib/authored-content";
+import { clearStoredArticleDraft, formatStoredArticleDraftTime, readStoredArticleDraft, writeStoredArticleDraft } from "@/components/modules/course-builder/article-draft-storage";
+import { emptyAuthoredContentDocument, isV2Document, convertV1ToHtml, type AuthoredContentDocument } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
+import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
 import {
   buildLearningResourceAssetDraftFromUpload,
   EMPTY_LEARNING_RESOURCE_LOOKUPS,
@@ -56,6 +58,7 @@ type FormState = {
   estimatedReadingMinutes: string;
   sourceUrl: string;
   bodyJson: AuthoredContentDocument;
+  bodyHtml: string;
   changeSummary: string;
 };
 
@@ -75,6 +78,7 @@ function createInitialForm(seed?: LearningResourceFormSeed): FormState {
     estimatedReadingMinutes: "",
     sourceUrl: "",
     bodyJson: emptyAuthoredContentDocument(),
+    bodyHtml: "",
     changeSummary: "",
   };
 
@@ -99,8 +103,13 @@ function buildFormFromDetail(detail: LearningResourceDetail): FormState {
     estimatedReadingMinutes: detail.estimatedReadingMinutes ? String(detail.estimatedReadingMinutes) : "",
     sourceUrl: detail.storagePath ? "" : (detail.fileUrl ?? ""),
     bodyJson: (detail.bodyJson && !isV2Document(detail.bodyJson)) ? detail.bodyJson : emptyAuthoredContentDocument(),
+    bodyHtml: detail.bodyJson && isV2Document(detail.bodyJson) ? detail.bodyJson.html : "",
     changeSummary: "",
   };
+}
+
+function serializeLearningResourceForm(form: FormState) {
+  return JSON.stringify(form);
 }
 
 function buildPrimaryAssetFromDetail(detail: LearningResourceDetail): LearningResourceAssetDraft | null {
@@ -181,13 +190,20 @@ export function LearningResourceFormSheet({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingPrimary, setIsUploadingPrimary] = useState(false);
+  const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [localDraftRecoveredAt, setLocalDraftRecoveredAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const articleDraftStorageKey = useMemo(() => (
+    resourceId ? `gts-learning-resource:edit:${resourceId}` : "gts-learning-resource:article:create"
+  ), [resourceId]);
 
   const isEditing = Boolean(resourceId);
   const isCreateCategoryLocked = categoryLocked && !isEditing;
   const isArticleContent = form.contentType === "ARTICLE";
   const isLinkContent = form.contentType === "LINK";
   const isLinkedContentResource = Boolean(detail?.sourceContentId);
+  const hasArticleContent = Boolean(form.bodyHtml.trim()) || form.bodyJson.blocks.length > 0;
+  const articlePreviewHtml = form.bodyHtml || convertV1ToHtml(form.bodyJson);
   const acceptValue = useMemo(() => buildAcceptValue(uploadConfig), [uploadConfig]);
   const categoryOptions = useMemo(
     () => lookups.categories.filter((category) => category.parentId === null || !category.parentName),
@@ -207,6 +223,8 @@ export function LearningResourceFormSheet({
       setIsLoading(false);
       setIsSubmitting(false);
       setIsUploadingPrimary(false);
+      setRichEditorOpen(false);
+      setLocalDraftRecoveredAt(null);
       setError(null);
       return;
     }
@@ -240,9 +258,14 @@ export function LearningResourceFormSheet({
         setUploadConfig(nextConfig);
 
         if (!detailResponse) {
-          setForm(createInitialForm(createPreset));
+          const nextForm = createInitialForm(createPreset);
+          const shouldRestoreCreateDraft = nextForm.contentType === "ARTICLE";
+          const storedDraft = shouldRestoreCreateDraft ? readStoredArticleDraft<FormState>(articleDraftStorageKey) : null;
+
+          setForm(storedDraft?.value ?? nextForm);
           setDetail(null);
           setPrimaryAsset(null);
+          setLocalDraftRecoveredAt(storedDraft?.updatedAt ?? null);
           return;
         }
 
@@ -256,8 +279,12 @@ export function LearningResourceFormSheet({
         }
 
         setDetail(nextDetail);
-        setForm(buildFormFromDetail(nextDetail));
+        const nextForm = buildFormFromDetail(nextDetail);
+        const storedDraft = readStoredArticleDraft<FormState>(articleDraftStorageKey);
+
+        setForm(storedDraft?.value ?? nextForm);
         setPrimaryAsset(buildPrimaryAssetFromDetail(nextDetail));
+        setLocalDraftRecoveredAt(storedDraft?.updatedAt ?? null);
       } catch (loadError) {
         if (!active) {
           return;
@@ -277,7 +304,21 @@ export function LearningResourceFormSheet({
     return () => {
       active = false;
     };
-  }, [createPreset, open, resourceId]);
+  }, [articleDraftStorageKey, createPreset, open, resourceId]);
+
+  useEffect(() => {
+    if (!open || !articleDraftStorageKey || !isArticleContent) {
+      return;
+    }
+
+    const baseForm = detail ? buildFormFromDetail(detail) : createInitialForm(createPreset);
+    if (serializeLearningResourceForm(form) === serializeLearningResourceForm(baseForm)) {
+      clearStoredArticleDraft(articleDraftStorageKey);
+      return;
+    }
+
+    writeStoredArticleDraft(articleDraftStorageKey, form);
+  }, [articleDraftStorageKey, createPreset, detail, form, isArticleContent, open]);
 
   const handlePrimaryFileSelection = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -332,8 +373,8 @@ export function LearningResourceFormSheet({
       return;
     }
 
-    if (isArticleContent && form.bodyJson.blocks.length === 0) {
-      setError("Add at least one authored block before saving the article.");
+    if (isArticleContent && !hasArticleContent) {
+      setError("Add article content in Lesson Studio or the legacy block editor before saving.");
       return;
     }
 
@@ -372,7 +413,7 @@ export function LearningResourceFormSheet({
         mimeType: isArticleContent ? "" : (primaryAsset?.mimeType ?? ""),
         storagePath: isArticleContent ? "" : (primaryAsset?.storagePath ?? ""),
         storageProvider: isArticleContent ? undefined : (primaryAsset?.storageProvider ?? undefined),
-        bodyJson: isArticleContent ? form.bodyJson : null,
+        bodyJson: isArticleContent ? (form.bodyHtml ? { version: 2, html: form.bodyHtml } : form.bodyJson) : null,
         estimatedReadingMinutes: isArticleContent ? parsedEstimatedReadingMinutes : undefined,
         attachments: [],
         changeSummary: form.changeSummary.trim(),
@@ -389,6 +430,8 @@ export function LearningResourceFormSheet({
       await parseApiResponse(response, resourceId ? "Failed to update learning resource." : "Failed to create learning resource.");
 
       toast.success(resourceId ? "Learning resource updated." : "Learning resource created.");
+  clearStoredArticleDraft(articleDraftStorageKey);
+  setLocalDraftRecoveredAt(null);
       onSaved();
       onOpenChange(false);
     } catch (submitError) {
@@ -470,7 +513,31 @@ export function LearningResourceFormSheet({
                         <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Content Type</label>
                         <select
                           value={form.contentType}
-                          onChange={(event) => setForm((current) => ({ ...current, contentType: event.target.value as LearningResourceContentType }))}
+                          onChange={(event) => {
+                            const nextContentType = event.target.value as LearningResourceContentType;
+                            const storedDraft = nextContentType === "ARTICLE" && !resourceId
+                              ? readStoredArticleDraft<FormState>(articleDraftStorageKey)
+                              : null;
+
+                            setForm((current) => {
+                              const canRestoreDraft = nextContentType === "ARTICLE"
+                                && !resourceId
+                                && storedDraft
+                                && !current.title.trim()
+                                && !current.description.trim()
+                                && !current.excerpt.trim()
+                                && !current.bodyHtml.trim()
+                                && current.bodyJson.blocks.length === 0;
+
+                              if (canRestoreDraft) {
+                                return { ...storedDraft.value, contentType: "ARTICLE" };
+                              }
+
+                              return { ...current, contentType: nextContentType };
+                            });
+
+                            setLocalDraftRecoveredAt(nextContentType === "ARTICLE" ? (storedDraft?.updatedAt ?? localDraftRecoveredAt) : null);
+                          }}
                           className="block h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
                           disabled={isLinkedContentResource}
                         >
@@ -571,12 +638,62 @@ export function LearningResourceFormSheet({
 
                       {isArticleContent ? (
                         <div className="space-y-1.5 sm:col-span-2">
-                          <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Authored Content</label>
-                          <AuthoredContentEditor
-                            value={form.bodyJson}
-                            onChange={(nextValue) => setForm((current) => ({ ...current, bodyJson: nextValue }))}
-                            disabled={isSubmitting || isLinkedContentResource}
-                          />
+                          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Lesson Studio</label>
+                                <p className="mt-1 text-xs text-slate-500">Use Lesson Studio as the main article authoring workflow. The block editor below is only a fallback.</p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="default"
+                                onClick={() => setRichEditorOpen(true)}
+                                disabled={isSubmitting || isLinkedContentResource}
+                              >
+                                <FileText className="h-4 w-4" />
+                                Open Lesson Studio
+                              </Button>
+                            </div>
+
+                            {localDraftRecoveredAt ? (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                Recovered an unsaved article draft from {formatStoredArticleDraftTime(localDraftRecoveredAt)}.
+                              </div>
+                            ) : null}
+
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant={form.bodyHtml.trim().length > 0 ? "accent" : "info"}>
+                                  {form.bodyHtml.trim().length > 0 ? "Lesson Studio" : "Legacy blocks"}
+                                </Badge>
+                                <Badge variant={hasArticleContent ? "default" : "warning"}>
+                                  {hasArticleContent ? "Draft ready" : "Start your article"}
+                                </Badge>
+                                {isLinkedContentResource ? <Badge variant="warning">Managed from course content</Badge> : null}
+                              </div>
+
+                              {hasArticleContent ? (
+                                <div
+                                  className="prose prose-sm mt-4 max-w-none text-slate-700"
+                                  dangerouslySetInnerHTML={{ __html: articlePreviewHtml }}
+                                />
+                              ) : (
+                                <p className="mt-4 text-sm text-slate-600">Open Lesson Studio to build the article with outline, preview, and readiness checks.</p>
+                              )}
+                            </div>
+
+                            <details className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4">
+                              <summary className="cursor-pointer text-sm font-semibold text-slate-900">Use the legacy block editor instead</summary>
+                              <p className="mt-2 text-xs text-slate-500">Use this only for fallback structured edits.</p>
+                              <div className="mt-4">
+                                <AuthoredContentEditor
+                                  value={form.bodyJson}
+                                  onChange={(nextValue) => setForm((current) => ({ ...current, bodyJson: nextValue }))}
+                                  disabled={isSubmitting || isLinkedContentResource}
+                                />
+                              </div>
+                            </details>
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-4 sm:col-span-2">
@@ -674,6 +791,23 @@ export function LearningResourceFormSheet({
                 {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
               </>
             )}
+
+            <RichContentEditorSheet
+              open={richEditorOpen}
+              onOpenChange={setRichEditorOpen}
+              initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
+              disabled={isSubmitting || isLinkedContentResource}
+              draftStorageKey={articleDraftStorageKey ? `${articleDraftStorageKey}:studio` : undefined}
+              draftLabel="resource"
+              onSave={(html) => {
+                setForm((current) => ({
+                  ...current,
+                  bodyHtml: html,
+                  bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument,
+                }));
+                setRichEditorOpen(false);
+              }}
+            />
           </div>
 
           <SheetFooter>

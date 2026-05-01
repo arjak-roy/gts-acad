@@ -1,11 +1,13 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, FileText, History, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { clearStoredArticleDraft, formatStoredArticleDraftTime, readStoredArticleDraft, writeStoredArticleDraft } from "@/components/modules/course-builder/article-draft-storage";
 import { type AuthoredContentDocument, emptyAuthoredContentDocument, convertV1ToHtml, isV2Document, parseAuthoredContentAnyDocument } from "@/lib/authored-content";
 import { AuthoredContentEditor } from "@/components/modules/course-builder/authored-content-editor";
+import { LearningResourceHistorySheet } from "@/components/modules/course-builder/learning-resource-history-sheet";
 import { RichContentEditorSheet } from "@/components/modules/course-builder/rich-content-editor-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,8 @@ type ContentDetail = {
   aiGenerationMetadata: unknown;
   createdAt: string;
   updatedAt: string;
+  linkedResourceId: string | null;
+  linkedResourceCurrentVersionNumber: number | null;
 };
 
 type EditContentForm = {
@@ -144,6 +148,10 @@ function buildForm(detail: ContentDetail): EditContentForm {
   };
 }
 
+function serializeEditContentForm(form: EditContentForm) {
+  return JSON.stringify(form);
+}
+
 export function EditContentSheet({
   contentId,
   open,
@@ -162,13 +170,20 @@ export function EditContentSheet({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [richEditorOpen, setRichEditorOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailRefreshToken, setDetailRefreshToken] = useState(0);
+  const [localDraftRecoveredAt, setLocalDraftRecoveredAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const contentDraftStorageKey = useMemo(() => (
+    contentId ? `gts-course-content:edit:${contentId}` : null
+  ), [contentId]);
 
   useEffect(() => {
     if (!open || !contentId) {
       setDetail(null);
       setForm(null);
       setError(null);
+      setLocalDraftRecoveredAt(null);
       return;
     }
 
@@ -190,8 +205,12 @@ export function EditContentSheet({
           return;
         }
 
+        const nextForm = buildForm(payload.data);
+        const storedDraft = readStoredArticleDraft<EditContentForm>(contentDraftStorageKey);
+
         setDetail(payload.data);
-        setForm(buildForm(payload.data));
+        setForm(storedDraft?.value ?? nextForm);
+        setLocalDraftRecoveredAt(storedDraft?.updatedAt ?? null);
       } catch (loadError) {
         if (!active) {
           return;
@@ -211,10 +230,26 @@ export function EditContentSheet({
     return () => {
       active = false;
     };
-  }, [contentId, open]);
+  }, [contentDraftStorageKey, contentId, detailRefreshToken, open]);
+
+  useEffect(() => {
+    if (!open || !contentDraftStorageKey || !form || !detail) {
+      return;
+    }
+
+    const baseForm = buildForm(detail);
+    if (serializeEditContentForm(form) === serializeEditContentForm(baseForm)) {
+      clearStoredArticleDraft(contentDraftStorageKey);
+      return;
+    }
+
+    writeStoredArticleDraft(contentDraftStorageKey, form);
+  }, [contentDraftStorageKey, detail, form, open]);
 
   const isStoredUpload = Boolean(detail?.storagePath);
   const isArticleContent = form?.contentType === "ARTICLE";
+  const hasArticleContent = Boolean(form?.bodyHtml.trim()) || Boolean(form && form.bodyJson.blocks.length > 0);
+  const articlePreviewHtml = form ? (form.bodyHtml || convertV1ToHtml(form.bodyJson)) : "";
 
   const availableContentTypes = useMemo(() => {
     const baseOptions = ["ARTICLE", "PDF", "DOCUMENT", "VIDEO", "LINK", "OTHER"];
@@ -253,8 +288,8 @@ export function EditContentSheet({
       return;
     }
 
-    if (form.contentType === "ARTICLE" && form.bodyJson.blocks.length === 0) {
-      setError("Add at least one authored lesson block.");
+    if (form.contentType === "ARTICLE" && !hasArticleContent) {
+      setError("Add article content in Lesson Studio or the legacy block editor before saving.");
       return;
     }
 
@@ -320,6 +355,8 @@ export function EditContentSheet({
       }
 
       toast.success("Content metadata updated.");
+  clearStoredArticleDraft(contentDraftStorageKey);
+  setLocalDraftRecoveredAt(null);
       onUpdated();
       onOpenChange(false);
     } catch (submitError) {
@@ -471,39 +508,82 @@ export function EditContentSheet({
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">Content Body</label>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 rounded-lg"
-                        onClick={() => setRichEditorOpen(true)}
-                        disabled={isSubmitting}
-                      >
-                        Open Lesson Studio
-                      </Button>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <label className="text-sm font-medium">Lesson Studio</label>
+                        <p className="mt-1 text-xs text-slate-500">Keep Lesson Studio as the main editing path. The legacy block editor remains below only for fallback edits.</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {detail?.linkedResourceCurrentVersionNumber ? (
+                          <Badge variant="info">v{detail.linkedResourceCurrentVersionNumber}</Badge>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 rounded-lg"
+                          onClick={() => setHistoryOpen(true)}
+                          disabled={isSubmitting || !contentId}
+                        >
+                          <History className="mr-1.5 h-3.5 w-3.5" />
+                          Version History
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="default"
+                          className="h-8 rounded-lg"
+                          onClick={() => setRichEditorOpen(true)}
+                          disabled={isSubmitting}
+                        >
+                          <FileText className="mr-1.5 h-3.5 w-3.5" />
+                          Open Lesson Studio
+                        </Button>
+                      </div>
                     </div>
-                    {form.bodyHtml ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                        <div
-                          className="prose prose-sm max-w-none text-slate-700"
-                          dangerouslySetInnerHTML={{ __html: form.bodyHtml }}
-                        />
+                    {localDraftRecoveredAt ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        Recovered unsaved content edits from {formatStoredArticleDraftTime(localDraftRecoveredAt)}.
                       </div>
                     ) : (
-                      <AuthoredContentEditor
-                        value={form.bodyJson}
-                        onChange={(nextBodyJson) => setForm((current) => current ? { ...current, bodyJson: nextBodyJson } : current)}
-                        disabled={isSubmitting}
-                      />
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={form.bodyHtml.trim().length > 0 ? "accent" : "info"}>
+                            {form.bodyHtml.trim().length > 0 ? "Lesson Studio" : "Legacy blocks"}
+                          </Badge>
+                          <Badge variant={hasArticleContent ? "default" : "warning"}>
+                            {hasArticleContent ? "Draft ready" : "Start your lesson"}
+                          </Badge>
+                        </div>
+                        {hasArticleContent ? (
+                          <div
+                            className="prose prose-sm mt-4 max-w-none text-slate-700"
+                            dangerouslySetInnerHTML={{ __html: articlePreviewHtml }}
+                          />
+                        ) : (
+                          <p className="mt-4 text-sm text-slate-600">Open Lesson Studio to keep writing with outline, preview, and readiness checks.</p>
+                        )}
+                      </div>
                     )}
+                    <details className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-slate-900">Use the legacy block editor instead</summary>
+                      <p className="mt-2 text-xs text-slate-500">Use this only for fallback structured edits when you do not need the full studio workspace.</p>
+                      <div className="mt-4">
+                        <AuthoredContentEditor
+                          value={form.bodyJson}
+                          onChange={(nextBodyJson) => setForm((current) => current ? { ...current, bodyJson: nextBodyJson } : current)}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </details>
                   </div>
                   <RichContentEditorSheet
                     open={richEditorOpen}
                     onOpenChange={setRichEditorOpen}
                     initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
                     courseId={detail?.courseId}
+                    draftStorageKey={contentDraftStorageKey ? `${contentDraftStorageKey}:studio` : undefined}
+                    draftLabel="content"
                     onSave={(html) => {
                       setForm((current) => current ? { ...current, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument } : current);
                       setRichEditorOpen(false);
@@ -548,6 +628,22 @@ export function EditContentSheet({
           </SheetFooter>
         </form>
       </SheetContent>
+
+      <LearningResourceHistorySheet
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        resourceId={contentId}
+        resourceTitle={detail?.title ?? form?.title ?? null}
+        refreshToken={detailRefreshToken}
+        historyPath={contentId ? `/api/course-content/${contentId}/history` : null}
+        restorePath={contentId ? `/api/course-content/${contentId}/restore` : null}
+        restorePermission="course_content.edit"
+        onRestored={() => {
+          setHistoryOpen(false);
+          setDetailRefreshToken((current) => current + 1);
+          onUpdated();
+        }}
+      />
     </Sheet>
   );
 }

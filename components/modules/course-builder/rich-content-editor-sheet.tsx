@@ -84,6 +84,13 @@ type RichContentEditorSheetProps = {
   onSave: (html: string, plainText: string) => void;
   courseId?: string;
   disabled?: boolean;
+  draftStorageKey?: string;
+  draftLabel?: string;
+};
+
+type StoredLessonStudioDraft = {
+  html: string;
+  updatedAt: string;
 };
 
 type StudioMode = "write" | "split" | "preview";
@@ -161,6 +168,8 @@ export function RichContentEditorSheet({
   onSave,
   courseId,
   disabled,
+  draftStorageKey,
+  draftLabel = "lesson",
 }: RichContentEditorSheetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [studioMode, setStudioMode] = useState<StudioMode>("split");
@@ -174,7 +183,42 @@ export function RichContentEditorSheet({
   const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [savedHtml, setSavedHtml] = useState(initialHtml || EMPTY_EDITOR_HTML);
+  const [recoveredDraftAt, setRecoveredDraftAt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const readStoredDraft = useCallback(() => {
+    if (!draftStorageKey || typeof window === "undefined") {
+      return null;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(draftStorageKey);
+      if (!raw) {
+        return null;
+      }
+
+      const parsed = JSON.parse(raw) as StoredLessonStudioDraft | null;
+      if (!parsed || typeof parsed.html !== "string" || typeof parsed.updatedAt !== "string") {
+        return null;
+      }
+
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [draftStorageKey]);
+
+  const clearStoredDraft = useCallback(() => {
+    if (!draftStorageKey || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [draftStorageKey]);
 
   const lessonBlueprints = useMemo(
     () => getLmsLessonBlueprints().map((item) => ({
@@ -227,11 +271,48 @@ export function RichContentEditorSheet({
   useEffect(() => {
     if (editor && open) {
       const nextHtml = initialHtml || EMPTY_EDITOR_HTML;
-      editor.commands.setContent(nextHtml);
+      const storedDraft = readStoredDraft();
+      const recoveredHtml = storedDraft && normalizeHtml(storedDraft.html) !== normalizeHtml(nextHtml)
+        ? storedDraft.html
+        : nextHtml;
+
+      editor.commands.setContent(recoveredHtml);
       setSavedHtml(nextHtml);
       setStudioMode("split");
+      setRecoveredDraftAt(storedDraft && recoveredHtml === storedDraft.html ? storedDraft.updatedAt : null);
     }
-  }, [editor, initialHtml, open]);
+  }, [editor, initialHtml, open, readStoredDraft]);
+
+  useEffect(() => {
+    if (!editor || !open || !draftStorageKey || disabled || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const persistDraft = () => {
+      try {
+        const html = editor.getHTML();
+        if (normalizeHtml(html) === normalizeHtml(savedHtml)) {
+          window.localStorage.removeItem(draftStorageKey);
+          return;
+        }
+
+        const payload: StoredLessonStudioDraft = {
+          html,
+          updatedAt: new Date().toISOString(),
+        };
+
+        window.localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+      } catch {
+        // ignore localStorage errors
+      }
+    };
+
+    persistDraft();
+    editor.on("update", persistDraft);
+    return () => {
+      editor.off("update", persistDraft);
+    };
+  }, [disabled, draftStorageKey, editor, open, savedHtml]);
 
   const requestClose = useCallback(() => {
     if (!editor) {
@@ -253,7 +334,9 @@ export function RichContentEditorSheet({
     const text = editor.getText();
     onSave(html, text);
     setSavedHtml(html);
-  }, [editor, onSave]);
+    setRecoveredDraftAt(null);
+    clearStoredDraft();
+  }, [clearStoredDraft, editor, onSave]);
 
   useEffect(() => {
     if (!open || disabled) {
@@ -285,7 +368,9 @@ export function RichContentEditorSheet({
   const discardToLastSaved = useCallback(() => {
     if (!editor) return;
     editor.commands.setContent(savedHtml || EMPTY_EDITOR_HTML);
-  }, [editor, savedHtml]);
+    setRecoveredDraftAt(null);
+    clearStoredDraft();
+  }, [clearStoredDraft, editor, savedHtml]);
 
   const insertLink = useCallback(() => {
     if (!editor || !linkUrl.trim()) return;
@@ -378,12 +463,18 @@ export function RichContentEditorSheet({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {recoveredDraftAt ? <Badge variant="warning">Recovered {draftLabel} draft</Badge> : null}
                 <Badge variant={isDirty ? "warning" : "default"}>{isDirty ? "Unsaved changes" : "All changes saved"}</Badge>
                 <Badge variant="info">{wordCount} words</Badge>
                 <Badge variant="accent">{estimatedReadingMinutes} min read</Badge>
                 <Badge variant="default">{outline.length} section{outline.length === 1 ? "" : "s"}</Badge>
                 {warningCount > 0 ? <Badge variant="warning">{warningCount} review item{warningCount === 1 ? "" : "s"}</Badge> : null}
               </div>
+              {recoveredDraftAt ? (
+                <p className="text-xs text-amber-700">
+                  Unsaved {draftLabel} changes from {formatTimestamp(recoveredDraftAt)} were restored from this device.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-2 xl:items-end">
@@ -1163,6 +1254,18 @@ function countOccurrences(source: string, pattern: RegExp) {
 
 function countWords(value: string) {
   return value.trim().length === 0 ? 0 : value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function formatTimestamp(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "a recent session";
+  }
+
+  return parsed.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 function normalizeHtml(value: string) {
