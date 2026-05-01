@@ -52,11 +52,6 @@ a {
     @apply bg-slate-50/95;
   }
 
-  .sticky-admin-table-header th {
-    @apply sticky z-10 bg-slate-50/95 backdrop-blur-sm;
-    top: var(--dashboard-header-height);
-  }
-
   .sticky-admin-table-header tr {
     @apply bg-slate-50/95;
   }
