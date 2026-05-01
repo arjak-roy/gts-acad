@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpen, Calendar, ChevronDown, ChevronRight, ClipboardList, GraduationCap, MessageCircle, UserCog, Users } from "lucide-react";
+import { BookOpen, Calendar, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, MessageCircle, UserCog, Users } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -73,13 +73,23 @@ type ScheduleEventItem = {
   location: string | null;
 };
 
-type BuddySummary = {
-  pronunciationAttempts: number;
-  pronunciationAvgScore: number | null;
-  uniquePronunciationLearners: number;
-  roleplaySessions: number;
-  roleplayCompletionRate: number;
-  uniqueRoleplayLearners: number;
+type BuddyPersonaItem = {
+  id: string;
+  name: string;
+  language: string;
+  description: string | null;
+  isActive: boolean;
+  welcomeMessage: string | null;
+};
+
+type BuddyPersonaApiItem = {
+  id: string;
+  name: string;
+  language: string;
+  description: string | null;
+  isActive: boolean;
+  welcomeMessage: string | null;
+  assignedCourses?: { courseId: string; courseName: string }[];
 };
 
 const PROGRAM_TYPE_COLORS: Record<ProgramType, string> = {
@@ -96,6 +106,178 @@ const BATCH_STATUS_COLORS: Record<string, string> = {
   ARCHIVED: "bg-slate-50 text-slate-500 border-slate-200",
   CANCELLED: "bg-red-50 text-red-700 border-red-200",
 };
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getMonthDays(year: number, month: number): { date: Date; key: string; inMonth: boolean }[] {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+
+  // Monday = 0 ... Sunday = 6
+  let startOffset = firstDay.getDay() - 1;
+  if (startOffset < 0) startOffset = 6;
+
+  const days: { date: Date; key: string; inMonth: boolean }[] = [];
+
+  for (let i = startOffset - 1; i >= 0; i--) {
+    const d = new Date(year, month, -i);
+    days.push({ date: d, key: toDateKey(d), inMonth: false });
+  }
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const date = new Date(year, month, d);
+    days.push({ date, key: toDateKey(date), inMonth: true });
+  }
+
+  while (days.length % 7 !== 0) {
+    const d = new Date(year, month + 1, days.length - startOffset - lastDay.getDate() + 1);
+    days.push({ date: d, key: toDateKey(d), inMonth: false });
+  }
+
+  return days;
+}
+
+function groupEventsByDate(events: ScheduleEventItem[]): Record<string, ScheduleEventItem[]> {
+  const map: Record<string, ScheduleEventItem[]> = {};
+  for (const event of events) {
+    const key = toDateKey(new Date(event.startsAt));
+    if (!map[key]) map[key] = [];
+    map[key].push(event);
+  }
+  return map;
+}
+
+function MiniCalendar({ events, batchId }: { events: ScheduleEventItem[]; batchId: string }) {
+  const [viewDate, setViewDate] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const days = getMonthDays(year, month);
+  const eventsByDate = groupEventsByDate(events);
+  const todayKey = toDateKey(new Date());
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  const selectedEvents = selectedDay ? (eventsByDate[selectedDay] ?? []) : [];
+
+  return (
+    <div>
+      {/* Month header */}
+      <div className="mb-2 flex items-center justify-between">
+        <button type="button" onClick={prevMonth} className="rounded-lg p-1 hover:bg-indigo-100">
+          <ChevronLeft className="h-3.5 w-3.5 text-indigo-700" />
+        </button>
+        <span className="text-xs font-bold text-indigo-900">
+          {viewDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+        </span>
+        <button type="button" onClick={nextMonth} className="rounded-lg p-1 hover:bg-indigo-100">
+          <ChevronRight className="h-3.5 w-3.5 text-indigo-700" />
+        </button>
+      </div>
+
+      {/* Weekday headers */}
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {WEEKDAY_LABELS.map((wd) => (
+          <div key={wd} className="py-1 text-[10px] font-semibold text-indigo-600">
+            {wd}
+          </div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7 gap-0.5">
+        {days.map((day) => {
+          const dayEvents = eventsByDate[day.key] ?? [];
+          const hasClass = dayEvents.some((e) => e.type === "CLASS");
+          const hasTest = dayEvents.some((e) => e.type === "TEST");
+          const isSelected = selectedDay === day.key;
+          const isToday = day.key === todayKey;
+
+          return (
+            <button
+              key={`${batchId}-${day.key}`}
+              type="button"
+              onClick={() => setSelectedDay(isSelected ? null : day.key)}
+              className={cn(
+                "relative flex h-7 w-full flex-col items-center justify-center rounded-lg text-[10px] transition-colors",
+                day.inMonth ? "text-slate-800" : "text-slate-300",
+                isToday && "ring-1 ring-indigo-400",
+                isSelected && "bg-indigo-200/60 font-bold",
+                !isSelected && dayEvents.length > 0 && "hover:bg-indigo-100/60",
+              )}
+            >
+              <span>{day.date.getDate()}</span>
+              {(hasClass || hasTest) ? (
+                <div className="flex gap-0.5">
+                  {hasClass ? <span className="h-1 w-1 rounded-full bg-indigo-500" /> : null}
+                  {hasTest ? <span className="h-1 w-1 rounded-full bg-rose-500" /> : null}
+                </div>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected day detail */}
+      {selectedDay && selectedEvents.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+            {new Date(selectedDay + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+          </p>
+          {selectedEvents.map((event) => (
+            <div key={event.id} className="rounded-xl border border-indigo-100 bg-white px-3 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-800">{event.title}</span>
+                <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", event.type === "TEST" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-indigo-200 bg-indigo-50 text-indigo-700")}>{event.type}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <span className="text-[10px] text-slate-500">
+                  {new Date(event.startsAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                </span>
+                {event.sessionType ? (
+                  <>
+                    <span className="text-[10px] text-slate-400">•</span>
+                    <span className="text-[10px] text-slate-500">{event.sessionType.replace(/_/g, " ")}</span>
+                  </>
+                ) : null}
+                {event.location ? (
+                  <>
+                    <span className="text-[10px] text-slate-400">•</span>
+                    <span className="text-[10px] text-slate-500">{event.location}</span>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {selectedDay && selectedEvents.length === 0 ? (
+        <p className="mt-3 text-[10px] text-indigo-600">No events on this day.</p>
+      ) : null}
+
+      {/* Legend */}
+      {events.length > 0 ? (
+        <div className="mt-3 flex items-center gap-3 border-t border-indigo-100 pt-2">
+          <div className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+            <span className="text-[10px] text-slate-500">Class</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            <span className="text-[10px] text-slate-500">Test</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function ExpandableRow({
   icon,
@@ -164,7 +346,7 @@ export function ProgramTreeView() {
   const [scheduleError, setScheduleError] = useState<Record<string, string | null>>({});
 
   const [expandedBuddy, setExpandedBuddy] = useState<Set<string>>(new Set());
-  const [batchBuddy, setBatchBuddy] = useState<Record<string, BuddySummary>>({});
+  const [batchBuddy, setBatchBuddy] = useState<Record<string, BuddyPersonaItem | null>>({});
   const [loadingBuddy, setLoadingBuddy] = useState<Record<string, boolean>>({});
   const [buddyError, setBuddyError] = useState<Record<string, string | null>>({});
 
@@ -379,7 +561,7 @@ export function ProgramTreeView() {
     setScheduleError((prev) => ({ ...prev, [batchId]: null }));
 
     try {
-      const params = new URLSearchParams({ contextType: "batch", batchId, page: "1", pageSize: "20" });
+      const params = new URLSearchParams({ contextType: "batch", batchId, page: "1", pageSize: "100" });
       const response = await fetch(`/api/schedule?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Failed to load schedule.");
       const payload = (await response.json()) as { data?: { items?: ScheduleEventItem[] } };
@@ -394,7 +576,7 @@ export function ProgramTreeView() {
     }
   };
 
-  const toggleBuddy = async (batchId: string) => {
+  const toggleBuddy = async (batchId: string, courseId: string) => {
     const isExpanding = !expandedBuddy.has(batchId);
 
     setExpandedBuddy((prev) => {
@@ -410,24 +592,18 @@ export function ProgramTreeView() {
     setBuddyError((prev) => ({ ...prev, [batchId]: null }));
 
     try {
-      const [pronRes, rpRes] = await Promise.all([
-        fetch(`/api/language-lab/analytics/pronunciation?batchId=${batchId}`, { cache: "no-store" }),
-        fetch(`/api/language-lab/analytics/roleplay?batchId=${batchId}`, { cache: "no-store" }),
-      ]);
+      const response = await fetch(`/api/language-lab/buddy-personas?isActive=true`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Failed to load buddy personas.");
+      const payload = (await response.json()) as { data?: BuddyPersonaApiItem[] };
+      const personas = payload.data ?? [];
 
-      const pronData = pronRes.ok ? ((await pronRes.json()) as { data?: { overview?: { totalAttempts?: number; averageScore?: number | null; uniqueLearnersCount?: number } } }).data?.overview : null;
-      const rpData = rpRes.ok ? ((await rpRes.json()) as { data?: { overview?: { totalSessions?: number; completionRate?: number; uniqueLearnersCount?: number } } }).data?.overview : null;
+      const matched = personas.find((p) => p.assignedCourses?.some((c) => c.courseId === courseId)) ?? null;
 
       setBatchBuddy((prev) => ({
         ...prev,
-        [batchId]: {
-          pronunciationAttempts: pronData?.totalAttempts ?? 0,
-          pronunciationAvgScore: pronData?.averageScore ?? null,
-          uniquePronunciationLearners: pronData?.uniqueLearnersCount ?? 0,
-          roleplaySessions: rpData?.totalSessions ?? 0,
-          roleplayCompletionRate: rpData?.completionRate ?? 0,
-          uniqueRoleplayLearners: rpData?.uniqueLearnersCount ?? 0,
-        },
+        [batchId]: matched
+          ? { id: matched.id, name: matched.name, language: matched.language, description: matched.description, isActive: matched.isActive, welcomeMessage: matched.welcomeMessage }
+          : null,
       }));
     } catch (loadError) {
       setBuddyError((prev) => ({
@@ -558,7 +734,7 @@ export function ProgramTreeView() {
 
                                     const buddyOpen = expandedBuddy.has(batch.id);
                                     const isBuddyLoading = !!loadingBuddy[batch.id];
-                                    const currentBuddyData = batchBuddy[batch.id] ?? null;
+                                    const currentBuddyData = batchBuddy[batch.id] ?? undefined;
                                     const currentBuddyError = buddyError[batch.id] ?? null;
 
                                     return (
@@ -683,7 +859,7 @@ export function ProgramTreeView() {
                                             ) : null}
                                           </div>
 
-                                          {/* Schedule */}
+                                          {/* Schedule (Calendar) */}
                                           <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70">
                                             <button type="button" onClick={() => void toggleSchedule(batch.id)} className="flex w-full items-center justify-between px-4 py-3 text-left">
                                               <div className="flex items-center gap-2">
@@ -701,33 +877,7 @@ export function ProgramTreeView() {
                                                 {currentScheduleError ? <p className="text-xs text-rose-600">{currentScheduleError}</p> : null}
                                                 {!isScheduleLoading && !currentScheduleError ? (
                                                   currentSchedule.length > 0 ? (
-                                                    <div className="space-y-2">
-                                                      {currentSchedule.map((event) => (
-                                                        <div key={event.id} className="rounded-xl border border-indigo-100 bg-white px-3 py-2">
-                                                          <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-medium text-slate-800">{event.title}</span>
-                                                            <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", event.type === "TEST" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-indigo-200 bg-indigo-50 text-indigo-700")}>{event.type}</span>
-                                                          </div>
-                                                          <div className="mt-1 flex flex-wrap gap-2">
-                                                            <span className="text-[10px] text-slate-500">
-                                                              {new Date(event.startsAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                                            </span>
-                                                            {event.sessionType ? (
-                                                              <>
-                                                                <span className="text-[10px] text-slate-400">•</span>
-                                                                <span className="text-[10px] text-slate-500">{event.sessionType.replace(/_/g, " ")}</span>
-                                                              </>
-                                                            ) : null}
-                                                            {event.location ? (
-                                                              <>
-                                                                <span className="text-[10px] text-slate-400">•</span>
-                                                                <span className="text-[10px] text-slate-500">{event.location}</span>
-                                                              </>
-                                                            ) : null}
-                                                          </div>
-                                                        </div>
-                                                      ))}
-                                                    </div>
+                                                    <MiniCalendar events={currentSchedule} batchId={batch.id} />
                                                   ) : (
                                                     <p className="text-xs text-indigo-700">No schedule events found.</p>
                                                   )
@@ -736,9 +886,9 @@ export function ProgramTreeView() {
                                             ) : null}
                                           </div>
 
-                                          {/* Buddy (Language Lab) */}
+                                          {/* Buddy (Course Persona) */}
                                           <div className="rounded-2xl border border-violet-200 bg-violet-50/70">
-                                            <button type="button" onClick={() => void toggleBuddy(batch.id)} className="flex w-full items-center justify-between px-4 py-3 text-left">
+                                            <button type="button" onClick={() => void toggleBuddy(batch.id, program.courseId)} className="flex w-full items-center justify-between px-4 py-3 text-left">
                                               <div className="flex items-center gap-2">
                                                 <MessageCircle className="h-4 w-4 text-violet-700" />
                                                 <span className="text-sm font-semibold text-violet-900">Buddy</span>
@@ -747,30 +897,26 @@ export function ProgramTreeView() {
                                             </button>
                                             {buddyOpen ? (
                                               <div className="border-t border-violet-200/70 px-4 pb-4 pt-3">
-                                                {isBuddyLoading ? <p className="text-xs text-violet-700">Loading buddy data...</p> : null}
+                                                {isBuddyLoading ? <p className="text-xs text-violet-700">Loading buddy...</p> : null}
                                                 {currentBuddyError ? <p className="text-xs text-rose-600">{currentBuddyError}</p> : null}
                                                 {!isBuddyLoading && !currentBuddyError && currentBuddyData ? (
-                                                  <div className="grid grid-cols-2 gap-3">
-                                                    <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
-                                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600">Pronunciation</p>
-                                                      <p className="mt-0.5 text-sm font-bold text-slate-900">{currentBuddyData.pronunciationAttempts} attempts</p>
-                                                      <p className="text-[10px] text-slate-500">
-                                                        Avg score: {currentBuddyData.pronunciationAvgScore != null ? `${Math.round(currentBuddyData.pronunciationAvgScore)}%` : "—"}
-                                                      </p>
-                                                      <p className="text-[10px] text-slate-500">{currentBuddyData.uniquePronunciationLearners} learners</p>
+                                                  <div className="rounded-xl border border-violet-100 bg-white px-4 py-3">
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-sm font-bold text-slate-900">{currentBuddyData.name}</span>
+                                                      <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{currentBuddyData.language}</span>
                                                     </div>
-                                                    <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
-                                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600">Roleplay</p>
-                                                      <p className="mt-0.5 text-sm font-bold text-slate-900">{currentBuddyData.roleplaySessions} sessions</p>
-                                                      <p className="text-[10px] text-slate-500">
-                                                        Completion: {Math.round(currentBuddyData.roleplayCompletionRate)}%
+                                                    {currentBuddyData.description ? (
+                                                      <p className="mt-1.5 text-xs text-slate-600">{currentBuddyData.description}</p>
+                                                    ) : null}
+                                                    {currentBuddyData.welcomeMessage ? (
+                                                      <p className="mt-2 rounded-lg bg-violet-50/60 px-3 py-2 text-[11px] italic text-violet-800">
+                                                        &ldquo;{currentBuddyData.welcomeMessage.length > 120 ? `${currentBuddyData.welcomeMessage.slice(0, 120)}…` : currentBuddyData.welcomeMessage}&rdquo;
                                                       </p>
-                                                      <p className="text-[10px] text-slate-500">{currentBuddyData.uniqueRoleplayLearners} learners</p>
-                                                    </div>
+                                                    ) : null}
                                                   </div>
                                                 ) : null}
-                                                {!isBuddyLoading && !currentBuddyError && !currentBuddyData ? (
-                                                  <p className="text-xs text-violet-700">No buddy activity data.</p>
+                                                {!isBuddyLoading && !currentBuddyError && currentBuddyData === null ? (
+                                                  <p className="text-xs text-violet-700">No buddy assigned to this course.</p>
                                                 ) : null}
                                               </div>
                                             ) : null}
