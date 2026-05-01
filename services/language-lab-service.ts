@@ -14,6 +14,7 @@ import type {
 import { normalizeLanguageLabWord } from "@/lib/language-lab/vocab-bank";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
+  AnalyzePronunciationInput,
   CreateLanguageLabWordInput,
   CreatePronunciationAttemptInput,
   CreateRoleplaySummaryInput,
@@ -1323,4 +1324,145 @@ export async function recordRoleplaySummaryService(
   });
 
   return roleplay;
+}
+
+// ---------------------------------------------------------------------------
+// Pronunciation Analysis (Gemini)
+// ---------------------------------------------------------------------------
+
+const PRONUNCIATION_ANALYSIS_RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  required: ["overallScore", "heardText", "strengths", "priorities", "nextTryInstruction", "phonemeBreakdown"],
+  properties: {
+    overallScore: { type: "INTEGER", description: "Pronunciation accuracy score from 0 to 100." },
+    heardText: { type: "STRING", description: "What the system heard the learner say." },
+    strengths: { type: "ARRAY", items: { type: "STRING" }, description: "What the learner did well." },
+    priorities: { type: "ARRAY", items: { type: "STRING" }, description: "Areas that need improvement." },
+    nextTryInstruction: { type: "STRING", description: "A concrete instruction for the next attempt." },
+    phonemeBreakdown: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        required: ["phoneme", "status", "observed", "lipShape", "tip"],
+        properties: {
+          phoneme: { type: "STRING", description: "Target IPA phoneme." },
+          status: { type: "STRING", enum: ["correct", "partial", "incorrect"], description: "Accuracy of phoneme realization." },
+          observed: { type: "STRING", description: "What sound was actually produced." },
+          lipShape: { type: "STRING", description: "Mouth shape cue for correct pronunciation." },
+          tip: { type: "STRING", description: "Short actionable pronunciation tip." },
+          startMs: { type: "INTEGER", description: "Estimated start time in ms." },
+          endMs: { type: "INTEGER", description: "Estimated end time in ms." },
+        },
+      },
+    },
+  },
+} as const;
+
+type PronunciationAnalysisResult = {
+  overallScore: number;
+  heardText: string;
+  strengths: string[];
+  priorities: string[];
+  nextTryInstruction: string;
+  phonemeBreakdown: Array<{
+    phoneme: string;
+    status: "correct" | "partial" | "incorrect";
+    observed: string;
+    lipShape: string;
+    tip: string;
+    startMs?: number;
+    endMs?: number;
+  }>;
+};
+
+type LanguageLabSettings = {
+  geminiApiKey: string;
+  pronunciationModelId: string;
+  pronunciationSystemPrompt: string;
+};
+
+export async function analyzePronunciationService(
+  input: AnalyzePronunciationInput,
+  settings: LanguageLabSettings,
+): Promise<PronunciationAnalysisResult> {
+  const { geminiApiKey, pronunciationModelId, pronunciationSystemPrompt } = settings;
+
+  if (!geminiApiKey || !pronunciationModelId) {
+    throw new Error("Language Lab AI is not configured. Contact your administrator.");
+  }
+
+  const userMessage = [
+    `TARGET WORD: ${input.targetWord}`,
+    input.targetPhonetic ? `TARGET PHONETIC: ${input.targetPhonetic}` : "",
+    `HEARD TEXT (what the system recognized): ${input.heardText}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const requestBody = {
+    systemInstruction: {
+      parts: [{ text: pronunciationSystemPrompt }],
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: userMessage }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.15,
+      maxOutputTokens: 2048,
+      responseMimeType: "application/json",
+      responseSchema: PRONUNCIATION_ANALYSIS_RESPONSE_SCHEMA,
+    },
+  };
+
+  const modelId = pronunciationModelId.trim() || "gemini-2.5-flash";
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(requestBody),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`Pronunciation analysis failed (${response.status}): ${errorText.slice(0, 200)}`);
+  }
+
+  const geminiPayload = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    error?: { message?: string };
+  };
+
+  const rawText = geminiPayload?.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+
+  if (!rawText) {
+    throw new Error("Pronunciation analysis returned an empty response.");
+  }
+
+  const parsed: PronunciationAnalysisResult = JSON.parse(rawText);
+
+  return {
+    overallScore: Math.max(0, Math.min(100, Math.round(parsed.overallScore ?? 0))),
+    heardText: parsed.heardText ?? input.heardText,
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+    priorities: Array.isArray(parsed.priorities) ? parsed.priorities : [],
+    nextTryInstruction: parsed.nextTryInstruction ?? "",
+    phonemeBreakdown: Array.isArray(parsed.phonemeBreakdown)
+      ? parsed.phonemeBreakdown.map((phoneme) => ({
+          phoneme: phoneme.phoneme ?? "",
+          status: ["correct", "partial", "incorrect"].includes(phoneme.status) ? phoneme.status : "incorrect",
+          observed: phoneme.observed ?? "",
+          lipShape: phoneme.lipShape ?? "",
+          tip: phoneme.tip ?? "",
+          startMs: phoneme.startMs ?? 0,
+          endMs: phoneme.endMs ?? 0,
+        }))
+      : [],
+  };
 }

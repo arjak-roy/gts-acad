@@ -283,6 +283,12 @@ export const createPronunciationAttemptSchema = z.object({
   metadata: metadataSchema,
 });
 
+export const analyzePronunciationSchema = z.object({
+  targetWord: z.string().trim().min(1, "Target word is required.").max(255),
+  targetPhonetic: z.string().trim().max(255).optional().default(""),
+  heardText: z.string().trim().min(1, "Heard text is required.").max(4000),
+});
+
 export const createRoleplaySummarySchema = z.object({
   batchId: z.string().trim().min(1).optional(),
   scenarioName: z.string().trim().min(1).max(255).optional().default("Bread Shop"),
@@ -311,4 +317,5 @@ export type UpdateLanguageLabWordInput = z.infer<typeof updateLanguageLabWordSch
 export type LanguageLabVocabImportRowInput = z.infer<typeof languageLabVocabImportRowSchema>;
 export type CommitLanguageLabVocabImportInput = z.infer<typeof commitLanguageLabVocabImportSchema>;
 export type CreatePronunciationAttemptInput = z.infer<typeof createPronunciationAttemptSchema>;
+export type AnalyzePronunciationInput = z.infer<typeof analyzePronunciationSchema>;
 export type CreateRoleplaySummaryInput = z.infer<typeof createRoleplaySummarySchema>;
