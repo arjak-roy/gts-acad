@@ -481,7 +481,7 @@ export function EditContentSheet({
                         onClick={() => setRichEditorOpen(true)}
                         disabled={isSubmitting}
                       >
-                        Open Rich Editor
+                        Open Lesson Studio
                       </Button>
                     </div>
                     {form.bodyHtml ? (
@@ -505,7 +505,7 @@ export function EditContentSheet({
                     initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
                     courseId={detail?.courseId}
                     onSave={(html) => {
-                      setForm((current) => current ? { ...current, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with rich editor." }] } as AuthoredContentDocument } : current);
+                      setForm((current) => current ? { ...current, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument } : current);
                       setRichEditorOpen(false);
                     }}
                     disabled={isSubmitting}

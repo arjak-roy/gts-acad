@@ -635,7 +635,7 @@ function SortableStageItemRow({
 
     if (item.itemType === "CONTENT" && item.contentId) {
       if (item.contentType === "ARTICLE") {
-        // For authored lessons, fetch HTML and open rich editor directly
+        // For authored lessons, fetch HTML and open Lesson Studio directly
         setIsLoadingEdit(true);
         fetch(`/api/course-content/${item.contentId}`)
           .then((res) => (res.ok ? res.json() : Promise.reject()))

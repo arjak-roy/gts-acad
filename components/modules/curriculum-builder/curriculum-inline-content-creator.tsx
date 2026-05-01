@@ -176,7 +176,7 @@ export function CurriculumInlineContentCreator({
               Create Authored Content
             </DialogTitle>
             <DialogDescription>
-              This will create a new article in the resource repository and open the rich editor.
+              This will create a new article in the resource repository and open Lesson Studio.
             </DialogDescription>
           </DialogHeader>
 
@@ -238,7 +238,7 @@ export function CurriculumInlineContentCreator({
                   Creating…
                 </>
               ) : (
-                "Create & Open Editor"
+                "Create & Open Lesson Studio"
               )}
             </Button>
           </DialogFooter>
@@ -247,7 +247,7 @@ export function CurriculumInlineContentCreator({
     );
   }
 
-  // Step 2/3: Rich editor (or saving state)
+  // Step 2/3: Lesson Studio (or saving state)
   return (
     <>
       {error && step === "editing" && (

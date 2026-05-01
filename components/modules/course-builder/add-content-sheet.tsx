@@ -922,7 +922,7 @@ export function AddContentSheet({
                     disabled={isSubmitting}
                   >
                     <FileText className="mr-1.5 h-3.5 w-3.5" />
-                    Open Rich Editor
+                    Open Lesson Studio
                   </Button>
                 </div>
                 {form.bodyHtml ? (
@@ -946,7 +946,7 @@ export function AddContentSheet({
                 initialHtml={form.bodyHtml || convertV1ToHtml(form.bodyJson)}
                 courseId={courseId}
                 onSave={(html) => {
-                  setForm((prev) => ({ ...prev, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with rich editor." }] } as AuthoredContentDocument }));
+                  setForm((prev) => ({ ...prev, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument }));
                   setRichEditorOpen(false);
                 }}
                 disabled={isSubmitting}
