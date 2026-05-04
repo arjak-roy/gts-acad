@@ -12,6 +12,7 @@ import type {
   RevokeCertificateInput,
 } from "@/lib/validation-schemas/certifications";
 import type { CertificateRenderedData } from "@/services/certifications/types";
+import { getGeneralRuntimeSettings } from "@/services/settings/runtime";
 import { createAuditLogEntry } from "@/services/logs-actions/audit-log-service";
 import { AUDIT_ACTION_TYPE, AUDIT_ENTITY_TYPE } from "@/services/logs-actions/constants";
 
@@ -59,7 +60,8 @@ async function buildRenderedData(
     batchId ? prisma.batch.findUnique({ where: { id: batchId }, select: { name: true } }) : null,
   ]);
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://academy.gts.ai";
+  const generalSettings = await getGeneralRuntimeSettings();
+  const baseUrl = (generalSettings.applicationUrl || process.env.NEXT_PUBLIC_APP_URL || "https://gts-acad.vercel.app").replace(/\/$/, "");
 
   return {
     learnerName: learner.fullName,

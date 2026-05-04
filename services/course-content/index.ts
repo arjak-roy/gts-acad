@@ -6,6 +6,7 @@ export {
 	getContentByIdService,
 	listCourseContentVersionsService,
 	getCandidateAccessibleContentByIdService,
+	getCandidateAccessibleResourceByIdService,
 	searchCourseContentService,
 } from "@/services/course-content/queries";
 export type { CourseContentSearchItem } from "@/services/course-content/queries";

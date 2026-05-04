@@ -261,6 +261,277 @@ function normalizeReferenceIds(values: Array<string | null | undefined>) {
   ));
 }
 
+async function getLearningResourcesForCurriculumTx(tx: DbClient, resourceIds: string[]) {
+  if (resourceIds.length === 0) {
+    return [];
+  }
+
+  const resources = await tx.learningResource.findMany({
+    where: {
+      id: { in: resourceIds },
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      excerpt: true,
+      contentType: true,
+      status: true,
+      bodyJson: true,
+      renderedHtml: true,
+      estimatedReadingMinutes: true,
+      fileUrl: true,
+      fileName: true,
+      fileSize: true,
+      mimeType: true,
+      storagePath: true,
+      storageProvider: true,
+      sourceContentId: true,
+      sourceContent: {
+        select: {
+          id: true,
+          courseId: true,
+        },
+      },
+    },
+  });
+
+  if (resources.length !== resourceIds.length) {
+    throw new Error("One or more selected repository resources could not be found.");
+  }
+
+  const resourceById = new Map(resources.map((resource) => [resource.id, resource]));
+
+  return resourceIds.map((resourceId) => {
+    const resource = resourceById.get(resourceId);
+
+    if (!resource) {
+      throw new Error("One or more selected repository resources could not be found.");
+    }
+
+    return resource;
+  });
+}
+
+type CurriculumLearningResourceRecord = Awaited<ReturnType<typeof getLearningResourcesForCurriculumTx>>[number];
+
+async function createCourseContentFromLearningResourceTx(
+  tx: DbClient,
+  resource: CurriculumLearningResourceRecord,
+  options: {
+    courseId: string;
+    actorUserId?: string;
+    sourceContentId?: string | null;
+    status: CurriculumLearningResourceRecord["status"];
+  },
+) {
+  return tx.courseContent.create({
+    data: {
+      courseId: options.courseId,
+      folderId: null,
+      title: resource.title,
+      description: resource.description,
+      excerpt: resource.excerpt,
+      contentType: resource.contentType,
+      bodyJson: resource.bodyJson ? (resource.bodyJson as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+      renderedHtml: resource.renderedHtml,
+      estimatedReadingMinutes: resource.estimatedReadingMinutes,
+      fileUrl: resource.fileUrl,
+      fileName: resource.fileName,
+      fileSize: resource.fileSize,
+      mimeType: resource.mimeType,
+      storagePath: resource.storagePath,
+      storageProvider: resource.storageProvider,
+      sourceContentId: options.sourceContentId ?? null,
+      status: options.status,
+      isScorm: resource.contentType === "SCORM",
+      createdById: options.actorUserId ?? null,
+    },
+    select: {
+      id: true,
+    },
+  });
+}
+
+async function ensureLearningResourceCourseAssignmentTx(
+  tx: DbClient,
+  options: {
+    resourceId: string;
+    courseId: string;
+    actorUserId?: string;
+  },
+) {
+  await tx.learningResourceAssignment.createMany({
+    data: [{
+      resourceId: options.resourceId,
+      targetType: "COURSE",
+      targetId: options.courseId,
+      assignedById: options.actorUserId ?? null,
+      notes: null,
+    }],
+    skipDuplicates: true,
+  });
+}
+
+async function ensureLinkedCourseContentFromLearningResourceTx(
+  tx: DbClient,
+  resource: CurriculumLearningResourceRecord,
+  options: {
+    courseId: string;
+    actorUserId?: string;
+  },
+) {
+  if (resource.sourceContentId) {
+    if (resource.sourceContent?.courseId !== options.courseId) {
+      await ensureLearningResourceCourseAssignmentTx(tx, {
+        resourceId: resource.id,
+        courseId: options.courseId,
+        actorUserId: options.actorUserId,
+      });
+    }
+
+    return resource.sourceContentId;
+  }
+
+  const createdContent = await createCourseContentFromLearningResourceTx(tx, resource, {
+    courseId: options.courseId,
+    actorUserId: options.actorUserId,
+    status: resource.status,
+  });
+
+  await tx.learningResource.update({
+    where: { id: resource.id },
+    data: {
+      sourceContentId: createdContent.id,
+      updatedById: options.actorUserId ?? null,
+    },
+  });
+
+  return createdContent.id;
+}
+
+async function createDetachedCourseContentFromLearningResourceTx(
+  tx: DbClient,
+  resource: CurriculumLearningResourceRecord,
+  options: {
+    courseId: string;
+    actorUserId?: string;
+  },
+) {
+  const createdContent = await createCourseContentFromLearningResourceTx(tx, resource, {
+    courseId: options.courseId,
+    actorUserId: options.actorUserId,
+    sourceContentId: resource.sourceContentId,
+    status: "DRAFT",
+  });
+
+  return createdContent.id;
+}
+
+async function resolveCurriculumResourceContentIdsTx(
+  tx: DbClient,
+  options: {
+    courseId: string;
+    resourceIds: string[];
+    contentSelectionMode: NonNullable<CreateCurriculumStageItemsInput["contentSelectionMode"]>;
+    actorUserId?: string;
+  },
+): Promise<{ contentId: string; resourceId: string }[]> {
+  const resources = await getLearningResourcesForCurriculumTx(tx, options.resourceIds);
+  const resolved: { contentId: string; resourceId: string }[] = [];
+
+  for (const resource of resources) {
+    if (options.contentSelectionMode === "COPY_LOCAL") {
+      resolved.push({
+        contentId: await createDetachedCourseContentFromLearningResourceTx(tx, resource, {
+          courseId: options.courseId,
+          actorUserId: options.actorUserId,
+        }),
+        resourceId: resource.id,
+      });
+      continue;
+    }
+
+    resolved.push({
+      contentId: await ensureLinkedCourseContentFromLearningResourceTx(tx, resource, {
+        courseId: options.courseId,
+        actorUserId: options.actorUserId,
+      }),
+      resourceId: resource.id,
+    });
+  }
+
+  return resolved;
+}
+
+async function ensureCurriculumContentAccessTx(
+  tx: DbClient,
+  options: {
+    courseId: string;
+    contentIds: string[];
+  },
+) {
+  if (options.contentIds.length === 0) {
+    return;
+  }
+
+  const contents = await tx.courseContent.findMany({
+    where: {
+      id: { in: options.contentIds },
+    },
+    select: {
+      id: true,
+      courseId: true,
+    },
+  });
+
+  if (contents.length !== options.contentIds.length) {
+    throw new Error("One or more selected content items could not be found.");
+  }
+
+  const accessibleContentIds = new Set(
+    contents
+      .filter((content) => content.courseId === options.courseId)
+      .map((content) => content.id),
+  );
+
+  const sharedContentIds = contents
+    .filter((content) => content.courseId !== options.courseId)
+    .map((content) => content.id);
+
+  if (sharedContentIds.length > 0) {
+    const sharedAssignments = await tx.learningResourceAssignment.findMany({
+      where: {
+        targetType: "COURSE",
+        targetId: options.courseId,
+        resource: {
+          sourceContentId: {
+            in: sharedContentIds,
+          },
+        },
+      },
+      select: {
+        resource: {
+          select: {
+            sourceContentId: true,
+          },
+        },
+      },
+    });
+
+    for (const assignment of sharedAssignments) {
+      if (assignment.resource.sourceContentId) {
+        accessibleContentIds.add(assignment.resource.sourceContentId);
+      }
+    }
+  }
+
+  if (accessibleContentIds.size !== options.contentIds.length) {
+    throw new Error("One or more selected content items are not available to this curriculum course.");
+  }
+}
+
 function buildStageItemReleaseConfigData(
   releaseConfig: NonNullable<CreateCurriculumStageItemsInput["releaseConfig"]>,
 ) {
@@ -983,8 +1254,10 @@ export async function createCurriculumStageItemService(
     stageId: input.stageId,
     itemType: input.itemType,
     contentIds: input.contentId ? [input.contentId] : [],
+    resourceIds: input.resourceId ? [input.resourceId] : [],
     assessmentPoolIds: input.assessmentPoolId ? [input.assessmentPoolId] : [],
     isRequired: input.isRequired ?? false,
+    contentSelectionMode: input.contentSelectionMode,
     releaseConfig: input.releaseConfig,
   }, options);
 
@@ -997,7 +1270,7 @@ export async function createCurriculumStageItemsService(
 ): Promise<CurriculumStageItemMutationResult[]> {
   if (!isDatabaseConfigured) {
     const referenceIds = input.itemType === "CONTENT"
-      ? normalizeReferenceIds(input.contentIds)
+      ? normalizeReferenceIds(input.contentIds.length > 0 ? input.contentIds : input.resourceIds)
       : normalizeReferenceIds(input.assessmentPoolIds);
 
     return referenceIds.map((referenceId, index) => ({
@@ -1005,6 +1278,7 @@ export async function createCurriculumStageItemsService(
       stageId: input.stageId,
       itemType: input.itemType,
       contentId: input.itemType === "CONTENT" ? referenceId : null,
+      resourceId: input.itemType === "CONTENT" && input.resourceIds.length > 0 ? referenceId : null,
       assessmentPoolId: input.itemType === "ASSESSMENT" ? referenceId : null,
       sortOrder: index,
       isRequired: input.isRequired ?? false,
@@ -1013,26 +1287,48 @@ export async function createCurriculumStageItemsService(
 
   let autoLinkedAssessmentPoolIds: string[] = [];
 
-  const stageItems = await prisma.$transaction(async (tx) => {
+  const stageItems = await prisma.$transaction(
+    async (tx) => {
     const stage = await ensureStageExists(tx, input.stageId);
     const curriculumId = stage.module.curriculumId;
     const courseId = stage.module.curriculum.courseId;
-    const contentIds = input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [];
+    const requestedContentIds = input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [];
+    const resourceIds = input.itemType === "CONTENT" ? normalizeReferenceIds(input.resourceIds) : [];
     const assessmentPoolIds = input.itemType === "ASSESSMENT" ? normalizeReferenceIds(input.assessmentPoolIds) : [];
-    const referenceIds = input.itemType === "CONTENT" ? contentIds : assessmentPoolIds;
+    const contentSelectionMode = input.contentSelectionMode ?? "LINK";
+    const resolvedResourceTuples = input.itemType === "CONTENT"
+      ? await resolveCurriculumResourceContentIdsTx(tx, {
+        courseId,
+        resourceIds,
+        contentSelectionMode,
+        actorUserId: options?.actorUserId,
+      })
+      : [];
+
+    // Build content item entries with resourceId tracking
+    const contentItemEntries: { contentId: string; resourceId: string | null }[] = [];
+    if (input.itemType === "CONTENT") {
+      // Legacy contentIds path: resolve linked resource if available
+      for (const contentId of requestedContentIds) {
+        const linkedResource = await tx.learningResource.findUnique({
+          where: { sourceContentId: contentId },
+          select: { id: true },
+        });
+        contentItemEntries.push({ contentId, resourceId: linkedResource?.id ?? null });
+      }
+      // Resource-first path: already have both IDs
+      for (const tuple of resolvedResourceTuples) {
+        contentItemEntries.push(tuple);
+      }
+    }
+
+    const contentIds = contentItemEntries.map((entry) => entry.contentId);
 
     if (input.itemType === "CONTENT") {
-      const contents = await tx.courseContent.findMany({
-        where: {
-          id: { in: contentIds },
-          courseId,
-        },
-        select: { id: true },
+      await ensureCurriculumContentAccessTx(tx, {
+        courseId,
+        contentIds,
       });
-
-      if (contents.length !== contentIds.length) {
-        throw new Error("One or more selected content items do not belong to this curriculum course.");
-      }
     }
 
     if (input.itemType === "ASSESSMENT") {
@@ -1068,7 +1364,7 @@ export async function createCurriculumStageItemsService(
             courseId,
             assessmentPoolId,
             sortOrder: (lastCourseAssessmentLink?.sortOrder ?? -1) + index + 1,
-            isRequired: false,
+            isRequired: input.isRequired ?? false,
           })),
           skipDuplicates: true,
         });
@@ -1078,39 +1374,77 @@ export async function createCurriculumStageItemsService(
     const nextSortOrder = await getNextStageItemSortOrder(tx, input.stageId);
     const createdItems: CurriculumStageItemMutationResult[] = [];
 
-    for (const [index, referenceId] of referenceIds.entries()) {
-      const createdItem = await tx.curriculumStageItem.create({
-        data: {
-          stageId: input.stageId,
-          itemType: input.itemType,
-          contentId: input.itemType === "CONTENT" ? referenceId : null,
-          assessmentPoolId: input.itemType === "ASSESSMENT" ? referenceId : null,
-          sortOrder: nextSortOrder + index,
-          isRequired: input.isRequired ?? false,
-        },
-        select: {
-          id: true,
-          stageId: true,
-          itemType: true,
-          contentId: true,
-          assessmentPoolId: true,
-          sortOrder: true,
-          isRequired: true,
-        },
-      });
+    if (input.itemType === "CONTENT") {
+      for (const [index, entry] of contentItemEntries.entries()) {
+        const createdItem = await tx.curriculumStageItem.create({
+          data: {
+            stageId: input.stageId,
+            itemType: input.itemType,
+            contentId: entry.contentId,
+            resourceId: entry.resourceId,
+            sortOrder: nextSortOrder + index,
+            isRequired: input.isRequired ?? false,
+          },
+          select: {
+            id: true,
+            stageId: true,
+            itemType: true,
+            contentId: true,
+            resourceId: true,
+            assessmentPoolId: true,
+            sortOrder: true,
+            isRequired: true,
+          },
+        });
 
-      await upsertStageItemReleaseConfig({
-        tx,
-        stageItemId: createdItem.id,
-        curriculumId,
-        releaseConfig: input.releaseConfig,
-      });
+        await upsertStageItemReleaseConfig({
+          tx,
+          stageItemId: createdItem.id,
+          curriculumId,
+          releaseConfig: input.releaseConfig,
+        });
 
-      createdItems.push(createdItem);
+        createdItems.push(createdItem);
+      }
+    } else {
+      for (const [index, referenceId] of assessmentPoolIds.entries()) {
+        const createdItem = await tx.curriculumStageItem.create({
+          data: {
+            stageId: input.stageId,
+            itemType: input.itemType,
+            contentId: null,
+            resourceId: null,
+            assessmentPoolId: referenceId,
+            sortOrder: nextSortOrder + index,
+            isRequired: input.isRequired ?? false,
+          },
+          select: {
+            id: true,
+            stageId: true,
+            itemType: true,
+            contentId: true,
+            resourceId: true,
+            assessmentPoolId: true,
+            sortOrder: true,
+            isRequired: true,
+          },
+        });
+
+        await upsertStageItemReleaseConfig({
+          tx,
+          stageItemId: createdItem.id,
+          curriculumId,
+          releaseConfig: input.releaseConfig,
+        });
+
+        createdItems.push(createdItem);
+      }
     }
 
     return createdItems;
-  });
+  },
+  { timeout: 30_000 },
+  );
 
   await createAuditLogEntry({
     entityType: AUDIT_ENTITY_TYPE.CURRICULUM,
@@ -1121,7 +1455,9 @@ export async function createCurriculumStageItemsService(
     metadata: {
       itemIds: stageItems.map((item) => item.id),
       itemType: input.itemType,
-      contentIds: input.itemType === "CONTENT" ? normalizeReferenceIds(input.contentIds) : [],
+      contentIds: input.itemType === "CONTENT" ? stageItems.map((item) => item.contentId).filter((value): value is string => Boolean(value)) : [],
+      resourceIds: input.itemType === "CONTENT" ? normalizeReferenceIds(input.resourceIds) : [],
+      contentSelectionMode: input.itemType === "CONTENT" ? (input.contentSelectionMode ?? "LINK") : null,
       assessmentPoolIds: input.itemType === "ASSESSMENT" ? normalizeReferenceIds(input.assessmentPoolIds) : [],
       autoLinkedAssessmentPoolIds,
     },
@@ -1158,6 +1494,7 @@ export async function updateCurriculumStageItemService(
         stageId: true,
         itemType: true,
         contentId: true,
+        resourceId: true,
         assessmentPoolId: true,
         sortOrder: true,
         isRequired: true,

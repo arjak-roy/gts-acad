@@ -18,6 +18,15 @@ export type LearningResourceTagSummary = {
   slug: string;
 };
 
+export type LearningResourceFolderSummary = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  pathLabel: string;
+};
+
 export type LearningResourceAttachmentItem = {
   id: string;
   title: string | null;
@@ -44,6 +53,8 @@ export type LearningResourceAssignmentItem = {
 export type LearningResourceListItem = {
   id: string;
   sourceContentId: string | null;
+  folderId: string | null;
+  folderName: string | null;
   title: string;
   description: string | null;
   excerpt: string | null;
@@ -145,11 +156,34 @@ export type LearningResourceLookupOption = {
 
 export type LearningResourceLookups = {
   categories: LearningResourceCategorySummary[];
+  folders: LearningResourceFolderSummary[];
   tags: LearningResourceTagSummary[];
   courses: LearningResourceLookupOption[];
   batches: LearningResourceLookupOption[];
   assessments: LearningResourceLookupOption[];
   scheduleEvents: LearningResourceLookupOption[];
+};
+
+export type CurriculumLearningResourceReferenceItem = {
+  id: string;
+  sourceContentId: string | null;
+  title: string;
+  contentType: ContentType;
+  status: ContentStatus;
+  folderId: string | null;
+  folderName: string | null;
+  folderPath: string | null;
+  sourceCourseId: string | null;
+  sourceCourseName: string | null;
+  sourceFolderName: string | null;
+  isOwnedByCourse: boolean;
+  isAssignedToCourse: boolean;
+  hasSourceContent: boolean;
+};
+
+export type CurriculumLearningResourceReferences = {
+  folders: LearningResourceFolderSummary[];
+  items: CurriculumLearningResourceReferenceItem[];
 };
 
 export type LearningResourceCreateResult = {

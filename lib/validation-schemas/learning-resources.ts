@@ -25,6 +25,7 @@ const baseLearningResourceSchema = z.object({
   excerpt: z.string().trim().max(500).optional().default(""),
   contentType: learningResourceContentTypeEnum,
   visibility: learningResourceVisibilityEnum.default("PRIVATE"),
+  folderId: z.string().trim().min(1).optional().nullable(),
   categoryName: z.string().trim().max(120).optional().default(""),
   subcategoryName: z.string().trim().max(120).optional().default(""),
   tags: z.array(z.string().trim().min(1).max(80)).max(20).optional().default([]),
@@ -93,6 +94,23 @@ export const resourceIdSchema = z.object({
   resourceId: z.string().trim().min(1, "Resource ID is required."),
 });
 
+const learningResourceFolderBaseSchema = z.object({
+  name: z.string().trim().min(2, "Folder name must be at least 2 characters.").max(255),
+  description: z.string().trim().max(2000).optional().default(""),
+  parentId: z.string().trim().min(1).optional().nullable(),
+  sortOrder: z.coerce.number().int().nonnegative().optional(),
+});
+
+export const createLearningResourceFolderSchema = learningResourceFolderBaseSchema;
+
+export const learningResourceFolderIdSchema = z.object({
+  folderId: z.string().trim().min(1, "Folder ID is required."),
+});
+
+export const updateLearningResourceFolderSchema = learningResourceFolderBaseSchema.partial().extend({
+  folderId: z.string().trim().min(1, "Folder ID is required."),
+});
+
 export const learningResourceSortByEnum = z.enum(["updatedAt", "createdAt", "title", "status"]);
 export const sortDirectionEnum = z.enum(["asc", "desc"]);
 
@@ -101,6 +119,7 @@ export const listLearningResourcesQuerySchema = z.object({
   status: learningResourceStatusEnum.optional(),
   visibility: learningResourceVisibilityEnum.optional(),
   contentType: learningResourceContentTypeEnum.optional(),
+  folderId: z.string().trim().min(1).optional(),
   categoryId: z.string().trim().min(1).optional(),
   tag: z.string().trim().min(1).optional(),
   createdById: z.string().trim().min(1).optional(),
@@ -136,6 +155,8 @@ export const recordLearningResourceUsageSchema = z.object({
 
 export type CreateLearningResourceInput = z.infer<typeof createLearningResourceSchema>;
 export type UpdateLearningResourceInput = z.infer<typeof updateLearningResourceSchema>;
+export type CreateLearningResourceFolderInput = z.infer<typeof createLearningResourceFolderSchema>;
+export type UpdateLearningResourceFolderInput = z.infer<typeof updateLearningResourceFolderSchema>;
 export type ImportLearningResourceInput = z.infer<typeof importLearningResourceSchema>;
 export type SyncLearningResourcesFromContentInput = z.infer<typeof syncLearningResourcesFromContentSchema>;
 export type ListLearningResourcesQueryInput = z.infer<typeof listLearningResourcesQuerySchema>;

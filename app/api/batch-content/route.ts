@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       return apiSuccess(items);
     }
 
-    const items = await listBatchContentService(batchId);
+    const items = await listBatchContentService(batchId, { includeAssignedResources: true });
     return apiSuccess(items);
   } catch (error) {
     return apiError(error);

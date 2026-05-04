@@ -12,6 +12,7 @@ import type {
   CandidateContentAccessContext,
   CandidateContentAccessResult,
   CandidateContentDetail,
+  CandidateResourceAccessResult,
   ContentDetail,
   ContentListItem,
 } from "@/services/course-content/types";
@@ -665,4 +666,182 @@ export async function getCandidateAccessibleContentByIdService(
     },
     contexts,
   };
+}
+
+export async function getCandidateAccessibleResourceByIdService(
+  userId: string,
+  resourceId: string,
+): Promise<CandidateResourceAccessResult | null> {
+  const profile = await getCandidateProfileByUserIdService(userId);
+
+  if (!profile) {
+    return null;
+  }
+
+  const batchIds = Array.from(new Set(profile?.activeEnrollments.map((enrollment) => enrollment.batchId) ?? []));
+
+  if (!isDatabaseConfigured || batchIds.length === 0) {
+    return null;
+  }
+
+  const resource = await prisma.learningResource.findUnique({
+    where: { id: resourceId, deletedAt: null, status: "PUBLISHED" },
+    select: {
+      id: true,
+      sourceContentId: true,
+      title: true,
+      description: true,
+      excerpt: true,
+      contentType: true,
+      estimatedReadingMinutes: true,
+      fileUrl: true,
+      fileName: true,
+      mimeType: true,
+      renderedHtml: true,
+      bodyJson: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!resource) {
+    return null;
+  }
+
+  const courseIds = await listCourseIdsForBatchIds(batchIds);
+
+  // Verify access via assignment or curriculum stage item link
+  const hasAssignmentAccess = await prisma.learningResourceAssignment.findFirst({
+    where: {
+      resourceId,
+      OR: [
+        { targetType: "COURSE", targetId: { in: courseIds } },
+        { targetType: "BATCH", targetId: { in: batchIds } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  const hasCurriculumAccess = !hasAssignmentAccess
+    ? await prisma.curriculumStageItem.findFirst({
+        where: {
+          resourceId,
+          stage: {
+            module: {
+              curriculum: {
+                status: "PUBLISHED",
+                batchMappings: { some: { batchId: { in: batchIds } } },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      })
+    : null;
+
+  if (!hasAssignmentAccess && !hasCurriculumAccess) {
+    return null;
+  }
+
+  // Resolve curriculum contexts via resourceId
+  const contexts = await resolveCandidateCurriculumResourceContextsService({
+    learnerId: profile.id,
+    batchIds,
+    resourceId,
+  });
+  const availableContexts = contexts.filter((context) => context.availabilityStatus === "AVAILABLE");
+
+  if (contexts.length > 0 && availableContexts.length === 0) {
+    const blockingContext = selectBlockingCandidateContentContext(contexts);
+
+    if (!blockingContext) {
+      return null;
+    }
+
+    return {
+      kind: "blocked",
+      resourceId: resource.id,
+      title: resource.title,
+      availabilityStatus: blockingContext.availabilityStatus === "SCHEDULED" ? "SCHEDULED" : "LOCKED",
+      availabilityReason: blockingContext.availabilityReason,
+      contexts,
+    };
+  }
+
+  if (availableContexts.length > 0) {
+    try {
+      await markCurriculumContentCompletedForLearnerService({
+        learnerId: profile.id,
+        targets: availableContexts.map((context) => ({
+          batchId: context.batchId,
+          stageItemId: context.stageItemId,
+        })),
+      });
+    } catch (error) {
+      console.warn("Resource access succeeded, but curriculum completion sync failed", error);
+    }
+  }
+
+  return {
+    kind: "content",
+    content: {
+      id: resource.id,
+      title: resource.title,
+      description: resource.description,
+      excerpt: resource.excerpt,
+      contentType: resource.contentType,
+      estimatedReadingMinutes: resource.estimatedReadingMinutes,
+      fileUrl: resource.fileUrl,
+      fileName: resource.fileName,
+      mimeType: resource.mimeType,
+      renderedHtml: resource.renderedHtml,
+      bodyJson: parseAuthoredContentAnyDocument(resource.bodyJson),
+      updatedAt: resource.updatedAt,
+    },
+    contexts,
+  };
+}
+
+async function resolveCandidateCurriculumResourceContextsService(options: {
+  learnerId: string;
+  batchIds: string[];
+  resourceId: string;
+}): Promise<CandidateContentAccessContext[]> {
+  if (!isDatabaseConfigured || options.batchIds.length === 0) {
+    return [];
+  }
+
+  const workspaces = await Promise.all(
+    Array.from(new Set(options.batchIds)).map((batchId) => getCandidateCurriculaForBatchService({
+      batchId,
+      learnerId: options.learnerId,
+    })),
+  );
+
+  const contexts = workspaces.flatMap((workspace) => workspace.assignedCurricula.flatMap((assignment) =>
+    assignment.curriculum.modules.flatMap((moduleRecord) =>
+      moduleRecord.stages.flatMap((stage) =>
+        stage.items.flatMap((item) => item.itemType === "CONTENT" && item.resourceId === options.resourceId
+          ? [{
+              batchId: workspace.batchId,
+              batchCode: workspace.batchCode,
+              batchName: workspace.batchName,
+              curriculumId: assignment.curriculum.id,
+              curriculumTitle: assignment.curriculum.title,
+              moduleId: moduleRecord.id,
+              moduleTitle: moduleRecord.title,
+              stageId: stage.id,
+              stageTitle: stage.title,
+              stageItemId: item.id,
+              itemTitle: item.referenceTitle,
+              availabilityStatus: item.availabilityStatus,
+              availabilityReason: item.availabilityReason,
+              progressStatus: item.progressStatus,
+              progressPercent: item.progressPercent,
+            } satisfies CandidateContentAccessContext]
+          : []),
+      ),
+    ),
+  ));
+
+  return dedupeCandidateContentContexts(contexts).sort(compareCandidateContentContext);
 }

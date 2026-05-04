@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requirePermission(request, "curriculum.edit");
     const body = await request.json();
-    const isBatchRequest = Array.isArray(body?.contentIds) || Array.isArray(body?.assessmentPoolIds);
+    const isBatchRequest = Array.isArray(body?.contentIds) || Array.isArray(body?.resourceIds) || Array.isArray(body?.assessmentPoolIds);
     const input = isBatchRequest
       ? createCurriculumStageItemsSchema.parse(body)
       : (() => {
@@ -19,8 +19,10 @@ export async function POST(request: NextRequest) {
           stageId: singleItem.stageId,
           itemType: singleItem.itemType,
           contentIds: singleItem.contentId ? [singleItem.contentId] : [],
+          resourceIds: singleItem.resourceId ? [singleItem.resourceId] : [],
           assessmentPoolIds: singleItem.assessmentPoolId ? [singleItem.assessmentPoolId] : [],
           isRequired: singleItem.isRequired ?? false,
+          contentSelectionMode: singleItem.contentSelectionMode,
         };
       })();
     const items = await createCurriculumStageItemsService(input, { actorUserId: session.userId });

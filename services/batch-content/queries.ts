@@ -4,7 +4,7 @@ import { LearningResourceTargetType } from "@prisma/client";
 
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
-import type { BatchAssessmentItem, BatchContentItem, BatchAssignmentSource } from "@/services/batch-content/types";
+import type { BatchAssessmentItem, BatchAvailableContentItem, BatchContentItem, BatchAssignmentSource } from "@/services/batch-content/types";
 import type { ContentListItem } from "@/services/course-content/types";
 import type { AssessmentPoolListItem } from "@/services/assessment-pool/types";
 
@@ -19,6 +19,7 @@ type SharedAssignmentBatchContentRecord = {
   assignedAt: Date;
   assignedBy: { name: string } | null;
   resource: {
+    id: string;
     sourceContent: {
       id: string;
       title: string;
@@ -63,6 +64,8 @@ function mapSharedAssignmentToBatchContentItem(
     id: `assignment:${assignment.id}`,
     batchId,
     contentId: sourceContent.id,
+    resourceId: assignment.resource.id,
+    resourceAssignmentId: assignment.targetType === "BATCH" ? assignment.id : null,
     contentTitle: sourceContent.title,
     contentDescription: sourceContent.description,
     contentExcerpt: sourceContent.excerpt,
@@ -77,8 +80,8 @@ function mapSharedAssignmentToBatchContentItem(
     assignedAt: assignment.assignedAt,
     assignmentSource: assignment.targetType === "BATCH" ? "BATCH" : "COURSE",
     isInheritedFromCourse: assignment.targetType === "COURSE",
-    isBatchMapped: false,
-    canRemoveBatchMapping: false,
+    isBatchMapped: assignment.targetType === "BATCH",
+    canRemoveBatchMapping: assignment.targetType === "BATCH",
   };
 }
 
@@ -119,6 +122,7 @@ async function listAssignedContentForBatchService(
       },
       resource: {
         select: {
+          id: true,
           sourceContent: {
             select: {
               id: true,
@@ -253,11 +257,16 @@ export async function listBatchContentService(batchId: string, options?: ListBat
       },
     }),
   ]);
+  const assignedItems = options?.includeAssignedResources
+    ? await listAssignedContentForBatchService(batchId, batch.courseId, options)
+    : [];
+  const assignedByContentId = new Map(assignedItems.map((item) => [item.contentId, item]));
 
   const mappedByContentId = new Map(mappedContents.map((mapping) => [mapping.contentId, mapping]));
 
   const inheritedItems: BatchContentItem[] = inheritedCourseContents.map((content) => {
     const mapping = mappedByContentId.get(content.id);
+    const assignmentItem = assignedByContentId.get(content.id) ?? null;
 
     if (mapping) {
       mappedByContentId.delete(content.id);
@@ -267,6 +276,8 @@ export async function listBatchContentService(batchId: string, options?: ListBat
       id: mapping?.id ?? `course:${batchId}:${content.id}`,
       batchId,
       contentId: content.id,
+      resourceId: assignmentItem?.resourceId ?? null,
+      resourceAssignmentId: assignmentItem?.resourceAssignmentId ?? null,
       contentTitle: content.title,
       contentDescription: content.description,
       contentExcerpt: content.excerpt,
@@ -277,15 +288,15 @@ export async function listBatchContentService(batchId: string, options?: ListBat
       fileUrl: content.fileUrl,
       fileName: content.fileName,
       mimeType: content.mimeType,
-      assignedByName: mapping?.assignedBy?.name ?? null,
-      assignedAt: mapping?.assignedAt ?? content.createdAt,
+      assignedByName: assignmentItem?.assignedByName ?? mapping?.assignedBy?.name ?? null,
+      assignedAt: assignmentItem?.assignedAt ? new Date(assignmentItem.assignedAt) : (mapping?.assignedAt ?? content.createdAt),
       assignmentSource: resolveAssignmentSource({
         isInheritedFromCourse: true,
-        isBatchMapped: Boolean(mapping),
+        isBatchMapped: Boolean(mapping) || Boolean(assignmentItem?.resourceAssignmentId),
       }),
       isInheritedFromCourse: true,
-      isBatchMapped: Boolean(mapping),
-      canRemoveBatchMapping: Boolean(mapping),
+      isBatchMapped: Boolean(mapping) || Boolean(assignmentItem?.resourceAssignmentId),
+      canRemoveBatchMapping: Boolean(mapping) || Boolean(assignmentItem?.resourceAssignmentId),
     };
   });
 
@@ -293,6 +304,8 @@ export async function listBatchContentService(batchId: string, options?: ListBat
     id: mapping.id,
     batchId: mapping.batchId,
     contentId: mapping.contentId,
+    resourceId: null,
+    resourceAssignmentId: null,
     contentTitle: mapping.content.title,
     contentDescription: mapping.content.description,
     contentExcerpt: mapping.content.excerpt,
@@ -321,7 +334,6 @@ export async function listBatchContentService(batchId: string, options?: ListBat
   }
 
   const nativeContentIds = new Set(nativeItems.map((item) => item.contentId));
-  const assignedItems = await listAssignedContentForBatchService(batchId, batch.courseId, options);
   const overlayItems = assignedItems.filter((item) => !nativeContentIds.has(item.contentId));
 
   return [...nativeItems, ...overlayItems];
@@ -457,14 +469,73 @@ export async function listBatchAssessmentsService(batchId: string, options?: Lis
 
 export async function getAvailableContentForBatchService(
   batchId: string,
-): Promise<ContentListItem[]> {
+): Promise<BatchAvailableContentItem[]> {
   if (!isDatabaseConfigured) return [];
 
   const batch = await getBatchCourseContext(batchId);
 
   if (!batch) return [];
 
-  return [];
+  const [existingAssignments, resources] = await Promise.all([
+    prisma.learningResourceAssignment.findMany({
+      where: {
+        OR: [
+          { targetType: "COURSE", targetId: batch.courseId },
+          { targetType: "BATCH", targetId: batchId },
+        ],
+      },
+      select: {
+        resourceId: true,
+      },
+    }),
+    prisma.learningResource.findMany({
+      where: {
+        deletedAt: null,
+        status: "PUBLISHED",
+      },
+      orderBy: [{ title: "asc" }],
+      select: {
+        id: true,
+        sourceContentId: true,
+        title: true,
+        contentType: true,
+        fileName: true,
+        folder: { select: { name: true } },
+        sourceContent: {
+          select: {
+            courseId: true,
+            status: true,
+            course: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const excludedResourceIds = new Set(existingAssignments.map((assignment) => assignment.resourceId));
+
+  return resources
+    .filter((resource) => {
+      if (excludedResourceIds.has(resource.id)) {
+        return false;
+      }
+
+      if (resource.sourceContent?.courseId === batch.courseId && resource.sourceContent.status === "PUBLISHED") {
+        return false;
+      }
+
+      return true;
+    })
+    .map((resource) => ({
+      id: resource.id,
+      sourceContentId: resource.sourceContentId,
+      title: resource.title,
+      contentType: resource.contentType,
+      fileName: resource.fileName,
+      folderName: resource.folder?.name ?? null,
+      sourceCourseName: resource.sourceContent?.course.name ?? null,
+      hasSourceContent: Boolean(resource.sourceContentId),
+    }));
 }
 
 export async function getAvailableAssessmentsForBatchService(

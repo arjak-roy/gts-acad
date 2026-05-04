@@ -12,9 +12,11 @@ import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type {
   AssignLearningResourceInput,
   CreateLearningResourceInput,
+  CreateLearningResourceFolderInput,
   ImportLearningResourceInput,
   RecordLearningResourceUsageInput,
   RestoreLearningResourceVersionInput,
+  UpdateLearningResourceFolderInput,
   UpdateLearningResourceInput,
 } from "@/lib/validation-schemas/learning-resources";
 import { deleteStoredUploadAssetIfUnreferenced, resolveStoredAssetResponse } from "@/services/file-upload";
@@ -23,6 +25,7 @@ import { createAuditLogEntry } from "@/services/logs-actions-service";
 import { AUDIT_ACTION_TYPE, AUDIT_ENTITY_TYPE } from "@/services/logs-actions/constants";
 import type {
   LearningResourceCreateResult,
+  LearningResourceFolderSummary,
   LearningResourceSnapshotAttachment,
   LearningResourceVersionSnapshot,
 } from "@/services/learning-resources/types";
@@ -62,6 +65,12 @@ type SyncLinkedResourceTxResult = {
   assetsToDelete: StoredAssetLike[];
 };
 
+type SyncLearningResourceFromContentOptions = {
+  actorUserId?: string;
+  changeSummary?: string;
+  repositoryFolderId?: string | null;
+};
+
 const LEARNING_RESOURCE_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
   timeout: 60_000,
@@ -74,6 +83,219 @@ function normalizeOptionalText(value: string | null | undefined) {
 
 function normalizeTagNames(values: string[] | undefined) {
   return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+}
+
+type LearningResourceFolderRecord = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+};
+
+function mapLearningResourceFolderSummaries(
+  folders: LearningResourceFolderRecord[],
+): LearningResourceFolderSummary[] {
+  const folderById = new Map(folders.map((folder) => [folder.id, folder]));
+  const pathCache = new Map<string, string>();
+
+  const resolvePathLabel = (folder: LearningResourceFolderRecord): string => {
+    const cached = pathCache.get(folder.id);
+
+    if (cached) {
+      return cached;
+    }
+
+    const parent = folder.parentId ? folderById.get(folder.parentId) : null;
+    const pathLabel = parent ? `${resolvePathLabel(parent)} / ${folder.name}` : folder.name;
+    pathCache.set(folder.id, pathLabel);
+    return pathLabel;
+  };
+
+  return folders.map((folder) => ({
+    id: folder.id,
+    parentId: folder.parentId,
+    name: folder.name,
+    description: folder.description,
+    sortOrder: folder.sortOrder,
+    pathLabel: resolvePathLabel(folder),
+  }));
+}
+
+function assertLearningResourceFolderParentIsValid(
+  folders: LearningResourceFolderRecord[],
+  folderId: string,
+  parentId: string | null,
+) {
+  if (!parentId) {
+    return;
+  }
+
+  if (parentId === folderId) {
+    throw new Error("A folder cannot be its own parent.");
+  }
+
+  const folderById = new Map(folders.map((folder) => [folder.id, folder]));
+  let cursor = folderById.get(parentId) ?? null;
+
+  while (cursor) {
+    if (cursor.id === folderId) {
+      throw new Error("A folder cannot be moved inside one of its descendants.");
+    }
+
+    cursor = cursor.parentId ? (folderById.get(cursor.parentId) ?? null) : null;
+  }
+}
+
+async function listLearningResourceFolderRecordsTx(tx: TransactionClient): Promise<LearningResourceFolderRecord[]> {
+  return tx.learningResourceFolder.findMany({
+    orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      parentId: true,
+      name: true,
+      description: true,
+      sortOrder: true,
+    },
+  });
+}
+
+type AssignmentBridgeResourceRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  excerpt: string | null;
+  contentType: LearningResourceCreateResult["contentType"];
+  status: LearningResourceCreateResult["status"];
+  bodyJson: Prisma.JsonValue | null;
+  renderedHtml: string | null;
+  estimatedReadingMinutes: number | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  storagePath: string | null;
+  storageProvider: UploadStorageProvider | null;
+  sourceContentId: string | null;
+};
+
+async function createCourseContentFromLearningResourceTx(
+  tx: TransactionClient,
+  resource: AssignmentBridgeResourceRecord,
+  courseId: string,
+  actorUserId?: string,
+) {
+  return tx.courseContent.create({
+    data: {
+      courseId,
+      folderId: null,
+      title: resource.title,
+      description: resource.description,
+      excerpt: resource.excerpt,
+      contentType: resource.contentType,
+      bodyJson: resource.bodyJson ? (resource.bodyJson as Prisma.InputJsonValue) : Prisma.DbNull,
+      renderedHtml: resource.renderedHtml,
+      estimatedReadingMinutes: resource.estimatedReadingMinutes,
+      fileUrl: resource.fileUrl,
+      fileName: resource.fileName,
+      fileSize: resource.fileSize,
+      mimeType: resource.mimeType,
+      storagePath: resource.storagePath,
+      storageProvider: resource.storageProvider,
+      status: resource.status,
+      isScorm: resource.contentType === "SCORM",
+      createdById: actorUserId ?? null,
+    },
+    select: {
+      id: true,
+    },
+  });
+}
+
+async function resolveAssignmentTargetCourseIdTx(
+  tx: TransactionClient,
+  targetType: AssignLearningResourceInput["assignments"][number]["targetType"],
+  targetId: string,
+) {
+  if (targetType === "COURSE") {
+    return targetId;
+  }
+
+  if (targetType !== "BATCH") {
+    return null;
+  }
+
+  const batch = await tx.batch.findUnique({
+    where: { id: targetId },
+    select: {
+      program: {
+        select: {
+          courseId: true,
+        },
+      },
+    },
+  });
+
+  return batch?.program.courseId ?? null;
+}
+
+async function ensureLearningResourceSourceContentForAssignmentTx(
+  tx: TransactionClient,
+  resourceId: string,
+  assignment: AssignLearningResourceInput["assignments"][number],
+  actorUserId?: string,
+) {
+  if (assignment.targetType !== "COURSE" && assignment.targetType !== "BATCH") {
+    return null;
+  }
+
+  const resource = await tx.learningResource.findUnique({
+    where: { id: resourceId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      excerpt: true,
+      contentType: true,
+      status: true,
+      bodyJson: true,
+      renderedHtml: true,
+      estimatedReadingMinutes: true,
+      fileUrl: true,
+      fileName: true,
+      fileSize: true,
+      mimeType: true,
+      storagePath: true,
+      storageProvider: true,
+      sourceContentId: true,
+    },
+  });
+
+  if (!resource) {
+    throw new Error("Learning resource not found.");
+  }
+
+  if (resource.sourceContentId) {
+    return resource.sourceContentId;
+  }
+
+  const courseId = await resolveAssignmentTargetCourseIdTx(tx, assignment.targetType, assignment.targetId);
+
+  if (!courseId) {
+    throw new Error("A course-backed assignment target is required to publish this learning resource.");
+  }
+
+  const createdContent = await createCourseContentFromLearningResourceTx(tx, resource, courseId, actorUserId);
+
+  await tx.learningResource.update({
+    where: { id: resource.id },
+    data: {
+      sourceContentId: createdContent.id,
+      updatedById: actorUserId ?? null,
+    },
+  });
+
+  return createdContent.id;
 }
 
 function normalizeAttachments(attachments: Array<{
@@ -228,6 +450,7 @@ async function syncSourceContentFromResourceTx(
 
 function hasLinkedContentSnapshotChanges(
   existing: {
+    folderId: string | null;
     title: string;
     description: string | null;
     excerpt: string | null;
@@ -247,8 +470,10 @@ function hasLinkedContentSnapshotChanges(
     attachments: Array<{ storagePath: string | null; storageProvider: UploadStorageProvider | null }>;
   },
   next: ReturnType<typeof buildLinkedContentSnapshot>,
+  repositoryFolderId: string | null,
 ) {
-  return existing.title !== next.title
+  return existing.folderId !== repositoryFolderId
+    || existing.title !== next.title
     || existing.description !== next.description
     || existing.excerpt !== next.excerpt
     || existing.contentType !== next.contentType
@@ -270,13 +495,15 @@ function hasLinkedContentSnapshotChanges(
 async function upsertLinkedLearningResourceFromContentTx(
   tx: TransactionClient,
   content: LinkedCourseContentRecord,
-  options?: { actorUserId?: string; changeSummary?: string },
+  options?: SyncLearningResourceFromContentOptions,
 ): Promise<SyncLinkedResourceTxResult> {
   const nextSnapshot = buildLinkedContentSnapshot(content);
+  const nextRepositoryFolderId = normalizeOptionalText(options?.repositoryFolderId);
   const existing = await tx.learningResource.findUnique({
     where: { sourceContentId: content.id },
     select: {
       id: true,
+      folderId: true,
       title: true,
       description: true,
       excerpt: true,
@@ -310,11 +537,13 @@ async function upsertLinkedLearningResourceFromContentTx(
     nextSnapshot.categoryName,
     nextSnapshot.subcategoryName,
   );
+  const repositoryFolder = await assertLearningResourceFolderExists(tx, nextRepositoryFolderId);
 
   if (!existing) {
     const resource = await tx.learningResource.create({
       data: {
         sourceContentId: content.id,
+        folderId: repositoryFolder?.id ?? null,
         title: nextSnapshot.title,
         description: nextSnapshot.description,
         excerpt: nextSnapshot.excerpt,
@@ -347,33 +576,35 @@ async function upsertLinkedLearningResourceFromContentTx(
       },
     });
 
-    await createVersionRecord(tx, {
-      resourceId: resource.id,
-      versionNumber: 1,
-      title: resource.title,
-      changeSummary: normalizeOptionalText(options?.changeSummary) ?? "Created from repository content.",
-      snapshot: buildSnapshot({
+    await tx.learningResourceVersion.create({
+      data: {
+        resourceId: resource.id,
+        versionNumber: 1,
         title: resource.title,
-        description: nextSnapshot.description,
-        excerpt: nextSnapshot.excerpt,
-        contentType: resource.contentType,
-        status: resource.status,
-        visibility: resource.visibility,
-        categoryName: category?.name ?? null,
-        subcategoryName: subcategory?.name ?? null,
-        tags: [],
-        bodyJson: nextSnapshot.bodyJson,
-        renderedHtml: nextSnapshot.renderedHtml,
-        estimatedReadingMinutes: nextSnapshot.estimatedReadingMinutes,
-        fileUrl: nextSnapshot.fileUrl,
-        fileName: nextSnapshot.fileName,
-        fileSize: nextSnapshot.fileSize,
-        mimeType: nextSnapshot.mimeType,
-        storagePath: nextSnapshot.storagePath,
-        storageProvider: nextSnapshot.storageProvider,
-        attachments: [],
-      }),
-      updatedById: options?.actorUserId,
+        changeSummary: normalizeOptionalText(options?.changeSummary) ?? "Created from repository content.",
+        snapshot: buildSnapshot({
+          title: resource.title,
+          description: nextSnapshot.description,
+          excerpt: nextSnapshot.excerpt,
+          contentType: resource.contentType,
+          status: resource.status,
+          visibility: resource.visibility,
+          categoryName: category?.name ?? null,
+          subcategoryName: subcategory?.name ?? null,
+          tags: [],
+          bodyJson: nextSnapshot.bodyJson,
+          renderedHtml: nextSnapshot.renderedHtml,
+          estimatedReadingMinutes: nextSnapshot.estimatedReadingMinutes,
+          fileUrl: nextSnapshot.fileUrl,
+          fileName: nextSnapshot.fileName,
+          fileSize: nextSnapshot.fileSize,
+          mimeType: nextSnapshot.mimeType,
+          storagePath: nextSnapshot.storagePath,
+          storageProvider: nextSnapshot.storageProvider,
+          attachments: [],
+        }),
+        updatedById: options?.actorUserId,
+      },
     });
 
     return {
@@ -392,8 +623,9 @@ async function upsertLinkedLearningResourceFromContentTx(
       { storagePath: nextSnapshot.storagePath, storageProvider: nextSnapshot.storageProvider },
     ],
   );
+  const effectiveFolderId = nextRepositoryFolderId ?? existing.folderId;
 
-  if (!hasLinkedContentSnapshotChanges(existing, nextSnapshot)) {
+  if (!hasLinkedContentSnapshotChanges(existing, nextSnapshot, effectiveFolderId)) {
     return {
       resource: {
         id: existing.id,
@@ -414,6 +646,7 @@ async function upsertLinkedLearningResourceFromContentTx(
   const resource = await tx.learningResource.update({
     where: { id: existing.id },
     data: {
+      ...(nextRepositoryFolderId !== undefined && { folderId: effectiveFolderId }),
       title: nextSnapshot.title,
       description: nextSnapshot.description,
       excerpt: nextSnapshot.excerpt,
@@ -546,6 +779,232 @@ async function resolveCategoryHierarchy(
   });
 
   return { category, subcategory };
+}
+
+async function assertLearningResourceFolderExists(
+  tx: TransactionClient,
+  folderId: string | null | undefined,
+) {
+  const normalizedFolderId = normalizeOptionalText(folderId);
+
+  if (!normalizedFolderId) {
+    return null;
+  }
+
+  const folder = await tx.learningResourceFolder.findUnique({
+    where: { id: normalizedFolderId },
+    select: { id: true },
+  });
+
+  if (!folder) {
+    throw new Error("Repository folder not found.");
+  }
+
+  return folder;
+}
+
+export async function createLearningResourceFolderService(
+  input: CreateLearningResourceFolderInput,
+  options?: { actorUserId?: string },
+): Promise<LearningResourceFolderSummary> {
+  if (!isDatabaseConfigured) {
+    return {
+      id: `mock-learning-resource-folder-${Date.now()}`,
+      parentId: input.parentId ?? null,
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      sortOrder: input.sortOrder ?? 0,
+      pathLabel: input.name.trim(),
+    };
+  }
+
+  const folder = await prisma.$transaction(async (tx) => {
+    const existingFolders = await listLearningResourceFolderRecordsTx(tx);
+    const normalizedParentId = normalizeOptionalText(input.parentId);
+    const normalizedName = input.name.trim();
+
+    if (normalizedParentId && !existingFolders.some((entry) => entry.id === normalizedParentId)) {
+      throw new Error("Parent repository folder not found.");
+    }
+
+    const duplicate = existingFolders.find((entry) => (
+      entry.parentId === normalizedParentId
+      && entry.name.localeCompare(normalizedName, undefined, { sensitivity: "accent" }) === 0
+    ));
+
+    if (duplicate) {
+      throw new Error("A repository folder with this name already exists at the selected location.");
+    }
+
+    const created = await tx.learningResourceFolder.create({
+      data: {
+        parentId: normalizedParentId,
+        name: normalizedName,
+        description: normalizeOptionalText(input.description),
+        sortOrder: input.sortOrder ?? 0,
+        createdById: options?.actorUserId ?? null,
+      },
+      select: {
+        id: true,
+        parentId: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+      },
+    });
+
+    const summary = mapLearningResourceFolderSummaries([...existingFolders, created]).find((entry) => entry.id === created.id);
+
+    if (!summary) {
+      throw new Error("Repository folder could not be created.");
+    }
+
+    return summary;
+  }, LEARNING_RESOURCE_TRANSACTION_OPTIONS);
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.LEARNING_RESOURCE_FOLDER,
+    entityId: folder.id,
+    action: AUDIT_ACTION_TYPE.CREATED,
+    message: `Repository folder "${folder.pathLabel}" created.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      parentId: folder.parentId,
+      sortOrder: folder.sortOrder,
+    },
+  });
+
+  return folder;
+}
+
+export async function updateLearningResourceFolderService(
+  input: UpdateLearningResourceFolderInput,
+  options?: { actorUserId?: string },
+): Promise<LearningResourceFolderSummary> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const folder = await prisma.$transaction(async (tx) => {
+    const existingFolders = await listLearningResourceFolderRecordsTx(tx);
+    const existing = existingFolders.find((entry) => entry.id === input.folderId) ?? null;
+
+    if (!existing) {
+      throw new Error("Repository folder not found.");
+    }
+
+    const nextParentId = input.parentId !== undefined ? normalizeOptionalText(input.parentId) : existing.parentId;
+    const nextName = input.name?.trim() ?? existing.name;
+    const nextDescription = input.description !== undefined ? normalizeOptionalText(input.description) : existing.description;
+    const nextSortOrder = input.sortOrder ?? existing.sortOrder;
+
+    if (nextParentId && !existingFolders.some((entry) => entry.id === nextParentId)) {
+      throw new Error("Parent repository folder not found.");
+    }
+
+    assertLearningResourceFolderParentIsValid(existingFolders, existing.id, nextParentId);
+
+    const duplicate = existingFolders.find((entry) => (
+      entry.id !== existing.id
+      && entry.parentId === nextParentId
+      && entry.name.localeCompare(nextName, undefined, { sensitivity: "accent" }) === 0
+    ));
+
+    if (duplicate) {
+      throw new Error("A repository folder with this name already exists at the selected location.");
+    }
+
+    const updated = await tx.learningResourceFolder.update({
+      where: { id: input.folderId },
+      data: {
+        ...(input.parentId !== undefined && { parentId: nextParentId }),
+        ...(input.name !== undefined && { name: nextName }),
+        ...(input.description !== undefined && { description: nextDescription }),
+        ...(input.sortOrder !== undefined && { sortOrder: nextSortOrder }),
+      },
+      select: {
+        id: true,
+        parentId: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+      },
+    });
+
+    const summary = mapLearningResourceFolderSummaries(
+      existingFolders.map((entry) => (entry.id === updated.id ? updated : entry)),
+    ).find((entry) => entry.id === updated.id);
+
+    if (!summary) {
+      throw new Error("Repository folder could not be updated.");
+    }
+
+    return summary;
+  }, LEARNING_RESOURCE_TRANSACTION_OPTIONS);
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.LEARNING_RESOURCE_FOLDER,
+    entityId: folder.id,
+    action: AUDIT_ACTION_TYPE.UPDATED,
+    message: `Repository folder "${folder.pathLabel}" updated.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      parentId: folder.parentId,
+      sortOrder: folder.sortOrder,
+    },
+  });
+
+  return folder;
+}
+
+export async function deleteLearningResourceFolderService(
+  folderId: string,
+  options?: { actorUserId?: string },
+): Promise<void> {
+  if (!isDatabaseConfigured) {
+    throw new Error("Database not configured.");
+  }
+
+  const existing = await prisma.learningResourceFolder.findUnique({
+    where: { id: folderId },
+    select: {
+      id: true,
+      name: true,
+      parentId: true,
+      _count: {
+        select: {
+          children: true,
+          resources: true,
+        },
+      },
+    },
+  });
+
+  if (!existing) {
+    throw new Error("Repository folder not found.");
+  }
+
+  if (existing._count.children > 0) {
+    throw new Error("Move or delete child repository folders before deleting this folder.");
+  }
+
+  if (existing._count.resources > 0) {
+    throw new Error("Move or delete the repository resources in this folder before deleting it.");
+  }
+
+  await prisma.learningResourceFolder.delete({ where: { id: folderId } });
+
+  await createAuditLogEntry({
+    entityType: AUDIT_ENTITY_TYPE.LEARNING_RESOURCE_FOLDER,
+    entityId: folderId,
+    action: AUDIT_ACTION_TYPE.UPDATED,
+    message: `Repository folder "${existing.name}" deleted.`,
+    actorUserId: options?.actorUserId,
+    metadata: {
+      parentId: existing.parentId,
+      deleted: true,
+    },
+  });
 }
 
 async function syncTags(tx: TransactionClient, resourceId: string, tagNames: string[]) {
@@ -782,6 +1241,7 @@ export async function createLearningResourceService(
       input.categoryName,
       input.subcategoryName,
     );
+    const folder = await assertLearningResourceFolderExists(tx, input.folderId);
 
     const resource = await tx.learningResource.create({
       data: {
@@ -791,6 +1251,7 @@ export async function createLearningResourceService(
         contentType: input.contentType,
         status: input.status,
         visibility: input.visibility,
+        folderId: folder?.id ?? null,
         categoryId: category?.id ?? null,
         subcategoryId: subcategory?.id ?? null,
         bodyJson: authoredBodyJson ? (authoredBodyJson as unknown as Prisma.InputJsonValue) : undefined,
@@ -869,7 +1330,7 @@ export async function createLearningResourceService(
 
 export async function syncLearningResourceFromContentService(
   contentId: string,
-  options?: { actorUserId?: string; changeSummary?: string },
+  options?: SyncLearningResourceFromContentOptions,
 ): Promise<LearningResourceCreateResult> {
   if (!isDatabaseConfigured) {
     throw new Error("Database not configured.");
@@ -1056,6 +1517,7 @@ export async function updateLearningResourceService(
     select: {
       id: true,
       sourceContentId: true,
+      folderId: true,
       title: true,
       description: true,
       excerpt: true,
@@ -1136,6 +1598,7 @@ export async function updateLearningResourceService(
       sortOrder: attachment.sortOrder,
     }));
   const normalizedNextAttachments = existing.sourceContentId ? [] : nextAttachments;
+  const nextFolderId = input.folderId !== undefined ? normalizeOptionalText(input.folderId) : existing.folderId ?? null;
   const nextCategoryName = input.categoryName !== undefined ? normalizeOptionalText(input.categoryName) : existing.category?.name ?? null;
   const nextSubcategoryName = input.subcategoryName !== undefined ? normalizeOptionalText(input.subcategoryName) : existing.subcategory?.name ?? null;
   const nextTitle = input.title?.trim() ?? existing.title;
@@ -1176,6 +1639,7 @@ export async function updateLearningResourceService(
 
   const result = await prisma.$transaction(async (tx) => {
     const { category, subcategory } = await resolveCategoryHierarchy(tx, nextCategoryName, nextSubcategoryName);
+    const folder = await assertLearningResourceFolderExists(tx, nextFolderId);
     const nextVersionNumber = existing.currentVersionNumber + 1;
 
     const resource = await tx.learningResource.update({
@@ -1187,6 +1651,7 @@ export async function updateLearningResourceService(
         contentType: nextContentType,
         status: nextStatus,
         visibility: nextVisibility,
+        folderId: folder?.id ?? null,
         categoryId: category?.id ?? null,
         subcategoryId: subcategory?.id ?? null,
         bodyJson: isAuthoredContent ? (nextBodyJson as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
@@ -1458,6 +1923,7 @@ export async function assignLearningResourceService(
 
     for (const assignment of input.assignments) {
       await assertAssignmentTargetExists(tx, assignment.targetType, assignment.targetId);
+      await ensureLearningResourceSourceContentForAssignmentTx(tx, resourceId, assignment, options?.actorUserId);
 
       await tx.learningResourceAssignment.upsert({
         where: {

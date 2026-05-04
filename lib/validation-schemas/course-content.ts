@@ -9,6 +9,7 @@ export const uploadStorageProviderEnum = z.enum(["LOCAL_PUBLIC", "S3"]);
 export const createContentSchema = z.object({
   courseId: z.string().trim().min(1, "Course is required."),
   folderId: z.string().trim().min(1).optional().nullable(),
+  repositoryFolderId: z.string().trim().min(1).optional().nullable(),
   title: z.string().trim().min(2, "Title must be at least 2 characters.").max(255),
   description: z.string().trim().max(2000).optional().default(""),
   contentType: contentTypeEnum,
@@ -36,6 +37,7 @@ export const createContentSchema = z.object({
 export const uploadCourseContentSchema = z.object({
   courseId: z.string().trim().min(1, "Course is required."),
   folderId: z.string().trim().min(1).optional().nullable(),
+  repositoryFolderId: z.string().trim().min(1).optional().nullable(),
   description: z.string().trim().max(2000).optional().default(""),
   contentType: contentTypeEnum.refine((value) => value !== "LINK" && value !== "SCORM" && value !== "ARTICLE", {
     message: "Uploaded files must use PDF, document, video, or other uploaded asset content types.",

@@ -2,51 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
   AlertTriangle,
-  BetweenHorizontalEnd,
-  BetweenHorizontalStart,
-  BetweenVerticalEnd,
-  BetweenVerticalStart,
-  Bold,
   BookOpen,
   CheckCircle2,
-  ChevronDown,
   Clock3,
-  Code,
-  Code2,
-  Columns,
   Eye,
-  FileText,
-  Heading2,
-  Heading3,
-  Heading4,
-  Image as ImageIcon,
-  Info,
-  Italic,
-  Link as LinkIcon,
-  List,
   ListChecks,
-  ListOrdered,
   Loader2,
   Maximize2,
   Minimize2,
-  Minus,
-  PencilLine,
-  Quote,
-  Redo,
-  RemoveFormatting,
-  Rows,
   Sparkles,
-  Strikethrough,
-  Table as TableIcon,
-  TableProperties,
-  Trash2,
-  Underline as UnderlineIcon,
-  Undo,
-  Youtube,
 } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
 import { EditorContent, type Editor, useEditor } from "@tiptap/react";
@@ -65,9 +30,18 @@ import TiptapColor from "@tiptap/extension-color";
 import { TextStyle as TiptapTextStyle } from "@tiptap/extension-text-style";
 import TiptapYoutube from "@tiptap/extension-youtube";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
+import TiptapTaskList from "@tiptap/extension-task-list";
+import TiptapTaskItem from "@tiptap/extension-task-item";
+import TiptapSuperscript from "@tiptap/extension-superscript";
+import TiptapSubscript from "@tiptap/extension-subscript";
+import TiptapCharacterCount from "@tiptap/extension-character-count";
 import { common, createLowlight } from "lowlight";
 
-import { Callout, type CalloutType } from "@/components/modules/course-builder/callout-extension";
+import { Callout } from "@/components/modules/course-builder/callout-extension";
+import { ResourceEmbed } from "@/components/modules/course-builder/resource-embed-extension";
+import { FileAttachment } from "@/components/modules/course-builder/file-attachment-extension";
+import { ContentStudioRibbon, type PanelVisibility } from "@/components/modules/course-builder/content-studio-ribbon";
+import { ResourceManager } from "@/components/modules/resource-manager/resource-manager";
 import { convertV1ToHtml, getLmsLessonBlueprints } from "@/lib/authored-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,7 +67,7 @@ type StoredLessonStudioDraft = {
   updatedAt: string;
 };
 
-type StudioMode = "write" | "split" | "preview";
+type StudioMode = "write" | "preview";
 
 type OutlineItem = {
   id: string;
@@ -172,7 +146,9 @@ export function RichContentEditorSheet({
   draftLabel = "lesson",
 }: RichContentEditorSheetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [studioMode, setStudioMode] = useState<StudioMode>("split");
+  const [studioMode, setStudioMode] = useState<StudioMode>("write");
+  const [panels, setPanels] = useState<PanelVisibility>({ structure: true, outline: false, preview: false, quality: false });
+  const [editorVersion, setEditorVersion] = useState(0);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
@@ -182,9 +158,12 @@ export function RichContentEditorSheet({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [resourcePickerOpen, setResourcePickerOpen] = useState(false);
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [savedHtml, setSavedHtml] = useState(initialHtml || EMPTY_EDITOR_HTML);
   const [recoveredDraftAt, setRecoveredDraftAt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachFileInputRef = useRef<HTMLInputElement>(null);
 
   const readStoredDraft = useCallback(() => {
     if (!draftStorageKey || typeof window === "undefined") {
@@ -230,6 +209,28 @@ export function RichContentEditorSheet({
     [],
   );
 
+  const uploadImageFile = useCallback(async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    try {
+      if (courseId) {
+        formData.append("files", file);
+        formData.append("courseId", courseId);
+        const res = await fetch("/api/course-content/upload", { method: "POST", body: formData });
+        const json = await res.json();
+        return json.data?.items?.[0]?.fileUrl ?? json.data?.fileUrl ?? null;
+      }
+      formData.append("files", file);
+      const res = await fetch("/api/learning-resources/upload", { method: "POST", body: formData });
+      const json = await res.json();
+      return json.data?.assets?.[0]?.url ?? null;
+    } catch {
+      return null;
+    }
+  }, [courseId]);
+
+  const uploadImageFileRef = useRef(uploadImageFile);
+  uploadImageFileRef.current = uploadImageFile;
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -253,10 +254,31 @@ export function RichContentEditorSheet({
       TiptapPlaceholder.configure({ placeholder: "Start writing your lesson content..." }),
       TiptapHighlight.configure({ multicolor: true }),
       TiptapColor,
-      TiptapTextStyle,
+      TiptapTextStyle.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            fontSize: {
+              default: null,
+              parseHTML: (element: HTMLElement) => element.style.fontSize || null,
+              renderHTML: (attributes: Record<string, unknown>) => {
+                if (!attributes.fontSize) return {};
+                return { style: `font-size: ${attributes.fontSize}` };
+              },
+            },
+          };
+        },
+      }),
       TiptapYoutube.configure({ width: 640, height: 360, HTMLAttributes: { class: "rounded-lg overflow-hidden" } }),
       CodeBlockLowlight.configure({ lowlight }),
+      TiptapTaskList,
+      TiptapTaskItem.configure({ nested: true }),
+      TiptapSuperscript,
+      TiptapSubscript,
+      TiptapCharacterCount,
       Callout,
+      ResourceEmbed,
+      FileAttachment,
     ],
     content: initialHtml || EMPTY_EDITOR_HTML,
     editable: !disabled,
@@ -264,6 +286,38 @@ export function RichContentEditorSheet({
     editorProps: {
       attributes: {
         class: "prose prose-slate max-w-none focus:outline-none min-h-[460px] p-6",
+      },
+      handleDrop(view, event, _slice, moved) {
+        if (moved || !event.dataTransfer?.files?.length) return false;
+        const file = Array.from(event.dataTransfer.files).find((f) => f.type.startsWith("image/"));
+        if (!file) return false;
+        event.preventDefault();
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+        void uploadImageFileRef.current(file).then((url) => {
+          if (url && view.state) {
+            const node = view.state.schema.nodes.image.create({ src: url });
+            const tr = view.state.tr.insert(pos ?? view.state.selection.head, node);
+            view.dispatch(tr);
+          }
+        });
+        return true;
+      },
+      handlePaste(view, event) {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+        if (!imageItem) return false;
+        const file = imageItem.getAsFile();
+        if (!file) return false;
+        event.preventDefault();
+        void uploadImageFileRef.current(file).then((url) => {
+          if (url && view.state) {
+            const node = view.state.schema.nodes.image.create({ src: url });
+            const tr = view.state.tr.replaceSelectionWith(node);
+            view.dispatch(tr);
+          }
+        });
+        return true;
       },
     },
   });
@@ -278,7 +332,7 @@ export function RichContentEditorSheet({
 
       editor.commands.setContent(recoveredHtml);
       setSavedHtml(nextHtml);
-      setStudioMode("split");
+      setStudioMode("write");
       setRecoveredDraftAt(storedDraft && recoveredHtml === storedDraft.html ? storedDraft.updatedAt : null);
     }
   }, [editor, initialHtml, open, readStoredDraft]);
@@ -354,6 +408,22 @@ export function RichContentEditorSheet({
     return () => window.removeEventListener("keydown", handleKeydown);
   }, [disabled, handleSave, open]);
 
+  // Live re-render on every editor update (drives outline + preview panels)
+  useEffect(() => {
+    if (!editor || !open) return undefined;
+    const bump = () => setEditorVersion((v) => v + 1);
+    editor.on("update", bump);
+    editor.on("selectionUpdate", bump);
+    return () => {
+      editor.off("update", bump);
+      editor.off("selectionUpdate", bump);
+    };
+  }, [editor, open]);
+
+  const togglePanel = useCallback((panel: keyof PanelVisibility) => {
+    setPanels((prev) => ({ ...prev, [panel]: !prev[panel] }));
+  }, []);
+
   const applyBlueprint = useCallback((blueprintHtml: string) => {
     if (!editor) return;
 
@@ -389,16 +459,28 @@ export function RichContentEditorSheet({
 
     const alt = imageAltText.trim() || undefined;
 
-    if (imageFile && courseId) {
+    if (imageFile) {
       setIsUploadingImage(true);
       try {
         const formData = new FormData();
-        formData.append("file", imageFile);
-        formData.append("courseId", courseId);
-        const res = await fetch("/api/course-content/upload", { method: "POST", body: formData });
-        const json = await res.json();
-        const uploadedUrl = json.data?.items?.[0]?.fileUrl ?? json.data?.fileUrl;
-        if (res.ok && uploadedUrl) {
+        let uploadedUrl: string | undefined;
+
+        if (courseId) {
+          // Course-scoped upload
+          formData.append("file", imageFile);
+          formData.append("courseId", courseId);
+          const res = await fetch("/api/course-content/upload", { method: "POST", body: formData });
+          const json = await res.json();
+          uploadedUrl = json.data?.items?.[0]?.fileUrl ?? json.data?.fileUrl;
+        } else {
+          // Standalone upload via learning resources
+          formData.append("files", imageFile);
+          const res = await fetch("/api/learning-resources/upload", { method: "POST", body: formData });
+          const json = await res.json();
+          uploadedUrl = json.data?.assets?.[0]?.url;
+        }
+
+        if (uploadedUrl) {
           editor.chain().focus().setImage({ src: uploadedUrl, alt }).run();
         } else if (imageUrl.trim()) {
           editor.chain().focus().setImage({ src: imageUrl.trim(), alt }).run();
@@ -478,12 +560,6 @@ export function RichContentEditorSheet({
             </div>
 
             <div className="flex flex-col gap-2 xl:items-end">
-              <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                <ModeButton icon={<PencilLine className="h-3.5 w-3.5" />} active={studioMode === "write"} onClick={() => setStudioMode("write")} label="Write" />
-                <ModeButton icon={<FileText className="h-3.5 w-3.5" />} active={studioMode === "split"} onClick={() => setStudioMode("split")} label="Split" />
-                <ModeButton icon={<Eye className="h-3.5 w-3.5" />} active={studioMode === "preview"} onClick={() => setStudioMode("preview")} label="Preview" />
-              </div>
-
               <div className="flex flex-wrap items-center gap-2">
                 {isDirty ? (
                   <Button size="sm" variant="ghost" className="h-8 rounded-xl" onClick={discardToLastSaved} disabled={disabled}>
@@ -505,310 +581,171 @@ export function RichContentEditorSheet({
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden bg-slate-100/60">
-          <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_340px]">
-            <aside className="hidden min-h-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
-              <div className="border-b border-slate-200 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Lesson Structure</p>
-                <p className="mt-1 text-xs text-slate-500">Start from a blueprint, drop in key sections, and jump through the lesson outline.</p>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <RailSection
-                  icon={<Sparkles className="h-4 w-4" />}
-                  title="Blueprints"
-                  description="Replace the current draft with a guided lesson scaffold."
-                >
-                  <div className="space-y-2">
-                    {lessonBlueprints.map((blueprint) => (
-                      <button
-                        key={blueprint.id}
-                        type="button"
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-left transition-colors hover:border-[#0d3b84]/30 hover:bg-[#0d3b84]/[0.04]"
-                        onClick={() => applyBlueprint(blueprint.html)}
-                        disabled={disabled}
-                      >
-                        <p className="text-sm font-semibold text-slate-900">{blueprint.label}</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">{blueprint.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </RailSection>
-
-                <RailSection
-                  icon={<ListChecks className="h-4 w-4" />}
-                  title="Quick Inserts"
-                  description="Add the blocks authors use most without rebuilding the structure by hand."
-                >
-                  <div className="space-y-2">
-                    {QUICK_INSERTS.map((insert) => (
-                      <button
-                        key={insert.id}
-                        type="button"
-                        className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
-                        onClick={() => editor && insert.run(editor)}
-                        disabled={disabled || !editor}
-                      >
-                        <p className="text-sm font-semibold text-slate-900">{insert.label}</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">{insert.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </RailSection>
-
-                <RailSection
-                  icon={<FileText className="h-4 w-4" />}
-                  title="Outline"
-                  description="Jump to existing sections and spot gaps before you save."
-                >
-                  {outline.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {outline.map((item) => (
+          <div className={cn(
+            "flex h-full min-h-0 overflow-hidden",
+          )}>
+            {/* ── Left: Structure Panel ──────────────────────────────── */}
+            {panels.structure && studioMode === "write" ? (
+              <aside className="hidden min-h-0 w-[260px] shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Structure</p>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <RailSection
+                    icon={<Sparkles className="h-4 w-4" />}
+                    title="Blueprints"
+                    description="Replace the current draft with a guided lesson scaffold."
+                  >
+                    <div className="space-y-2">
+                      {lessonBlueprints.map((blueprint) => (
                         <button
-                          key={item.id}
+                          key={blueprint.id}
                           type="button"
-                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-slate-50"
-                          onClick={() => editor?.chain().focus(item.position).run()}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-left transition-colors hover:border-[#0d3b84]/30 hover:bg-[#0d3b84]/[0.04]"
+                          onClick={() => applyBlueprint(blueprint.html)}
+                          disabled={disabled}
                         >
-                          <span className="mt-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">H{item.level}</span>
-                          <span className="min-w-0 flex-1 text-sm text-slate-700">{item.text}</span>
+                          <p className="text-sm font-semibold text-slate-900">{blueprint.label}</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">{blueprint.description}</p>
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <EmptyNote>
-                      Add at least one heading to generate a navigable lesson outline.
-                    </EmptyNote>
-                  )}
-                </RailSection>
-              </div>
-            </aside>
+                  </RailSection>
 
-            <main className={cn("min-h-0 overflow-hidden", studioMode === "preview" && "xl:border-r xl:border-slate-200")}>
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {QUICK_INSERTS.slice(0, 4).map((insert) => (
-                      <Button
-                        key={insert.id}
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 shrink-0 rounded-xl"
-                        onClick={() => editor && insert.run(editor)}
-                        disabled={disabled || !editor}
-                      >
-                        {insert.label}
-                      </Button>
-                    ))}
-                  </div>
+                  <RailSection
+                    icon={<ListChecks className="h-4 w-4" />}
+                    title="Quick Inserts"
+                    description="Drop common blocks into the editor."
+                  >
+                    <div className="space-y-2">
+                      {QUICK_INSERTS.map((insert) => (
+                        <button
+                          key={insert.id}
+                          type="button"
+                          className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                          onClick={() => editor && insert.run(editor)}
+                          disabled={disabled || !editor}
+                        >
+                          <p className="text-sm font-semibold text-slate-900">{insert.label}</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">{insert.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </RailSection>
                 </div>
+              </aside>
+            ) : null}
 
-                {studioMode !== "preview" ? (
-                  <>
-                    {editor ? (
-                      <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <ToolbarLabel label="History" />
-                          <ToolbarGroup>
-                            <ToolbarButton active={false} disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()} title="Undo">
-                              <Undo className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={false} disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()} title="Redo">
-                              <Redo className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                          </ToolbarGroup>
+            {/* ── Center: Editor / Preview ───────────────────────────── */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {editor ? (
+                <ContentStudioRibbon
+                  editor={editor}
+                  disabled={disabled}
+                  studioMode={studioMode}
+                  onStudioModeChange={setStudioMode}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={() => setIsFullscreen((c) => !c)}
+                  panels={panels}
+                  onTogglePanel={togglePanel}
+                  onOpenLinkDialog={() => {
+                    const currentLink = editor.getAttributes("link").href || "";
+                    setLinkUrl(currentLink);
+                    setLinkDialogOpen(true);
+                  }}
+                  onOpenImageDialog={() => setImageDialogOpen(true)}
+                  onOpenYoutubeDialog={() => setYoutubeDialogOpen(true)}
+                  onOpenResourcePicker={() => setResourcePickerOpen(true)}
+                  onOpenFilePicker={() => attachFileInputRef.current?.click()}
+                />
+              ) : null}
 
-                          <ToolbarDivider />
+              {studioMode === "write" ? (
+                <div className={cn("min-h-0 flex-1 overflow-hidden", panels.outline ? "flex flex-col" : "")}>
+                  <div className={cn("min-h-0 overflow-auto px-4 py-4 xl:px-5", panels.outline ? "flex-1" : "h-full")}>
+                    <div className="mx-auto min-h-full w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                      <EditorContent editor={editor} />
+                    </div>
+                    <style>{editorStyles}</style>
+                  </div>
 
-                          <ToolbarLabel label="Format" />
-                          <ToolbarGroup>
-                            <ToolbarButton active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} title="Bold">
-                              <Bold className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italic">
-                              <Italic className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()} title="Underline">
-                              <UnderlineIcon className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()} title="Strikethrough">
-                              <Strikethrough className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()} title="Inline Code">
-                              <Code className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                          </ToolbarGroup>
-
-                          <ToolbarDivider />
-
-                          <ToolbarLabel label="Structure" />
-                          <ToolbarGroup>
-                            <ToolbarButton active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2">
-                              <Heading2 className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("heading", { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="Heading 3">
-                              <Heading3 className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("heading", { level: 4 })} onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()} title="Heading 4">
-                              <Heading4 className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Bullet List">
-                              <List className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Ordered List">
-                              <ListOrdered className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()} title="Blockquote">
-                              <Quote className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={false} onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal Rule">
-                              <Minus className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                          </ToolbarGroup>
-
-                          <ToolbarDivider />
-
-                          <ToolbarLabel label="Layout" />
-                          <ToolbarGroup>
-                            <ToolbarButton active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()} title="Align Left">
-                              <AlignLeft className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive({ textAlign: "center" })} onClick={() => editor.chain().focus().setTextAlign("center").run()} title="Align Center">
-                              <AlignCenter className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive({ textAlign: "right" })} onClick={() => editor.chain().focus().setTextAlign("right").run()} title="Align Right">
-                              <AlignRight className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                          </ToolbarGroup>
-
-                          <ToolbarDivider />
-
-                          <ToolbarLabel label="Insert" />
-                          <ToolbarGroup>
-                            <ToolbarButton
-                              active={editor.isActive("link")}
-                              onClick={() => {
-                                const currentLink = editor.getAttributes("link").href || "";
-                                setLinkUrl(currentLink);
-                                setLinkDialogOpen(true);
-                              }}
-                              title="Insert Link"
-                            >
-                              <LinkIcon className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={false} onClick={() => setImageDialogOpen(true)} title="Insert Image">
-                              <ImageIcon className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={editor.isActive("table")} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table">
-                              <TableIcon className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            {editor.isActive("table") ? (
-                              <>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Above">
-                                  <BetweenHorizontalStart className="h-3.5 w-3.5" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row Below">
-                                  <BetweenHorizontalEnd className="h-3.5 w-3.5" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Left">
-                                  <BetweenVerticalStart className="h-3.5 w-3.5" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column Right">
-                                  <BetweenVerticalEnd className="h-3.5 w-3.5" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row">
-                                  <Rows className="h-3.5 w-3.5 text-rose-500" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column">
-                                  <Columns className="h-3.5 w-3.5 text-rose-500" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().mergeCells().run()} title="Merge Cells">
-                                  <TableProperties className="h-3.5 w-3.5" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().splitCell().run()} title="Split Cell">
-                                  <RemoveFormatting className="h-3.5 w-3.5" />
-                                </ToolbarButton>
-                                <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteTable().run()} title="Delete Table">
-                                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                                </ToolbarButton>
-                              </>
-                            ) : null}
-                            <ToolbarButton active={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()} title="Code Block">
-                              <Code2 className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                            <ToolbarButton active={false} onClick={() => setYoutubeDialogOpen(true)} title="Embed YouTube">
-                              <Youtube className="h-3.5 w-3.5" />
-                            </ToolbarButton>
-                          </ToolbarGroup>
-
-                          <ToolbarDivider />
-
-                          <CalloutDropdown editor={editor} />
+                  {/* ── Outline Panel (bottom dock) ────────────────── */}
+                  {panels.outline ? (
+                      <div className="shrink-0 border-t border-slate-200 bg-white">
+                        <div className="px-4 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Outline</p>
+                        </div>
+                        <div className="max-h-[180px] overflow-y-auto px-4 pb-3">
+                          {outline.length > 0 ? (
+                            <div className="space-y-1">
+                              {outline.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
+                                  onClick={() => editor?.chain().focus(item.position).run()}
+                                >
+                                  <span className="mt-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">H{item.level}</span>
+                                  <span className="min-w-0 flex-1 text-xs text-slate-700">{item.text}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-400">Add headings to generate an outline.</p>
+                          )}
                         </div>
                       </div>
                     ) : null}
-
-                    <div className="min-h-0 flex-1 overflow-auto px-4 py-4 xl:px-5">
-                      <div className="mx-auto min-h-full w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-sm">
-                        <EditorContent editor={editor} />
-                      </div>
-                      <style>{editorStyles}</style>
-                    </div>
-                  </>
-                ) : (
-                  <div className="min-h-0 flex-1 overflow-auto px-4 py-4 xl:px-5">
-                    <PreviewSurface html={sanitizedPreviewHtml} />
                   </div>
-                )}
-              </div>
-            </main>
-
-            <aside
-              className={cn(
-                "min-h-0 border-t border-slate-200 bg-white xl:border-l xl:border-t-0",
-                studioMode === "write" ? "hidden xl:block" : "block",
-              )}
-            >
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="border-b border-slate-200 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Preview & Quality</p>
-                  <p className="mt-1 text-xs text-slate-500">Review what learners will see before you save or publish.</p>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto px-4 py-4 xl:px-5">
+                  <PreviewSurface html={sanitizedPreviewHtml} />
                 </div>
+              )}
+            </div>
 
+            {/* ── Right: Preview + Quality Panels ────────────────────── */}
+            {(panels.preview || panels.quality) && studioMode === "write" ? (
+              <aside className="hidden min-h-0 w-[320px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:flex-col">
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                  {studioMode !== "preview" ? (
-                    <RailSection icon={<Eye className="h-4 w-4" />} title="Live Preview" description="Learner-facing rendering updates as you edit.">
+                  {panels.preview ? (
+                    <RailSection icon={<Eye className="h-4 w-4" />} title="Live Preview" description="Updates as you type.">
                       <PreviewSurface html={sanitizedPreviewHtml} compact />
                     </RailSection>
                   ) : null}
 
-                  <RailSection icon={<Clock3 className="h-4 w-4" />} title="Content Snapshot" description="Useful signals pulled from the current lesson body.">
-                    <div className="grid grid-cols-2 gap-2">
-                      <StatCard label="Words" value={String(wordCount)} helper="Learner-facing body only" />
-                      <StatCard label="Read time" value={`${estimatedReadingMinutes} min`} helper="Estimated from body text" />
-                      <StatCard label="Sections" value={String(outline.length)} helper="Detected headings" />
-                      <StatCard label="Images" value={String(countOccurrences(currentHtml, /<img\b/gi))} helper="Preview media count" />
-                    </div>
-                  </RailSection>
+                  {panels.quality ? (
+                    <>
+                      <RailSection icon={<Clock3 className="h-4 w-4" />} title="Content Snapshot" description="Signals from the current lesson body.">
+                        <div className="grid grid-cols-2 gap-2">
+                          <StatCard label="Words" value={String(wordCount)} helper="Learner-facing body only" />
+                          <StatCard label="Read time" value={`${estimatedReadingMinutes} min`} helper="Estimated from body text" />
+                          <StatCard label="Sections" value={String(outline.length)} helper="Detected headings" />
+                          <StatCard label="Images" value={String(countOccurrences(currentHtml, /<img\b/gi))} helper="Preview media count" />
+                        </div>
+                      </RailSection>
 
-                  <RailSection icon={<CheckCircle2 className="h-4 w-4" />} title="Publish Readiness" description="Fix the warnings below before you move this lesson into delivery.">
-                    <div className="space-y-2">
-                      {readinessItems.map((item) => (
-                        <ReadinessRow key={item.id} item={item} />
-                      ))}
-                      {readinessItems.length === 0 ? (
-                        <EmptyNote>
-                          Keep writing to generate publish checks for this lesson.
-                        </EmptyNote>
-                      ) : null}
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Badge variant={warningCount > 0 ? "warning" : "default"}>{warningCount} warning{warningCount === 1 ? "" : "s"}</Badge>
-                      <Badge variant="default">{positiveCount} ready signal{positiveCount === 1 ? "" : "s"}</Badge>
-                    </div>
-                  </RailSection>
+                      <RailSection icon={<CheckCircle2 className="h-4 w-4" />} title="Publish Readiness" description="Fix the warnings below before delivery.">
+                        <div className="space-y-2">
+                          {readinessItems.map((item) => (
+                            <ReadinessRow key={item.id} item={item} />
+                          ))}
+                          {readinessItems.length === 0 ? (
+                            <EmptyNote>
+                              Keep writing to generate publish checks.
+                            </EmptyNote>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Badge variant={warningCount > 0 ? "warning" : "default"}>{warningCount} warning{warningCount === 1 ? "" : "s"}</Badge>
+                          <Badge variant="default">{positiveCount} ready signal{positiveCount === 1 ? "" : "s"}</Badge>
+                        </div>
+                      </RailSection>
+                    </>
+                  ) : null}
                 </div>
-              </div>
-            </aside>
+              </aside>
+            ) : null}
           </div>
         </div>
       </div>
@@ -836,18 +773,16 @@ export function RichContentEditorSheet({
             <DialogDescription>Upload a course asset or paste a hosted image URL. Add alt text now so the lesson is ready for review.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            {courseId ? (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-700">Upload Image</label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
-                  className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200"
-                />
-              </div>
-            ) : null}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-700">Upload Image</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+              />
+            </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-700">Or Image URL</label>
               <Input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="https://example.com/image.png" className="rounded-xl" />
@@ -893,33 +828,83 @@ export function RichContentEditorSheet({
           </div>
         </DialogContent>
       </Dialog>
-    </>
-  );
-}
 
-function ModeButton({
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors",
-        active ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
+      {/* Resource embed picker */}
+      <ResourceManager
+        mode="pick"
+        open={resourcePickerOpen}
+        onOpenChange={setResourcePickerOpen}
+        courseId={courseId}
+        onSelect={async ({ resourceIds }) => {
+          if (!editor || resourceIds.length === 0) return;
+          // Fetch resource details to get title/type
+          for (const resourceId of resourceIds) {
+            try {
+              const res = await fetch(`/api/learning-resources/${resourceId}`);
+              const json = await res.json();
+              const resource = json.data;
+              if (resource) {
+                editor.chain().focus().setResourceEmbed({
+                  resourceId: resource.id,
+                  resourceTitle: resource.title || "Untitled Resource",
+                  contentType: resource.contentType || "article",
+                }).run();
+              }
+            } catch {
+              editor.chain().focus().setResourceEmbed({
+                resourceId,
+                resourceTitle: "Resource",
+                contentType: "article",
+              }).run();
+            }
+          }
+          setResourcePickerOpen(false);
+        }}
+      />
+
+      {/* Hidden file input for file attachments */}
+      <input
+        ref={attachFileInputRef}
+        type="file"
+        className="hidden"
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          if (!file || !editor) return;
+          setFilePickerOpen(true);
+          try {
+            const formData = new FormData();
+            formData.append("files", file);
+            const res = await fetch("/api/learning-resources/upload", { method: "POST", body: formData });
+            const json = await res.json();
+            const asset = json.data?.assets?.[0];
+            if (asset?.url) {
+              const sizeKb = file.size > 1024 * 1024
+                ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                : `${Math.round(file.size / 1024)} KB`;
+              editor.chain().focus().setFileAttachment({
+                fileName: file.name,
+                fileUrl: asset.url,
+                fileSize: sizeKb,
+                mimeType: file.type || "application/octet-stream",
+              }).run();
+            }
+          } catch {
+            // silently fail
+          } finally {
+            setFilePickerOpen(false);
+            if (attachFileInputRef.current) attachFileInputRef.current.value = "";
+          }
+        }}
+      />
+      {filePickerOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20">
+          <div className="flex items-center gap-2 rounded-2xl bg-white px-5 py-3 shadow-lg">
+            <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+            <span className="text-sm text-slate-700">Uploading file...</span>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1003,113 +988,6 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-3 text-xs leading-5 text-slate-500">
       {children}
-    </div>
-  );
-}
-
-function ToolbarButton({
-  active,
-  disabled,
-  onClick,
-  title,
-  children,
-}: {
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
-        active ? "bg-slate-200 text-slate-950" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700",
-        disabled && "cursor-not-allowed opacity-40",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ToolbarGroup({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center gap-0.5">{children}</div>;
-}
-
-function ToolbarDivider() {
-  return <div className="mx-1 h-6 w-px bg-slate-200" />;
-}
-
-function ToolbarLabel({ label }: { label: string }) {
-  return <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</span>;
-}
-
-function CalloutDropdown({ editor }: { editor: Editor | null }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  if (!editor) return null;
-
-  const types: { value: CalloutType; label: string; icon: string }[] = [
-    { value: "info", label: "Info", icon: "ℹ️" },
-    { value: "tip", label: "Tip", icon: "💡" },
-    { value: "warning", label: "Warning", icon: "⚠️" },
-    { value: "danger", label: "Danger", icon: "🚨" },
-  ];
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        className={cn(
-          "flex h-8 items-center gap-1 rounded-lg px-2 text-xs transition-colors",
-          editor.isActive("callout")
-            ? "bg-slate-200 text-slate-900"
-            : "text-slate-500 hover:bg-slate-100 hover:text-slate-700",
-        )}
-        title="Callout Block"
-      >
-        <Info className="h-3.5 w-3.5" />
-        <ChevronDown className="h-3 w-3" />
-      </button>
-      {isOpen ? (
-        <div className="absolute left-0 top-full z-10 mt-1 w-36 rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
-          {types.map((type) => (
-            <button
-              key={type.value}
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-              onClick={() => {
-                editor.chain().focus().toggleCallout({ type: type.value }).run();
-                setIsOpen(false);
-              }}
-            >
-              <span>{type.icon}</span>
-              <span>{type.label}</span>
-            </button>
-          ))}
-          {editor.isActive("callout") ? (
-            <>
-              <div className="my-1 h-px bg-slate-100" />
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
-                onClick={() => {
-                  editor.chain().focus().unsetCallout().run();
-                  setIsOpen(false);
-                }}
-              >
-                Remove Callout
-              </button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1419,5 +1297,48 @@ const editorStyles = `
     border-radius: 8px;
     width: 100%;
     max-width: 640px;
+  }
+  .ProseMirror ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0;
+  }
+  .ProseMirror ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .ProseMirror ul[data-type="taskList"] li label {
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+  .ProseMirror ul[data-type="taskList"] li label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #0d3b84;
+    cursor: pointer;
+  }
+  .ProseMirror ul[data-type="taskList"] li div {
+    flex: 1;
+    min-width: 0;
+  }
+  .ProseMirror div[data-resource-embed] {
+    user-select: none;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease;
+  }
+  .ProseMirror div[data-resource-embed]:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .ProseMirror div[data-resource-embed].ProseMirror-selectednode {
+    outline: 2px solid #0d3b84;
+    outline-offset: 2px;
+  }
+  .ProseMirror div[data-file-attachment] {
+    user-select: none;
+  }
+  .ProseMirror div[data-file-attachment].ProseMirror-selectednode {
+    outline: 2px solid #0d3b84;
+    outline-offset: 2px;
   }
 `;

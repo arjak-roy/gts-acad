@@ -2,13 +2,15 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { parseAuthoredContentDocument } from "@/lib/authored-content";
+import { parseAuthoredContentAnyDocument } from "@/lib/authored-content";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import type { ListLearningResourcesQueryInput } from "@/lib/validation-schemas/learning-resources";
 import type {
+  CurriculumLearningResourceReferences,
   LearningResourceAssignmentItem,
   LearningResourceCategorySummary,
   LearningResourceDetail,
+  LearningResourceFolderSummary,
   LearningResourceListItem,
   LearningResourceListPage,
   LearningResourceLookupOption,
@@ -129,6 +131,41 @@ function mapTags(tags: Array<{ id: string; name: string; slug: string }>): Learn
   return tags.map((tag) => ({ id: tag.id, name: tag.name, slug: tag.slug }));
 }
 
+function mapLearningResourceFolders(
+  folders: Array<{
+    id: string;
+    parentId: string | null;
+    name: string;
+    description: string | null;
+    sortOrder: number;
+  }>,
+): LearningResourceFolderSummary[] {
+  const folderById = new Map(folders.map((folder) => [folder.id, folder]));
+  const pathCache = new Map<string, string>();
+
+  const resolvePathLabel = (folder: typeof folders[number]): string => {
+    const cached = pathCache.get(folder.id);
+
+    if (cached) {
+      return cached;
+    }
+
+    const parent = folder.parentId ? folderById.get(folder.parentId) : null;
+    const pathLabel = parent ? `${resolvePathLabel(parent)} / ${folder.name}` : folder.name;
+    pathCache.set(folder.id, pathLabel);
+    return pathLabel;
+  };
+
+  return folders.map((folder) => ({
+    id: folder.id,
+    parentId: folder.parentId,
+    name: folder.name,
+    description: folder.description,
+    sortOrder: folder.sortOrder,
+    pathLabel: resolvePathLabel(folder),
+  }));
+}
+
 export type LearningResourceSearchItem = {
   id: string;
   title: string;
@@ -223,6 +260,14 @@ export async function listLearningResourcesService(
     whereClauses.push({ contentType: filters.contentType });
   }
 
+  if (filters.folderId) {
+    if (filters.folderId === "__root__") {
+      whereClauses.push({ folderId: null });
+    } else {
+      whereClauses.push({ folderId: filters.folderId });
+    }
+  }
+
   if (filters.createdById) {
     whereClauses.push({ createdById: filters.createdById });
   }
@@ -273,6 +318,7 @@ export async function listLearningResourcesService(
       select: {
         id: true,
         sourceContentId: true,
+        folderId: true,
         title: true,
         description: true,
         excerpt: true,
@@ -289,6 +335,7 @@ export async function listLearningResourcesService(
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
+        folder: { select: { name: true } },
         category: { select: { name: true } },
         subcategory: { select: { name: true } },
         tags: { select: { tag: { select: { name: true } } } },
@@ -304,6 +351,8 @@ export async function listLearningResourcesService(
     return {
       id: resource.id,
       sourceContentId: resource.sourceContentId,
+      folderId: resource.folderId,
+      folderName: resource.folder?.name ?? null,
       title: resource.title,
       description: resource.description,
       excerpt: resource.excerpt,
@@ -348,6 +397,7 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
     select: {
       id: true,
       sourceContentId: true,
+      folderId: true,
       title: true,
       description: true,
       excerpt: true,
@@ -370,6 +420,7 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
       createdAt: true,
       updatedAt: true,
       deletedAt: true,
+      folder: { select: { name: true } },
       category: { select: { name: true } },
       subcategory: { select: { name: true } },
       createdBy: { select: { name: true } },
@@ -428,6 +479,8 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
   return {
     id: resource.id,
     sourceContentId: resource.sourceContentId,
+    folderId: resource.folderId,
+    folderName: resource.folder?.name ?? null,
     title: resource.title,
     description: resource.description,
     excerpt: resource.excerpt,
@@ -452,7 +505,7 @@ export async function getLearningResourceByIdService(resourceId: string): Promis
     assignmentCount: assignments.length,
     previewCount: usage.previews,
     downloadCount: usage.downloads,
-    bodyJson: parseAuthoredContentDocument(resource.bodyJson),
+    bodyJson: parseAuthoredContentAnyDocument(resource.bodyJson),
     renderedHtml: resource.renderedHtml,
     storagePath: resource.storagePath,
     storageProvider: resource.storageProvider,
@@ -519,6 +572,7 @@ export async function listLearningResourceLookupsService(): Promise<LearningReso
   if (!isDatabaseConfigured) {
     return {
       categories: [],
+      folders: [],
       tags: [],
       courses: [],
       batches: [],
@@ -527,7 +581,7 @@ export async function listLearningResourceLookupsService(): Promise<LearningReso
     };
   }
 
-  const [categories, tags, courses, batches, assessments, scheduleEvents] = await Promise.all([
+  const [categories, folders, tags, courses, batches, assessments, scheduleEvents] = await Promise.all([
     prisma.learningResourceCategory.findMany({
       orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
       select: {
@@ -538,6 +592,16 @@ export async function listLearningResourceLookupsService(): Promise<LearningReso
         sortOrder: true,
         isActive: true,
         parent: { select: { name: true } },
+      },
+    }),
+    prisma.learningResourceFolder.findMany({
+      orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        parentId: true,
+        name: true,
+        description: true,
+        sortOrder: true,
       },
     }),
     prisma.learningResourceTag.findMany({
@@ -587,6 +651,7 @@ export async function listLearningResourceLookupsService(): Promise<LearningReso
 
   return {
     categories: mapCategories(categories),
+    folders: mapLearningResourceFolders(folders),
     tags: mapTags(tags),
     courses: courses.map((course) => mapOption(course.id, course.name, course.code)),
     batches: batches.map((batch) => mapOption(batch.id, `${batch.code} · ${batch.name}`, batch.program.course.name)),
@@ -597,4 +662,176 @@ export async function listLearningResourceLookupsService(): Promise<LearningReso
       `${event.batch.code} · ${new Date(event.startsAt).toLocaleDateString("en-IN")}`,
     )),
   };
+}
+
+export async function listCurriculumLearningResourceReferencesService(courseId: string): Promise<CurriculumLearningResourceReferences> {
+  if (!isDatabaseConfigured || !courseId.trim()) {
+    return {
+      folders: [],
+      items: [],
+    };
+  }
+
+  const [folderRecords, resources] = await Promise.all([
+    prisma.learningResourceFolder.findMany({
+      orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        parentId: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+      },
+    }),
+    prisma.learningResource.findMany({
+      where: {
+        deletedAt: null,
+        status: { not: "ARCHIVED" },
+      },
+      orderBy: [{ title: "asc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        sourceContentId: true,
+        title: true,
+        contentType: true,
+        status: true,
+        folderId: true,
+        folder: { select: { name: true } },
+        sourceContent: {
+          select: {
+            courseId: true,
+            course: { select: { name: true } },
+            folder: { select: { name: true } },
+          },
+        },
+        assignments: {
+          where: {
+            targetType: "COURSE",
+            targetId: courseId,
+          },
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
+      },
+    }),
+  ]);
+
+  const folders = mapLearningResourceFolders(folderRecords);
+  const folderPathById = new Map(folders.map((folder) => [folder.id, folder.pathLabel]));
+
+  return {
+    folders,
+    items: resources.map((resource) => {
+      const isOwnedByCourse = resource.sourceContent?.courseId === courseId;
+      const isAssignedToCourse = isOwnedByCourse || resource.assignments.length > 0;
+
+      return {
+        id: resource.id,
+        sourceContentId: resource.sourceContentId,
+        title: resource.title,
+        contentType: resource.contentType,
+        status: resource.status,
+        folderId: resource.folderId,
+        folderName: resource.folder?.name ?? null,
+        folderPath: resource.folderId ? (folderPathById.get(resource.folderId) ?? resource.folder?.name ?? null) : null,
+        sourceCourseId: resource.sourceContent?.courseId ?? null,
+        sourceCourseName: resource.sourceContent?.course.name ?? null,
+        sourceFolderName: resource.sourceContent?.folder?.name ?? null,
+        isOwnedByCourse,
+        isAssignedToCourse,
+        hasSourceContent: Boolean(resource.sourceContentId),
+      };
+    }),
+  };
+}
+
+// ─── List All Assignments (paginated) ────────────────────────────────────────
+
+export type AssignmentListItem = {
+  id: string;
+  resourceId: string;
+  resourceTitle: string;
+  contentType: string;
+  targetType: string;
+  targetId: string;
+  targetLabel: string;
+  notes: string | null;
+  assignedByName: string | null;
+  assignedAt: string;
+};
+
+export type AssignmentListPage = {
+  items: AssignmentListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export async function listAllAssignmentsService(filters: {
+  targetType?: string;
+  targetId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<AssignmentListPage> {
+  if (!isDatabaseConfigured) {
+    return { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 };
+  }
+
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 25;
+  const skip = (page - 1) * pageSize;
+
+  const where: Prisma.LearningResourceAssignmentWhereInput = {};
+
+  if (filters.targetType) {
+    where.targetType = filters.targetType as any;
+  }
+  if (filters.targetId) {
+    where.targetId = filters.targetId;
+  }
+  if (filters.search) {
+    where.resource = {
+      title: { contains: filters.search, mode: "insensitive" },
+      deletedAt: null,
+    };
+  } else {
+    where.resource = { deletedAt: null };
+  }
+
+  const [total, rows] = await Promise.all([
+    prisma.learningResourceAssignment.count({ where }),
+    prisma.learningResourceAssignment.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { assignedAt: "desc" },
+      include: {
+        resource: { select: { title: true, contentType: true } },
+        assignedBy: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  const targetLabels = await resolveAssignmentTargetLabels(
+    rows.map((r) => ({ targetType: r.targetType, targetId: r.targetId })),
+  );
+
+  const items: AssignmentListItem[] = rows.map((row) => ({
+    id: row.id,
+    resourceId: row.resourceId,
+    resourceTitle: row.resource.title,
+    contentType: row.resource.contentType,
+    targetType: row.targetType,
+    targetId: row.targetId,
+    targetLabel: targetLabels.get(`${row.targetType}:${row.targetId}`) ?? row.targetId,
+    notes: row.notes,
+    assignedByName: row.assignedBy?.name ?? null,
+    assignedAt: row.assignedAt.toISOString(),
+  }));
+
+  return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
 }

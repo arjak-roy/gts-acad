@@ -89,6 +89,7 @@ type CurriculumDetailRecord = {
         id: string;
         itemType: "CONTENT" | "ASSESSMENT";
         contentId: string | null;
+        resourceId: string | null;
         assessmentPoolId: string | null;
         sortOrder: number;
         isRequired: boolean;
@@ -101,6 +102,13 @@ type CurriculumDetailRecord = {
           estimatedDurationMinutes: number | null;
           dueAt: Date | null;
           dueOffsetDays: number | null;
+        } | null;
+        resource: {
+          title: string;
+          description: string | null;
+          contentType: "ARTICLE" | "PDF" | "DOCUMENT" | "VIDEO" | "SCORM" | "LINK" | "OTHER";
+          status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+          folder: { name: string } | null;
         } | null;
         content: {
           title: string;
@@ -420,18 +428,19 @@ function mapCurriculum(detail: CurriculumDetailRecord): CurriculumDetail {
         id: item.id,
         itemType: item.itemType,
         contentId: item.contentId,
+        resourceId: item.resourceId,
         assessmentPoolId: item.assessmentPoolId,
         sortOrder: item.sortOrder,
         isRequired: item.isRequired,
         referenceCode: item.assessmentPool?.code ?? null,
-        referenceTitle: item.content?.title ?? item.assessmentPool?.title ?? "Untitled item",
-        referenceDescription: item.content?.description ?? item.assessmentPool?.description ?? null,
+        referenceTitle: item.resource?.title ?? item.content?.title ?? item.assessmentPool?.title ?? "Untitled item",
+        referenceDescription: item.resource?.description ?? item.content?.description ?? item.assessmentPool?.description ?? null,
         courseName: item.content?.course.name ?? detail.course.name,
-        status: item.content?.status ?? item.assessmentPool?.status ?? null,
-        contentType: item.content?.contentType ?? null,
+        status: item.resource?.status ?? item.content?.status ?? item.assessmentPool?.status ?? null,
+        contentType: item.resource?.contentType ?? item.content?.contentType ?? null,
         questionType: item.assessmentPool?.questionType ?? null,
         difficultyLevel: item.assessmentPool?.difficultyLevel ?? null,
-        folderName: item.content?.folder?.name ?? null,
+        folderName: item.resource?.folder?.name ?? item.content?.folder?.name ?? null,
         progressStatus: "NOT_STARTED",
         progressPercent: 0,
         startedAt: null,
@@ -551,7 +560,7 @@ export async function listCurriculaByCourseService(courseId: string): Promise<Cu
   }
 
   const curricula = await prisma.curriculum.findMany({
-    where: { courseId },
+    where: { courseId, isTemplate: false },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
@@ -629,6 +638,7 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
                   id: true,
                   itemType: true,
                   contentId: true,
+                  resourceId: true,
                   assessmentPoolId: true,
                   sortOrder: true,
                   isRequired: true,
@@ -652,6 +662,15 @@ export async function getCurriculumByIdService(curriculumId: string): Promise<Cu
                       status: true,
                       folder: { select: { name: true } },
                       course: { select: { name: true } },
+                    },
+                  },
+                  resource: {
+                    select: {
+                      title: true,
+                      description: true,
+                      contentType: true,
+                      status: true,
+                      folder: { select: { name: true } },
                     },
                   },
                   assessmentPool: {
@@ -1143,7 +1162,7 @@ export async function getCurriculumHealthReportService(curriculumId: string): Pr
         }
 
         if (item.itemType === "CONTENT") {
-          if (!item.contentId || !item.referenceTitle) {
+          if ((!item.contentId && !item.resourceId) || !item.referenceTitle) {
             issues.push({
               code: "BROKEN_REFERENCE",
               severity: "high",

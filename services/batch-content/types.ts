@@ -6,6 +6,8 @@ export type BatchContentItem = {
   id: string;
   batchId: string;
   contentId: string;
+  resourceId: string | null;
+  resourceAssignmentId: string | null;
   contentTitle: string;
   contentDescription: string | null;
   contentExcerpt: string | null;
@@ -22,6 +24,17 @@ export type BatchContentItem = {
   isInheritedFromCourse: boolean;
   isBatchMapped: boolean;
   canRemoveBatchMapping: boolean;
+};
+
+export type BatchAvailableContentItem = {
+  id: string;
+  sourceContentId: string | null;
+  title: string;
+  contentType: ContentType;
+  fileName: string | null;
+  folderName: string | null;
+  sourceCourseName: string | null;
+  hasSourceContent: boolean;
 };
 
 export type BatchAssessmentItem = {

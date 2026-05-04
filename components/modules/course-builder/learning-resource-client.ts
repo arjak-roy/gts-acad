@@ -41,6 +41,15 @@ export type LearningResourceTagSummary = {
   slug: string;
 };
 
+export type LearningResourceFolderSummary = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  pathLabel: string;
+};
+
 export type LearningResourceLookupOption = {
   id: string;
   label: string;
@@ -49,6 +58,7 @@ export type LearningResourceLookupOption = {
 
 export type LearningResourceLookups = {
   categories: LearningResourceCategorySummary[];
+  folders: LearningResourceFolderSummary[];
   tags: LearningResourceTagSummary[];
   courses: LearningResourceLookupOption[];
   batches: LearningResourceLookupOption[];
@@ -59,6 +69,8 @@ export type LearningResourceLookups = {
 export type LearningResourceListItem = {
   id: string;
   sourceContentId: string | null;
+  folderId: string | null;
+  folderName: string | null;
   title: string;
   description: string | null;
   excerpt: string | null;
@@ -194,6 +206,7 @@ export type LearningResourceUploadConfig = {
 
 export const EMPTY_LEARNING_RESOURCE_LOOKUPS: LearningResourceLookups = {
   categories: [],
+  folders: [],
   tags: [],
   courses: [],
   batches: [],

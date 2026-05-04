@@ -3,6 +3,7 @@ import "server-only";
 import { isDatabaseConfigured, prisma } from "@/lib/prisma-client";
 import { getBatchCourseContext } from "@/services/lms/hierarchy";
 import type { AssignContentToBatchInput, RemoveContentFromBatchInput, AssignAssessmentToBatchInput, RemoveAssessmentFromBatchInput } from "@/lib/validation-schemas/batch-content";
+import { assignLearningResourceService, removeLearningResourceAssignmentService } from "@/services/learning-resource-service";
 
 export async function assignContentToBatchService(
   input: AssignContentToBatchInput,
@@ -14,6 +15,20 @@ export async function assignContentToBatchService(
 
   const batch = await getBatchCourseContext(input.batchId);
   if (!batch) throw new Error("Batch not found.");
+
+  if (input.resourceIds.length > 0) {
+    for (const resourceId of input.resourceIds) {
+      await assignLearningResourceService(resourceId, {
+        assignments: [{
+          targetType: "BATCH",
+          targetId: input.batchId,
+          notes: "Assigned from batch content mapping.",
+        }],
+      }, { actorUserId: options?.actorUserId });
+    }
+
+    return input.resourceIds.length;
+  }
 
   const validContent = await prisma.courseContent.findMany({
     where: {
@@ -45,8 +60,13 @@ export async function removeContentFromBatchService(input: RemoveContentFromBatc
     throw new Error("Database not configured.");
   }
 
+  if (input.assignmentId && input.resourceId) {
+    await removeLearningResourceAssignmentService(input.resourceId, input.assignmentId);
+    return;
+  }
+
   await prisma.batchContentMapping.deleteMany({
-    where: { batchId: input.batchId, contentId: input.contentId },
+    where: { batchId: input.batchId, contentId: input.contentId ?? undefined },
   });
 }
 

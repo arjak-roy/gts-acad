@@ -11,7 +11,8 @@ import { toast } from "sonner";
 
 import { CurriculumAssessmentPickerDialog } from "@/components/modules/curriculum-builder/curriculum-assessment-picker-dialog";
 import { CurriculumCertificateMilestone } from "@/components/modules/curriculum-builder/curriculum-certificate-milestone";
-import { CurriculumContentPickerDialog } from "@/components/modules/curriculum-builder/curriculum-content-picker-dialog";
+import { downloadCurriculumSequencePdf } from "@/components/modules/curriculum-builder/curriculum-sequence-pdf";
+import { ResourceManager } from "@/components/modules/resource-manager/resource-manager";
 import { CurriculumInlineContentCreator } from "@/components/modules/curriculum-builder/curriculum-inline-content-creator";
 import { CurriculumHealthBadge, CurriculumHealthReport } from "@/components/modules/curriculum-builder/curriculum-health-badge";
 import { CurriculumHierarchyView } from "@/components/modules/curriculum-builder/curriculum-hierarchy-view";
@@ -45,11 +46,28 @@ type CourseOption = {
 
 type ContentOption = {
   id: string;
+  sourceContentId: string | null;
   title: string;
   status: string;
   folderId: string | null;
   folderName: string | null;
+  folderPath: string | null;
   contentType: string;
+  sourceCourseId: string | null;
+  sourceCourseName: string | null;
+  sourceFolderName: string | null;
+  isOwnedByCourse: boolean;
+  isAssignedToCourse: boolean;
+  hasSourceContent: boolean;
+};
+
+type RepositoryFolderOption = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  pathLabel: string;
 };
 
 type ContentFolderOption = {
@@ -73,7 +91,17 @@ type CourseAssessmentLinkOption = {
 };
 
 type CurriculumItemType = "CONTENT" | "ASSESSMENT";
+type CurriculumContentSelectionMode = "LINK" | "COPY_LOCAL";
 type CurriculumItemReleaseType = "IMMEDIATE" | "ABSOLUTE_DATE" | "BATCH_RELATIVE" | "PREVIOUS_ITEM_COMPLETION" | "PREVIOUS_ITEM_SCORE" | "MANUAL";
+
+type StageItemCreateInput = {
+  itemType: CurriculumItemType;
+  contentIds: string[];
+  resourceIds: string[];
+  assessmentPoolIds: string[];
+  isRequired: boolean;
+  contentSelectionMode?: CurriculumContentSelectionMode;
+};
 
 type CurriculumStageItemReleaseDetail = {
   releaseType: CurriculumItemReleaseType;
@@ -1101,6 +1129,7 @@ function SortableStageCard({
   stage,
   courseId,
   contentOptions,
+  repositoryFolders,
   contentFolders,
   assessmentOptions,
   isLoadingReferences,
@@ -1122,6 +1151,7 @@ function SortableStageCard({
   stage: CurriculumStageSummary;
   courseId: string;
   contentOptions: ContentOption[];
+  repositoryFolders: RepositoryFolderOption[];
   contentFolders: ContentFolderOption[];
   assessmentOptions: AssessmentOption[];
   isLoadingReferences: boolean;
@@ -1133,7 +1163,7 @@ function SortableStageCard({
   allStages: CurriculumStageSummary[];
   onSave: (stageId: string, input: StageSaveInput) => Promise<boolean>;
   onDelete: (stageId: string) => Promise<boolean>;
-  onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
+  onCreateItems: (stageId: string, input: StageItemCreateInput) => Promise<boolean>;
   onRefreshContentReferences: () => Promise<void>;
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
   onSaveReleaseConfig: (itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) => Promise<boolean>;
@@ -1414,22 +1444,21 @@ function SortableStageCard({
         </div>
       </div>
 
-      <CurriculumContentPickerDialog
+      <ResourceManager
+        mode="pick"
         open={activePicker === "CONTENT"}
         onOpenChange={(open) => setActivePicker(open ? "CONTENT" : null)}
         courseId={courseId}
-        items={contentOptions}
-        folders={contentFolders}
-        isLoading={isLoadingReferences}
-        isSaving={disabled}
-        canCreateContent={canCreateContent}
-        existingContentIds={existingContentIds}
-        onSubmit={async ({ contentIds, isRequired }) => {
+        existingResourceIds={existingContentIds}
+        onContentCreated={onRefreshContentReferences}
+        onSelect={async ({ resourceIds, isRequired, contentSelectionMode }) => {
           const ok = await onCreateItems(stage.id, {
             itemType: "CONTENT",
-            contentIds,
+            contentIds: [],
+            resourceIds,
             assessmentPoolIds: [],
             isRequired,
+            contentSelectionMode,
           });
 
           if (ok) {
@@ -1438,7 +1467,6 @@ function SortableStageCard({
 
           return ok;
         }}
-        onContentCreated={onRefreshContentReferences}
       />
 
       <CurriculumAssessmentPickerDialog
@@ -1451,6 +1479,7 @@ function SortableStageCard({
           const ok = await onCreateItems(stage.id, {
             itemType: "ASSESSMENT",
             contentIds: [],
+            resourceIds: [],
             assessmentPoolIds,
             isRequired,
           });
@@ -1469,10 +1498,11 @@ function SortableStageCard({
         courseId={courseId}
         folders={contentFolders}
         stageId={stage.id}
-        onComplete={async (contentId) => {
+        onComplete={async ({ contentId, resourceId }) => {
           const ok = await onCreateItems(stage.id, {
             itemType: "CONTENT",
-            contentIds: [contentId],
+            contentIds: resourceId ? [] : [contentId],
+            resourceIds: resourceId ? [resourceId] : [],
             assessmentPoolIds: [],
             isRequired: false,
           });
@@ -1492,6 +1522,7 @@ function SortableModuleCard({
   module,
   courseId,
   contentOptions,
+  repositoryFolders,
   contentFolders,
   assessmentOptions,
   isLoadingReferences,
@@ -1517,6 +1548,7 @@ function SortableModuleCard({
   module: CurriculumModuleSummary;
   courseId: string;
   contentOptions: ContentOption[];
+  repositoryFolders: RepositoryFolderOption[];
   contentFolders: ContentFolderOption[];
   assessmentOptions: AssessmentOption[];
   isLoadingReferences: boolean;
@@ -1532,7 +1564,7 @@ function SortableModuleCard({
   onSaveStage: (stageId: string, input: StageSaveInput) => Promise<boolean>;
   onDeleteStage: (stageId: string) => Promise<boolean>;
   onReorderStages: (moduleId: string, stageIds: string[]) => Promise<void>;
-  onCreateItems: (stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) => Promise<boolean>;
+  onCreateItems: (stageId: string, input: StageItemCreateInput) => Promise<boolean>;
   onRefreshContentReferences: () => Promise<void>;
   onToggleRequired: (itemId: string, nextRequired: boolean) => Promise<boolean>;
   onSaveReleaseConfig: (itemId: string, releaseConfig: ReturnType<typeof buildReleaseConfigPayload>) => Promise<boolean>;
@@ -1761,6 +1793,7 @@ function SortableModuleCard({
                           stage={stage}
                           courseId={courseId}
                           contentOptions={contentOptions}
+                          repositoryFolders={repositoryFolders}
                           contentFolders={contentFolders}
                           assessmentOptions={assessmentOptions}
                           isLoadingReferences={isLoadingReferences}
@@ -2343,6 +2376,7 @@ export default function CurriculumBuilderPage() {
   const [curriculum, setCurriculum] = useState<CurriculumDetail | null>(null);
   const [curriculumBatches, setCurriculumBatches] = useState<CurriculumBatchMapping[]>([]);
   const [contentOptions, setContentOptions] = useState<ContentOption[]>([]);
+  const [repositoryFolders, setRepositoryFolders] = useState<RepositoryFolderOption[]>([]);
   const [contentFolders, setContentFolders] = useState<ContentFolderOption[]>([]);
   const [assessmentOptions, setAssessmentOptions] = useState<AssessmentOption[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(true);
@@ -2485,6 +2519,7 @@ export default function CurriculumBuilderPage() {
   const loadReferences = useCallback(async (courseId: string) => {
     if (!courseId) {
       setContentOptions([]);
+      setRepositoryFolders([]);
       setContentFolders([]);
       setAssessmentOptions([]);
       return;
@@ -2494,14 +2529,10 @@ export default function CurriculumBuilderPage() {
 
     try {
       const [contentResult, folderResult, assessmentResult, courseAssessmentLinkResult] = await Promise.allSettled([
-        fetch(`/api/course-content?courseId=${courseId}`, { cache: "no-store" }).then((response) => readApiData<Array<{
-          id: string;
-          title: string;
-          status: string;
-          folderId: string | null;
-          folderName: string | null;
-          contentType: string;
-        }>>(response, "Failed to load course content.")),
+        fetch(`/api/curriculum/content-references?courseId=${encodeURIComponent(courseId)}`, { cache: "no-store" }).then((response) => readApiData<{
+          items: ContentOption[];
+          folders: RepositoryFolderOption[];
+        }>(response, "Failed to load repository references.")),
         fetch(`/api/course-content-folders?courseId=${courseId}`, { cache: "no-store" }).then((response) => readApiData<Array<{
           id: string;
           name: string;
@@ -2519,10 +2550,12 @@ export default function CurriculumBuilderPage() {
       ]);
 
       if (contentResult.status === "fulfilled") {
-        setContentOptions(contentResult.value.filter((item) => item.status !== "ARCHIVED"));
+        setContentOptions(contentResult.value.items);
+        setRepositoryFolders(contentResult.value.folders);
       } else {
         setContentOptions([]);
-        toast.error(contentResult.reason instanceof Error ? contentResult.reason.message : "Failed to load course content.");
+        setRepositoryFolders([]);
+        toast.error(contentResult.reason instanceof Error ? contentResult.reason.message : "Failed to load repository references.");
       }
 
       if (folderResult.status === "fulfilled") {
@@ -2587,6 +2620,7 @@ export default function CurriculumBuilderPage() {
       setCurriculum(null);
       setCurriculumBatches([]);
       setContentOptions([]);
+      setRepositoryFolders([]);
       setContentFolders([]);
       setAssessmentOptions([]);
       return;
@@ -2918,7 +2952,7 @@ export default function CurriculumBuilderPage() {
     }
   }
 
-  async function handleCreateStageItems(stageId: string, input: { itemType: CurriculumItemType; contentIds: string[]; assessmentPoolIds: string[]; isRequired: boolean }) {
+  async function handleCreateStageItems(stageId: string, input: StageItemCreateInput) {
     setActiveAction(`stage:${stageId}:item:create`);
 
     try {
@@ -2928,14 +2962,19 @@ export default function CurriculumBuilderPage() {
           stageId,
           itemType: input.itemType,
           contentIds: input.contentIds,
+          resourceIds: input.resourceIds,
           assessmentPoolIds: input.assessmentPoolIds,
           isRequired: input.isRequired,
+          contentSelectionMode: input.contentSelectionMode,
         }),
       }, "Failed to create stage item.");
 
       const createdCount = createdItems.length;
       toast.success(`${createdCount} ${input.itemType === "CONTENT" ? "content" : "assessment"} item${createdCount === 1 ? "" : "s"} added to stage.`);
       await refreshSelectedCurriculumWorkspace({ preferredCurriculumId: selectedCurriculumId });
+      if (input.itemType === "ASSESSMENT") {
+        await refreshReferenceInventory();
+      }
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create stage item.");
@@ -3630,6 +3669,7 @@ export default function CurriculumBuilderPage() {
                                   module={moduleRecord}
                                   courseId={selectedCourseId}
                                   contentOptions={contentOptions}
+                                  repositoryFolders={repositoryFolders}
                                   contentFolders={contentFolders}
                                   assessmentOptions={assessmentOptions}
                                   isLoadingReferences={isLoadingReferences}
@@ -3706,7 +3746,27 @@ export default function CurriculumBuilderPage() {
         description="Review the current module, stage, and item ordering in a read-only sequence view."
       >
         {curriculum ? (
-          <CurriculumHierarchyView curriculum={curriculum} />
+          <div className="space-y-4">
+            <div className="flex items-center justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8 rounded-lg text-xs"
+                onClick={() => downloadCurriculumSequencePdf(curriculum, selectedCourse?.name)}
+              >
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download PDF
+              </Button>
+            </div>
+            <CurriculumHierarchyView curriculum={curriculum} />
+            <CurriculumCertificateMilestone
+              templates={milestoneTemplates}
+              rules={milestoneRules}
+              curriculumId={curriculum.id}
+              curriculumTitle={curriculum.title}
+            />
+          </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-[#d9e0e7] bg-slate-50/70 p-8 text-center text-sm text-slate-500">
             Select a curriculum variant to preview its sequence.
@@ -3718,15 +3778,15 @@ export default function CurriculumBuilderPage() {
         open={activeWorkspacePopup === "REFERENCES"}
         onOpenChange={(open) => setActiveWorkspacePopup(open ? "REFERENCES" : null)}
         title="Reference Inventory"
-        description="Review the course-scoped content and assessment references available for curriculum composition."
+        description="Review the repository resources and assessments available for curriculum composition."
       >
         <div className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="border-slate-200 bg-slate-50/70">
               <CardContent className="py-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Content Library</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Repository Resources</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-950">{isLoadingReferences ? "..." : contentOptions.length}</p>
-                <p className="mt-1 text-sm text-slate-500">Active content items available to map into stages.</p>
+                <p className="mt-1 text-sm text-slate-500">Reusable repository resources available to map into stages.</p>
               </CardContent>
             </Card>
             <Card className="border-slate-200 bg-slate-50/70">
@@ -3752,8 +3812,8 @@ export default function CurriculumBuilderPage() {
           <div className="grid gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Content Library Items</CardTitle>
-                <CardDescription>Course-ready content that can be attached to stages in the sequence.</CardDescription>
+                <CardTitle>Repository Resources</CardTitle>
+                <CardDescription>Canonical repository records that can be linked into this curriculum or copied locally for course-specific changes.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoadingReferences ? (
@@ -3764,7 +3824,7 @@ export default function CurriculumBuilderPage() {
                   </div>
                 ) : contentOptions.length === 0 ? (
                   <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-                    No active content references are available for this course yet.
+                    No repository resources are available for this course yet.
                   </div>
                 ) : (
                   <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1">
@@ -3774,8 +3834,13 @@ export default function CurriculumBuilderPage() {
                           <p className="text-sm font-semibold text-slate-900">{item.title}</p>
                           <Badge variant="info">{item.contentType}</Badge>
                           <Badge variant={statusVariant[item.status] ?? "info"}>{item.status}</Badge>
+                          {item.isOwnedByCourse ? <Badge variant="default">This course</Badge> : null}
+                          {!item.isOwnedByCourse && item.isAssignedToCourse ? <Badge variant="info">Shared to course</Badge> : null}
                         </div>
-                        <p className="mt-2 text-xs text-slate-500">{item.folderName ? `Folder: ${item.folderName}` : "Library root"}</p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {item.folderPath ? `Repository folder: ${item.folderPath}` : "Repository root"}
+                          {item.sourceCourseName ? ` · Source: ${item.sourceCourseName}${item.sourceFolderName ? ` / ${item.sourceFolderName}` : ""}` : " · No source content yet"}
+                        </p>
                       </div>
                     ))}
                   </div>

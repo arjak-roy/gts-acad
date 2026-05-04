@@ -52,6 +52,7 @@ type FormState = {
   contentType: LearningResourceContentType;
   status: LearningResourceStatus;
   visibility: LearningResourceVisibility;
+  folderId: string;
   categoryName: string;
   subcategoryName: string;
   tagsInput: string;
@@ -72,6 +73,7 @@ function createInitialForm(seed?: LearningResourceFormSeed): FormState {
     contentType: "PDF",
     status: "DRAFT",
     visibility: "PRIVATE",
+    folderId: "",
     categoryName: "",
     subcategoryName: "",
     tagsInput: "",
@@ -97,6 +99,7 @@ function buildFormFromDetail(detail: LearningResourceDetail): FormState {
     contentType: detail.contentType,
     status: detail.status,
     visibility: detail.visibility,
+    folderId: detail.folderId ?? "",
     categoryName: detail.categoryName ?? "",
     subcategoryName: detail.subcategoryName ?? "",
     tagsInput: detail.tagNames.join(", "),
@@ -404,6 +407,7 @@ export function LearningResourceFormSheet({
         contentType: form.contentType,
         status: form.status,
         visibility: form.visibility,
+        folderId: form.folderId || null,
         categoryName: form.categoryName.trim(),
         subcategoryName: form.subcategoryName.trim(),
         tags: parseTagInput(form.tagsInput),
@@ -451,7 +455,7 @@ export function LearningResourceFormSheet({
           <SheetDescription>
             {isEditing
               ? (isLinkedContentResource
-                ? "Update repository metadata here. File, authored body, and folder changes continue through the repository explorer upload workflow."
+                ? "Update repository metadata here. Source files and authored bodies still flow from the repository explorer, while repository folder placement and reuse metadata can be managed here."
                 : "Manage reusable content, category metadata, access rules, and assignment-ready assets from a single workflow.")
               : (createDescription ?? "Manage reusable content, category metadata, access rules, and assignment-ready assets from a single workflow.")}
           </SheetDescription>
@@ -575,6 +579,21 @@ export function LearningResourceFormSheet({
                       </div>
 
                       <div className="space-y-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Repository Folder</label>
+                        <select
+                          value={form.folderId}
+                          onChange={(event) => setForm((current) => ({ ...current, folderId: event.target.value }))}
+                          className="block h-10 w-full rounded-xl border border-[#dde1e6] bg-white px-3 text-sm text-slate-900"
+                        >
+                          <option value="">Repository root</option>
+                          {lookups.folders.map((folder) => (
+                            <option key={folder.id} value={folder.id}>{folder.pathLabel}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-slate-500">Organize reusable resources in the global repository tree so the same record can be discovered across curricula, courses, and batches.</p>
+                      </div>
+
+                      <div className="space-y-1.5">
                         <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Category</label>
                         <Input
                           list="learning-resource-category-options"
@@ -591,7 +610,7 @@ export function LearningResourceFormSheet({
                         {isCreateCategoryLocked ? (
                           <p className="text-xs text-slate-500">Direct uploads stay inside the locked repository branch.</p>
                         ) : isLinkedContentResource ? (
-                          <p className="text-xs text-slate-500">Folder placement is managed from the repository explorer.</p>
+                          <p className="text-xs text-slate-500">Repository folder placement is managed here; source-course structure still comes from the repository explorer.</p>
                         ) : null}
                       </div>
 

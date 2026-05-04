@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Eye, FolderOpen, GripVertical, History, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
+import { Download, Eye, FolderOpen, GripVertical, History, Loader2, MoreHorizontal, PencilLine, Share2, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ export type CourseContentItem = {
 export type LinkedRepositoryResourceSummary = {
   id: string;
   sourceContentId: string;
+  folderId: string | null;
   status: string;
   tagNames: string[];
   currentVersionNumber: number;
@@ -58,7 +59,7 @@ export type LinkedRepositoryResourceSummary = {
 
 export type CourseContentMoveTarget = {
   id: string;
-  courseId: string;
+  courseId?: string | null;
   name: string;
 };
 
@@ -134,14 +135,34 @@ export function CourseContentTab({
 }) {
   const published = items.filter((content) => content.status === "PUBLISHED").length;
   const drafts = items.filter((content) => content.status === "DRAFT").length;
+  const locationLabel = folderName ?? "Repository Root";
+  const isMoving = Boolean(movingContentId);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="space-y-1">
+      {/* ── Move progress bar ─────────────────────────────────── */}
+      {isMoving ? (
+        <div className="space-y-2 rounded-2xl border border-primary/20 bg-primary/[0.04] px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-primary">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Moving item to folder…
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
+            <div className="h-full animate-pulse rounded-full bg-primary/60" style={{ width: "60%" }} />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-slate-900">{locationLabel}</p>
+            <Badge variant="info">{items.length} item{items.length !== 1 ? "s" : ""}</Badge>
+            <Badge variant="default">{published} published</Badge>
+            <Badge variant="accent">{drafts} draft{drafts !== 1 ? "s" : ""}</Badge>
+          </div>
           <p className="text-sm text-muted-foreground">
-            {items.length} item{items.length !== 1 ? "s" : ""} · {published} published · {drafts} draft{drafts !== 1 ? "s" : ""}
-            {folderName ? ` · Folder: ${folderName}` : ""}
+            Upload reusable files here, then manage repository assignments when the item should appear in other courses, batches, or delivery contexts.
           </p>
           {dragToFolderEnabled ? (
             <p className="text-xs text-slate-500">Drag a handle onto a folder in the explorer or use Actions &gt; Move to Folder.</p>
@@ -155,11 +176,16 @@ export function CourseContentTab({
       </div>
 
       {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-muted-foreground">
-          <p className="text-sm">{folderName ? "No repository items in this folder yet." : "No repository items yet."}</p>
-          <p className="mt-1 text-xs">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-6 py-12 text-center text-muted-foreground">
+          <p className="text-base font-semibold text-slate-900">{folderName ? "No repository items in this folder yet." : "No repository items in the root yet."}</p>
+          <p className="mt-2 max-w-2xl text-sm text-slate-500">
             Upload PDFs, documents, links, or authored lessons here, then use Actions &gt; Manage Assignments when the item should appear in another course.
           </p>
+          {canCreateContent ? (
+            <Button type="button" className="mt-4" onClick={onAddContent}>
+              {folderName ? `Upload Into ${folderName}` : "Upload First File"}
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="divide-y rounded-lg border">
@@ -173,7 +199,7 @@ export function CourseContentTab({
               ? [
                   ...(content.folderId ? [{ id: null, name: "Library root" }] : []),
                   ...(availableMoveTargets ?? [])
-                    .filter((folder) => folder.courseId === content.courseId && folder.id !== content.folderId)
+                    .filter((folder) => (!folder.courseId || folder.courseId === content.courseId) && folder.id !== content.folderId)
                     .sort((left, right) => left.name.localeCompare(right.name))
                     .map((folder) => ({ id: folder.id, name: folder.name })),
                 ]

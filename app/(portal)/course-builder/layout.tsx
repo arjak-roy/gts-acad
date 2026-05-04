@@ -7,6 +7,11 @@ const tabs = [
     label: "Resource Repository",
     description: "Browse course content in an explorer view, import it into the repository, and manage direct uploads in one workspace.",
   },
+  {
+    href: "/course-builder/assignments",
+    label: "Manage Assignments",
+    description: "View and manage all resource-to-course and batch assignments.",
+  },
 ];
 
 export default function CourseBuilderLayout({ children }: { children: React.ReactNode }) {

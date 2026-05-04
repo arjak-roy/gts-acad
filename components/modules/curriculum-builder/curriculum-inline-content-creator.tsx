@@ -23,13 +23,18 @@ type FolderOption = {
 
 type Step = "setup" | "editing" | "saving";
 
+type ContentCreationResult = {
+  contentId: string;
+  resourceId: string | null;
+};
+
 type CurriculumInlineContentCreatorProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseId: string;
   folders: FolderOption[];
   stageId: string;
-  onComplete: (contentId: string) => Promise<boolean>;
+  onComplete: (result: ContentCreationResult) => Promise<boolean>;
   onRefresh: () => Promise<void>;
   disabled?: boolean;
 };
@@ -47,6 +52,7 @@ export function CurriculumInlineContentCreator({
   const [title, setTitle] = useState("");
   const [folderId, setFolderId] = useState<string>("");
   const [contentId, setContentId] = useState<string | null>(null);
+  const [resourceId, setResourceId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +62,7 @@ export function CurriculumInlineContentCreator({
     setTitle("");
     setFolderId("");
     setContentId(null);
+    setResourceId(null);
     setIsCreating(false);
     setIsSaving(false);
     setError(null);
@@ -103,7 +110,7 @@ export function CurriculumInlineContentCreator({
       });
 
       const json = (await res.json().catch(() => null)) as {
-        data?: { id: string };
+        data?: { id: string; resourceId?: string | null };
         error?: string;
       } | null;
 
@@ -113,6 +120,7 @@ export function CurriculumInlineContentCreator({
       }
 
       setContentId(json.data.id);
+      setResourceId(json.data.resourceId ?? null);
       setStep("editing");
     } catch {
       setError("Network error. Please try again.");
@@ -147,7 +155,7 @@ export function CurriculumInlineContentCreator({
         }
 
         // Add as stage item
-        const ok = await onComplete(contentId);
+        const ok = await onComplete({ contentId, resourceId });
 
         if (ok) {
           handleOpenChange(false);
@@ -162,7 +170,7 @@ export function CurriculumInlineContentCreator({
         setIsSaving(false);
       }
     },
-    [contentId, handleOpenChange, onComplete],
+    [contentId, resourceId, handleOpenChange, onComplete],
   );
 
   // Render step 1: Setup dialog

@@ -644,6 +644,7 @@ model User {
   assignedTrainerAssessments   TrainerAssessmentAssignment[] @relation("TrainerAssessmentAssignedBy")
   createdQuestionBankQuestions QuestionBankQuestion[]        @relation("QuestionBankCreatedBy")
   createdCurricula             Curriculum[]                  @relation("CurriculumCreatedBy")
+  createdLearningResourceFolders LearningResourceFolder[]    @relation("LearningResourceFolderCreatedBy")
   createdLearningResources     LearningResource[]            @relation("LearningResourceCreatedBy")
   updatedLearningResources     LearningResource[]            @relation("LearningResourceUpdatedBy")
   deletedLearningResources     LearningResource[]            @relation("LearningResourceDeletedBy")
@@ -1994,9 +1995,28 @@ model LearningResourceTag {
   @@map("learning_resource_tags")
 }
 
+model LearningResourceFolder {
+  id          String                  @id @default(dbgenerated("gen_random_uuid()")) @map("folder_id") @db.Uuid
+  parentId    String?                 @map("parent_folder_id") @db.Uuid
+  name        String                  @db.VarChar(255)
+  description String?
+  sortOrder   Int                     @default(0) @map("sort_order")
+  createdById String?                 @map("created_by_user_id") @db.Uuid
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent      LearningResourceFolder? @relation("LearningResourceFolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    LearningResourceFolder[] @relation("LearningResourceFolderHierarchy")
+  createdBy   User?                   @relation("LearningResourceFolderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  resources   LearningResource[]
+
+  @@index([parentId, sortOrder], map: "idx_learning_resource_folders_parent_order")
+  @@map("learning_resource_folders")
+}
+
 model LearningResource {
   id                      String                       @id @default(dbgenerated("gen_random_uuid()")) @map("resource_id") @db.Uuid
   sourceContentId         String?                      @unique @map("source_content_id") @db.Uuid
+  folderId                String?                      @map("folder_id") @db.Uuid
   title                   String                       @db.VarChar(255)
   description             String?                      @db.VarChar(2000)
   excerpt                 String?                      @db.VarChar(500)
@@ -2023,6 +2043,7 @@ model LearningResource {
   createdAt               DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   sourceContent           CourseContent?               @relation("LearningResourceSourceContent", fields: [sourceContentId], references: [id], onDelete: Cascade)
+  folder                  LearningResourceFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
   category                LearningResourceCategory?    @relation("LearningResourceCategory", fields: [categoryId], references: [id], onDelete: SetNull)
   subcategory             LearningResourceCategory?    @relation("LearningResourceSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
   createdBy               User?                        @relation("LearningResourceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -2033,9 +2054,11 @@ model LearningResource {
   assignments             LearningResourceAssignment[]
   versions                LearningResourceVersion[]
   usages                  LearningResourceUsage[]
+  curriculumStageItems    CurriculumStageItem[]          @relation("CurriculumResourceItems")
 
   @@index([status, visibility, updatedAt], map: "idx_learning_resources_status_visibility_updated")
   @@index([deletedAt, updatedAt], map: "idx_learning_resources_active_updated")
+  @@index([folderId, updatedAt], map: "idx_learning_resources_folder_updated")
   @@index([categoryId, subcategoryId], map: "idx_learning_resources_category")
   @@index([contentType, status], map: "idx_learning_resources_type_status")
   @@map("learning_resources")
@@ -2195,6 +2218,7 @@ model CurriculumStageItem {
   stageId           String                            @map("stage_id") @db.Uuid
   itemType          CurriculumItemType                @map("item_type")
   contentId         String?                           @map("content_id") @db.Uuid
+  resourceId        String?                           @map("resource_id") @db.Uuid
   assessmentPoolId  String?                           @map("assessment_pool_id") @db.Uuid
   sortOrder         Int                               @default(0) @map("sort_order")
   isRequired        Boolean                           @default(false) @map("is_required")
@@ -2202,6 +2226,7 @@ model CurriculumStageItem {
   updatedAt         DateTime                          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   stage             CurriculumStage                   @relation(fields: [stageId], references: [id], onDelete: Cascade)
   content           CourseContent?                    @relation("CurriculumContentItems", fields: [contentId], references: [id], onDelete: SetNull)
+  resource          LearningResource?                 @relation("CurriculumResourceItems", fields: [resourceId], references: [id], onDelete: SetNull)
   assessmentPool    AssessmentPool?                   @relation("CurriculumAssessmentItems", fields: [assessmentPoolId], references: [id], onDelete: SetNull)
   releaseConfig     CurriculumStageItemRelease?       @relation("CurriculumStageItemReleaseConfig")
   releaseDependents CurriculumStageItemRelease[]      @relation("CurriculumStageItemReleaseDependency")
@@ -2210,6 +2235,7 @@ model CurriculumStageItem {
 
   @@index([stageId, sortOrder], map: "idx_curriculum_stage_items_stage_order")
   @@index([contentId], map: "idx_curriculum_stage_items_content")
+  @@index([resourceId], map: "idx_curriculum_stage_items_resource")
   @@index([assessmentPoolId], map: "idx_curriculum_stage_items_assessment")
   @@map("curriculum_stage_items")
 }

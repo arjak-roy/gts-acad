@@ -62,6 +62,7 @@ export type CurriculumStageItemDetail = {
   id: string;
   itemType: CurriculumItemType;
   contentId: string | null;
+  resourceId: string | null;
   assessmentPoolId: string | null;
   sortOrder: number;
   isRequired: boolean;
@@ -157,6 +158,7 @@ export type CurriculumStageItemMutationResult = {
   stageId: string;
   itemType: CurriculumItemType;
   contentId: string | null;
+  resourceId: string | null;
   assessmentPoolId: string | null;
   sortOrder: number;
   isRequired: boolean;

@@ -95,27 +95,60 @@ export async function attemptAutoIssueCertificate(options: {
     programId = context.programId;
 
     // 2. Find matching auto-issue rule(s) for this trigger + curriculum (rules are curriculum-scoped, not batch-scoped)
-    const ruleWhere: Record<string, unknown> = {
-      trigger,
-      isActive: true,
-      deletedAt: null,
-      template: { isActive: true },
-    };
-    if (trigger === "CURRICULUM_COMPLETION" && curriculumId) {
-      ruleWhere.curriculumId = curriculumId;
-    } else if (trigger === "ENROLLMENT_COMPLETION") {
-      // Enrollment rules have null curriculumId
-      ruleWhere.curriculumId = null;
-    }
+    // For CURRICULUM_COMPLETION: match rules that target this specific curriculum OR are course-wide (curriculumId = null)
+    // For ENROLLMENT_COMPLETION: match rules that have curriculumId = null
+    let rule: { id: string; templateId: string; template: { title: string } } | null = null;
 
-    const rule = await prisma.certificateAutoIssueRule.findFirst({
-      where: ruleWhere,
-      select: {
-        id: true,
-        templateId: true,
-        template: { select: { title: true } },
-      },
-    });
+    if (trigger === "CURRICULUM_COMPLETION" && curriculumId) {
+      // Try specific curriculum rule first, then fall back to course-wide rule
+      rule = await prisma.certificateAutoIssueRule.findFirst({
+        where: {
+          trigger,
+          isActive: true,
+          deletedAt: null,
+          template: { isActive: true, courseId },
+          curriculumId,
+        },
+        select: {
+          id: true,
+          templateId: true,
+          template: { select: { title: true } },
+        },
+      });
+
+      if (!rule) {
+        // Fall back to course-wide rule (curriculumId = null)
+        rule = await prisma.certificateAutoIssueRule.findFirst({
+          where: {
+            trigger,
+            isActive: true,
+            deletedAt: null,
+            template: { isActive: true, courseId },
+            curriculumId: null,
+          },
+          select: {
+            id: true,
+            templateId: true,
+            template: { select: { title: true } },
+          },
+        });
+      }
+    } else {
+      rule = await prisma.certificateAutoIssueRule.findFirst({
+        where: {
+          trigger,
+          isActive: true,
+          deletedAt: null,
+          template: { isActive: true, courseId },
+          curriculumId: null,
+        },
+        select: {
+          id: true,
+          templateId: true,
+          template: { select: { title: true } },
+        },
+      });
+    }
 
     if (!rule) {
       const attemptId = await persistAutoIssueAttempt({

@@ -96,6 +96,21 @@ export type CandidateContentAccessResult =
       contexts: CandidateContentAccessContext[];
     };
 
+export type CandidateResourceAccessResult =
+  | {
+      kind: "content";
+      content: CandidateContentDetail;
+      contexts: CandidateContentAccessContext[];
+    }
+  | {
+      kind: "blocked";
+      resourceId: string;
+      title: string;
+      availabilityStatus: Exclude<CurriculumStageItemAvailabilityStatus, "AVAILABLE">;
+      availabilityReason: CurriculumStageItemAvailabilityReason;
+      contexts: CandidateContentAccessContext[];
+    };
+
 export type ContentCreateResult = {
   id: string;
   courseId: string;
@@ -104,6 +119,7 @@ export type ContentCreateResult = {
   contentType: ContentType;
   status: ContentStatus;
   fileName: string | null;
+  resourceId?: string | null;
 };
 
 export type AssignedSharedContentListItem = ContentListItem & {

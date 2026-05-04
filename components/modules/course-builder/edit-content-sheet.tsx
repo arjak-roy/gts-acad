@@ -585,7 +585,7 @@ export function EditContentSheet({
                     draftStorageKey={contentDraftStorageKey ? `${contentDraftStorageKey}:studio` : undefined}
                     draftLabel="content"
                     onSave={(html) => {
-                      setForm((current) => current ? { ...current, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument } : current);
+                      setForm((current) => current ? { ...current, bodyHtml: html } : current);
                       setRichEditorOpen(false);
                     }}
                     disabled={isSubmitting}

@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
     const input = uploadCourseContentSchema.parse({
       courseId: String(formData.get("courseId") ?? ""),
       folderId: formData.get("folderId") ? String(formData.get("folderId") ?? "") : null,
+      repositoryFolderId: formData.get("repositoryFolderId") ? String(formData.get("repositoryFolderId") ?? "") : null,
       description: String(formData.get("description") ?? ""),
       contentType: String(formData.get("contentType") ?? "OTHER"),
       status: String(formData.get("status") ?? "DRAFT"),
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
           const content = await createContentService({
             courseId: input.courseId,
             folderId: input.folderId || null,
+            repositoryFolderId: input.repositoryFolderId || null,
             title: requestedTitle || buildTitleFromFileName(file.name),
             description: input.description,
             excerpt: "",

@@ -14,4 +14,4 @@ export {
   removeAssessmentFromBatchService,
 } from "@/services/batch-content/commands";
 
-export type { BatchAssessmentItem, BatchContentItem } from "@/services/batch-content/types";
+export type { BatchAssessmentItem, BatchAvailableContentItem, BatchContentItem } from "@/services/batch-content/types";

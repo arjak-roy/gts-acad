@@ -12,6 +12,8 @@ import { QUESTION_TYPE_SHORT_LABELS } from "@/lib/question-types";
 type BatchContentItem = {
   id: string;
   contentId: string;
+  resourceId: string | null;
+  resourceAssignmentId: string | null;
   contentTitle: string;
   contentType: string;
   contentStatus: string;
@@ -45,9 +47,13 @@ type BatchAssessmentItem = {
 
 type AvailableContent = {
   id: string;
+  sourceContentId: string | null;
   title: string;
   contentType: string;
   fileName: string | null;
+  folderName: string | null;
+  sourceCourseName: string | null;
+  hasSourceContent: boolean;
 };
 
 type AvailableAssessment = {
@@ -155,15 +161,15 @@ export function BatchContentMappingTab() {
     }
   }, [showAvailable, selectedBatchId, fetchAvailable]);
 
-  const handleAssignContent = async (contentIds: string[]) => {
+  const handleAssignContent = async (resourceIds: string[]) => {
     try {
       const response = await fetch("/api/batch-content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "content", batchId: selectedBatchId, contentIds }),
+        body: JSON.stringify({ type: "content", batchId: selectedBatchId, resourceIds }),
       });
       if (!response.ok) throw new Error("Failed to assign content.");
-      toast.success("Content assigned to batch.");
+      toast.success("Repository resource assigned to batch.");
       setShowAvailable(false);
       void fetchAssigned();
     } catch {
@@ -187,15 +193,21 @@ export function BatchContentMappingTab() {
     }
   };
 
-  const handleRemoveContent = async (contentId: string) => {
+  const handleRemoveContent = async (item: BatchContentItem) => {
     try {
       const response = await fetch("/api/batch-content", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "content", batchId: selectedBatchId, contentId }),
+        body: JSON.stringify({
+          type: "content",
+          batchId: selectedBatchId,
+          contentId: item.resourceAssignmentId ? null : item.contentId,
+          resourceId: item.resourceId,
+          assignmentId: item.resourceAssignmentId,
+        }),
       });
       if (!response.ok) throw new Error("Failed to remove.");
-      toast.success("Content removed from batch.");
+      toast.success(item.resourceAssignmentId ? "Repository assignment removed from batch." : "Content removed from batch.");
       void fetchAssigned();
     } catch {
       toast.error("Failed to remove content.");
@@ -291,12 +303,17 @@ export function BatchContentMappingTab() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{assignedContent.length} content item{assignedContent.length !== 1 ? "s" : ""} available to this batch</p>
-                  <p className="text-xs text-muted-foreground">Published course content is inherited automatically. Batch mappings remain supplemental only.</p>
+                  <p className="text-xs text-muted-foreground">Published course content is inherited automatically, and repository resources can be layered in as canonical batch assignments.</p>
                 </div>
+                <CanAccess permission="batch_content.assign">
+                  <Button size="sm" variant="secondary" onClick={() => { setShowAvailable(true); void fetchAvailable(); }}>
+                    + Add Repository Content
+                  </Button>
+                </CanAccess>
               </div>
               {assignedContent.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-muted-foreground">
-                  <p className="text-sm">No published course content is currently available to this batch.</p>
+                  <p className="text-sm">No published course or repository content is currently available to this batch.</p>
                 </div>
               ) : (
                 <div className="divide-y rounded-lg border">
@@ -320,9 +337,9 @@ export function BatchContentMappingTab() {
                           variant="ghost"
                           size="sm"
                           className="shrink-0 text-destructive hover:text-destructive"
-                          onClick={() => handleRemoveContent(item.contentId)}
+                          onClick={() => handleRemoveContent(item)}
                         >
-                          Remove Batch Mapping
+                          {item.resourceAssignmentId ? "Remove Repository Assignment" : "Remove Batch Mapping"}
                         </Button>
                         ) : null}
                       </CanAccess>
@@ -392,7 +409,7 @@ export function BatchContentMappingTab() {
             <div className="space-y-3 rounded-lg border border-dashed p-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium">
-                  Available {activeTab === "content" ? "Content" : "Assessments"}
+                  Available {activeTab === "content" ? "Repository Content" : "Assessments"}
                 </h4>
                 <Button size="sm" variant="ghost" onClick={() => setShowAvailable(false)}>
                   Close
@@ -401,17 +418,21 @@ export function BatchContentMappingTab() {
 
               {activeTab === "content" ? (
                 availableContent.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No extra content mappings are available because published course content is inherited automatically.</p>
+                  <p className="text-xs text-muted-foreground">No additional published repository resources are available for this batch right now.</p>
                 ) : (
                   <div className="divide-y rounded-lg border bg-background">
                     {availableContent.map((item) => (
                       <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm">{item.title}</p>
-                          <p className="text-xs text-muted-foreground">{item.contentType}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.contentType}
+                            {item.folderName ? ` · Folder: ${item.folderName}` : " · Repository root"}
+                            {item.sourceCourseName ? ` · Source: ${item.sourceCourseName}` : item.hasSourceContent ? "" : " · Source content will be created on first assignment"}
+                          </p>
                         </div>
                         <Button size="sm" variant="secondary" onClick={() => handleAssignContent([item.id])}>
-                          Add Batch Mapping
+                          Assign Repository Item
                         </Button>
                       </div>
                     ))}

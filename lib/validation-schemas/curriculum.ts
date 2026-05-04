@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const curriculumStatusEnum = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 export const curriculumItemTypeEnum = z.enum(["CONTENT", "ASSESSMENT"]);
+export const curriculumContentSelectionModeEnum = z.enum(["LINK", "COPY_LOCAL"]);
 export const curriculumItemReleaseTypeEnum = z.enum([
   "IMMEDIATE",
   "ABSOLUTE_DATE",
@@ -131,16 +132,26 @@ export const createCurriculumStageItemSchema = z.object({
   stageId: z.string().trim().min(1, "Stage ID is required."),
   itemType: curriculumItemTypeEnum,
   contentId: z.string().trim().min(1).optional().nullable(),
+  resourceId: z.string().trim().min(1).optional().nullable(),
   assessmentPoolId: z.string().trim().min(1).optional().nullable(),
   isRequired: z.coerce.boolean().optional().default(false),
+  contentSelectionMode: curriculumContentSelectionModeEnum.optional().default("LINK"),
   releaseConfig: curriculumStageItemReleaseConfigSchema.optional(),
 }).superRefine((value, context) => {
   if (value.itemType === "CONTENT") {
-    if (!value.contentId) {
+    if (!value.contentId && !value.resourceId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["contentId"],
-        message: "Content is required for content items.",
+        message: "Content or repository resource is required for content items.",
+      });
+    }
+
+    if (value.contentId && value.resourceId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resourceId"],
+        message: "Choose either course content or a repository resource, not both.",
       });
     }
 
@@ -169,6 +180,14 @@ export const createCurriculumStageItemSchema = z.object({
         message: "Content cannot be provided for assessment items.",
       });
     }
+
+    if (value.resourceId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resourceId"],
+        message: "Repository resources cannot be provided for assessment items.",
+      });
+    }
   }
 });
 
@@ -176,16 +195,26 @@ export const createCurriculumStageItemsSchema = z.object({
   stageId: z.string().trim().min(1, "Stage ID is required."),
   itemType: curriculumItemTypeEnum,
   contentIds: z.array(z.string().trim().min(1)).optional().default([]),
+  resourceIds: z.array(z.string().trim().min(1)).optional().default([]),
   assessmentPoolIds: z.array(z.string().trim().min(1)).optional().default([]),
   isRequired: z.coerce.boolean().optional().default(false),
+  contentSelectionMode: curriculumContentSelectionModeEnum.optional().default("LINK"),
   releaseConfig: curriculumStageItemReleaseConfigSchema.optional(),
 }).superRefine((value, context) => {
   if (value.itemType === "CONTENT") {
-    if (value.contentIds.length === 0) {
+    if (value.contentIds.length === 0 && value.resourceIds.length === 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["contentIds"],
-        message: "Select at least one content item.",
+        message: "Select at least one course content item or repository resource.",
+      });
+    }
+
+    if (value.contentIds.length > 0 && value.resourceIds.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resourceIds"],
+        message: "Choose either course content or repository resources, not both.",
       });
     }
 
@@ -212,6 +241,14 @@ export const createCurriculumStageItemsSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["contentIds"],
         message: "Content selections cannot be provided for assessment items.",
+      });
+    }
+
+    if (value.resourceIds.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resourceIds"],
+        message: "Repository resource selections cannot be provided for assessment items.",
       });
     }
   }

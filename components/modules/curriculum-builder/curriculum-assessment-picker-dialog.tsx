@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { AlertTriangle, ClipboardList } from "lucide-react";
 
 import { CurriculumReferencePickerDialog } from "@/components/modules/curriculum-builder/curriculum-reference-picker-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,7 @@ export function CurriculumAssessmentPickerDialog({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isRequired, setIsRequired] = useState(false);
   const [confirmAutoLinkOpen, setConfirmAutoLinkOpen] = useState(false);
+  const [confirmDraftOpen, setConfirmDraftOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -50,6 +51,7 @@ export function CurriculumAssessmentPickerDialog({
       setSelectedIds([]);
       setIsRequired(false);
       setConfirmAutoLinkOpen(false);
+      setConfirmDraftOpen(false);
     }
   }, [open]);
 
@@ -66,6 +68,11 @@ export function CurriculumAssessmentPickerDialog({
 
   const selectedUnlinkedItems = useMemo(
     () => items.filter((item) => selectedIds.includes(item.id) && !item.isLinkedToCourse),
+    [items, selectedIds],
+  );
+
+  const selectedDraftItems = useMemo(
+    () => items.filter((item) => selectedIds.includes(item.id) && item.status === "DRAFT"),
     [items, selectedIds],
   );
 
@@ -90,11 +97,25 @@ export function CurriculumAssessmentPickerDialog({
   };
 
   const handleConfirm = async () => {
+    if (selectedDraftItems.length > 0) {
+      setConfirmDraftOpen(true);
+      return;
+    }
+
     if (selectedUnlinkedItems.length > 0) {
       setConfirmAutoLinkOpen(true);
       return;
     }
 
+    await handleSubmit();
+  };
+
+  const handleDraftConfirmed = async () => {
+    setConfirmDraftOpen(false);
+    if (selectedUnlinkedItems.length > 0) {
+      setConfirmAutoLinkOpen(true);
+      return;
+    }
     await handleSubmit();
   };
 
@@ -207,6 +228,50 @@ export function CurriculumAssessmentPickerDialog({
             </Button>
             <Button type="button" disabled={isSaving} onClick={() => void handleSubmit()}>
               {isSaving ? "Saving..." : "Link and add assessments"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDraftOpen} onOpenChange={setConfirmDraftOpen}>
+        <DialogContent size="sm" className="p-0">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Draft assessments selected
+            </DialogTitle>
+            <DialogDescription>
+              {selectedDraftItems.length === 1
+                ? "The selected assessment is still in DRAFT status. Consider publishing it before adding it to the curriculum."
+                : `${selectedDraftItems.length} selected assessments are still in DRAFT status. Consider publishing them before adding them to the curriculum.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 px-6 py-5">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="space-y-2">
+                {selectedDraftItems.slice(0, 5).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-medium text-slate-900">{item.title}</span>
+                    <Badge variant="warning">DRAFT</Badge>
+                  </div>
+                ))}
+              </div>
+              {selectedDraftItems.length > 5 ? (
+                <p className="mt-3 text-xs text-slate-500">+{selectedDraftItems.length - 5} more draft assessment{selectedDraftItems.length - 5 === 1 ? "" : "s"}</p>
+              ) : null}
+            </div>
+            <p className="text-xs text-slate-500">
+              You can still add them, but learners won&apos;t be able to access draft assessments until they are published.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="secondary" disabled={isSaving} onClick={() => setConfirmDraftOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="default" disabled={isSaving} onClick={() => void handleDraftConfirmed()}>
+              {isSaving ? "Saving..." : "Publish and add anyway"}
             </Button>
           </DialogFooter>
         </DialogContent>

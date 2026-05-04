@@ -71,6 +71,7 @@ export async function createContentService(
       contentType: input.contentType as ContentCreateResult["contentType"],
       status: (input.status ?? "DRAFT") as ContentCreateResult["status"],
       fileName: input.fileName || null,
+      resourceId: null,
     };
   }
 
@@ -104,6 +105,11 @@ export async function createContentService(
       contentType: true,
       status: true,
       fileName: true,
+      fileUrl: true,
+      fileSize: true,
+      mimeType: true,
+      storagePath: true,
+      storageProvider: true,
     },
   });
 
@@ -116,12 +122,16 @@ export async function createContentService(
     metadata: { courseId: input.courseId, contentType: input.contentType },
   });
 
-  await syncLearningResourceFromContentService(content.id, {
+  const syncResult = await syncLearningResourceFromContentService(content.id, {
     actorUserId: options?.actorUserId,
     changeSummary: "Created from repository upload.",
+    repositoryFolderId: input.repositoryFolderId ?? null,
   });
 
-  return content;
+  return {
+    ...content,
+    resourceId: syncResult?.id ?? null,
+  };
 }
 
 export async function updateContentService(

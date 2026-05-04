@@ -56,6 +56,11 @@ type FolderOption = {
   contentCount: number;
 };
 
+type RepositoryFolderOption = {
+  id: string;
+  pathLabel: string;
+};
+
 type PendingUploadFile = {
   id: string;
   file: File;
@@ -280,6 +285,7 @@ function getUploadStatusBadgeVariant(status: UploadStatus): "default" | "info" |
 function uploadContentFile(params: {
   courseId: string;
   folderId?: string | null;
+  repositoryFolderId?: string | null;
   description: string;
   contentType: string;
   status: string;
@@ -291,6 +297,9 @@ function uploadContentFile(params: {
     body.set("courseId", params.courseId);
     if (params.folderId) {
       body.set("folderId", params.folderId);
+    }
+    if (params.repositoryFolderId) {
+      body.set("repositoryFolderId", params.repositoryFolderId);
     }
     body.set("description", params.description);
     body.set("contentType", params.contentType);
@@ -339,6 +348,7 @@ export function AddContentSheet({
   onOpenChange,
   courseId,
   folders,
+  repositoryFolders = [],
   defaultFolderId,
   onCreated,
 }: {
@@ -346,6 +356,7 @@ export function AddContentSheet({
   onOpenChange: (open: boolean) => void;
   courseId: string;
   folders: FolderOption[];
+  repositoryFolders?: RepositoryFolderOption[];
   defaultFolderId?: string;
   onCreated: () => void;
 }) {
@@ -372,6 +383,7 @@ export function AddContentSheet({
     courseId ? `gts-course-content-article:add:${courseId}` : null
   ), [courseId]);
   const isFileUploadMode = !isArticleContent && !isLinkContent && !isScormContent && form.uploadMode === "FILES";
+  const usesRepositoryFolders = repositoryFolders.length > 0;
   const uploadableFiles = selectedFiles.filter((item) => item.status !== "complete");
   const failedUploadCount = useMemo(
     () => selectedFiles.filter((item) => item.status === "failed").length,
@@ -389,6 +401,30 @@ export function AddContentSheet({
       : isFileUploadMode
         ? uploadableFiles.length > 0 && !hasInvalidFileTitles
         : Boolean(form.title.trim() && form.fileUrl.trim());
+  const selectedFolderLabel = selectedFolderId
+    ? (usesRepositoryFolders
+      ? (repositoryFolders.find((folder) => folder.id === selectedFolderId)?.pathLabel ?? "Selected folder")
+      : (folders.find((folder) => folder.id === selectedFolderId)?.name ?? "Selected folder"))
+    : "Repository Root";
+  const selectedContentTypeLabel = CONTENT_TYPES.find((type) => type.value === form.contentType)?.label ?? form.contentType;
+  const selectedTemplate = UPLOAD_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? null;
+  const selectedFilesTotalBytes = useMemo(
+    () => selectedFiles.reduce((sum, item) => sum + item.file.size, 0),
+    [selectedFiles],
+  );
+  const sourceSummaryLabel = isArticleContent
+    ? form.bodyHtml.trim().length > 0
+      ? "Lesson Studio draft"
+      : form.bodyJson.blocks.length > 0
+        ? `${form.bodyJson.blocks.length} block${form.bodyJson.blocks.length === 1 ? "" : "s"}`
+        : "Start writing"
+    : isFileUploadMode
+      ? selectedFiles.length > 0
+        ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}`
+        : "Choose files"
+      : form.fileUrl.trim().length > 0
+        ? "External URL"
+        : "Add a URL";
 
   useEffect(() => {
     if (!open) {
@@ -628,7 +664,8 @@ export function AddContentSheet({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         courseId,
-        folderId: selectedFolderId || null,
+          folderId: usesRepositoryFolders ? null : (selectedFolderId || null),
+          repositoryFolderId: usesRepositoryFolders ? (selectedFolderId || null) : null,
         title: form.title,
         description: form.description,
         contentType: form.contentType,
@@ -655,7 +692,8 @@ export function AddContentSheet({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         courseId,
-        folderId: selectedFolderId || null,
+          folderId: usesRepositoryFolders ? null : (selectedFolderId || null),
+          repositoryFolderId: usesRepositoryFolders ? (selectedFolderId || null) : null,
         title: form.title,
         description: form.description,
         contentType: form.contentType,
@@ -717,7 +755,8 @@ export function AddContentSheet({
       try {
         await uploadContentFile({
           courseId,
-          folderId: selectedFolderId || null,
+          folderId: usesRepositoryFolders ? null : (selectedFolderId || null),
+          repositoryFolderId: usesRepositoryFolders ? (selectedFolderId || null) : null,
           description: form.description,
           contentType: form.contentType,
           status: form.status,
@@ -834,52 +873,45 @@ export function AddContentSheet({
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
       <SheetContent className="overflow-y-auto sm:max-w-3xl">
         <SheetHeader>
-          <SheetTitle>Content Upload Studio</SheetTitle>
+          <SheetTitle>Upload Content</SheetTitle>
           <SheetDescription>
-            Orchestrate upload-ready assets with templates, smart suggestions, and a managed retry queue designed for high-volume LMS operations.
+            Upload files, create a lesson, or add a link into this repository location. Advanced presets stay available when you need them.
           </SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5 px-1 py-4">
           <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Template</p>
-              <p className="mt-1 text-xs font-semibold text-slate-900">{selectedTemplateId ? "Applied" : "Optional"}</p>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Type</p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">{selectedContentTypeLabel}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Source</p>
-              <p className="mt-1 text-xs font-semibold text-slate-900">
-                {isArticleContent
-                  ? form.bodyHtml.trim().length > 0
-                    ? "Lesson Studio draft"
-                    : form.bodyJson.blocks.length > 0
-                      ? `${form.bodyJson.blocks.length} block${form.bodyJson.blocks.length === 1 ? "" : "s"}`
-                      : "Pending"
-                  : isFileUploadMode
-                  ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}`
-                  : form.fileUrl.trim().length > 0
-                    ? "External URL"
-                    : "Pending"}
-              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">{sourceSummaryLabel}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Routing</p>
-              <p className="mt-1 truncate text-xs font-semibold text-slate-900">{selectedFolderId ? "Folder selected" : "Library root"}</p>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Destination</p>
+              <p className="mt-1 truncate text-xs font-semibold text-slate-900">{selectedFolderLabel}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Publish</p>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Status</p>
               <p className="mt-1 text-xs font-semibold text-slate-900">{form.status}</p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Advanced LMS Templates</p>
-                <p className="mt-1 text-xs text-slate-500">Apply a preset to prefill content type, publishing status, and governance-ready descriptions.</p>
+          <details className="rounded-xl border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer list-none">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Optional quick templates</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Prefill common upload setups when you want a faster start.
+                    {selectedTemplate ? ` Current template: ${selectedTemplate.label}.` : ""}
+                  </p>
+                </div>
+                <Badge variant="accent">Optional</Badge>
               </div>
-              <Badge variant="accent">Preset</Badge>
-            </div>
+            </summary>
 
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {UPLOAD_TEMPLATES.map((template) => (
@@ -898,10 +930,10 @@ export function AddContentSheet({
                 </button>
               ))}
             </div>
-          </div>
+          </details>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Content Type</label>
+            <label className="text-sm font-medium">What are you adding?</label>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {CONTENT_TYPES.map((type) => (
                 <button
@@ -934,21 +966,25 @@ export function AddContentSheet({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Folder</label>
+            <label className="text-sm font-medium">Destination</label>
             <select
               value={selectedFolderId}
               onChange={(event) => setSelectedFolderId(event.target.value)}
               className="block w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]"
             >
-              <option value="">Unfiled library</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={folder.id}>{folder.name}</option>
+              <option value="">Repository root</option>
+              {(usesRepositoryFolders ? repositoryFolders : folders).map((folder) => (
+                <option key={folder.id} value={folder.id}>{"pathLabel" in folder ? folder.pathLabel : folder.name}</option>
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              {folders.length > 0
-                ? "Choose the folder these content items should be added to."
-                : "Create folders from the content library to organize uploaded assets."}
+              {usesRepositoryFolders
+                ? (repositoryFolders.length > 0
+                  ? "Uploads land in Repository Root unless you choose a global repository folder here."
+                  : "Create repository folders in the workspace explorer to organize uploaded assets.")
+                : (folders.length > 0
+                  ? "Files go to Repository Root unless you choose a folder here."
+                  : "Create folders from the content library to organize uploaded assets.")}
             </p>
           </div>
 
@@ -1045,7 +1081,7 @@ export function AddContentSheet({
                 draftStorageKey={articleDraftStorageKey ? `${articleDraftStorageKey}:studio` : undefined}
                 draftLabel="article"
                 onSave={(html) => {
-                  setForm((prev) => ({ ...prev, bodyHtml: html, bodyJson: { version: 1, blocks: [{ id: "migrated", type: "PARAGRAPH", text: "Content created with Lesson Studio." }] } as AuthoredContentDocument }));
+                  setForm((prev) => ({ ...prev, bodyHtml: html }));
                   setRichEditorOpen(false);
                 }}
                 disabled={isSubmitting}
@@ -1055,7 +1091,7 @@ export function AddContentSheet({
             <>
               {!isLinkContent ? (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Source</label>
+                  <label className="text-sm font-medium">How do you want to add it?</label>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -1140,10 +1176,11 @@ export function AddContentSheet({
                     onDrop={handleDrop}
                   >
                     <UploadCloud className="mx-auto h-8 w-8 text-primary" />
-                    <p className="mt-3 text-sm font-semibold text-foreground">Drag and drop files here</p>
+                    <p className="mt-3 text-sm font-semibold text-foreground">Drop files here or choose files</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Upload multiple files at once. You can adjust each title before submit, and the sheet will show live progress while the queue uploads.
+                      Add one file or many. You can rename each file before upload, and the queue will keep track of progress.
                     </p>
+                    <p className="mt-2 text-xs text-slate-500">Destination: {selectedFolderLabel}</p>
                     <Button
                       type="button"
                       variant="secondary"
@@ -1208,6 +1245,7 @@ export function AddContentSheet({
                         <p className="text-sm font-semibold">Selected files</p>
                         <div className="flex items-center gap-2">
                           <Badge variant="info">{selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"}</Badge>
+                          <Badge variant="accent">{formatFileSize(selectedFilesTotalBytes)}</Badge>
                           {failedUploadCount > 0 ? <Badge variant="danger">{failedUploadCount} failed</Badge> : null}
                           {completedUploadCount > 0 ? <Badge variant="success">{completedUploadCount} complete</Badge> : null}
                         </div>
@@ -1295,24 +1333,26 @@ export function AddContentSheet({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">No files selected yet.</p>
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-center text-xs text-muted-foreground">
+                      No files selected yet. Choose files above to start the upload queue.
+                    </div>
                   )}
                 </div>
               )}
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
+                <label className="text-sm font-medium">Notes (optional)</label>
                 <textarea
                   rows={3}
                   className="flex w-full rounded-xl border border-[#dde1e6] bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d3b84]"
-                  placeholder="Add delivery context, learning objective, and facilitator notes for this upload batch."
+                  placeholder="Add context, learning objective, or facilitator notes for this upload."
                   value={form.description}
                   onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Status</label>
+                <label className="text-sm font-medium">Create as</label>
                 <div className="flex gap-2">
                   {["DRAFT", "PUBLISHED"].map((status) => (
                     <button
