@@ -84,7 +84,7 @@ export function downloadCurriculumSequencePdf(curriculum: CurriculumForPdf, cour
 
   doc.setTextColor(0);
 
-  let startY = curriculum.description ? 36 : 30;
+  const startY = curriculum.description ? 36 : 30;
 
   // Build table rows
   const tableBody: Array<Array<string>> = [];

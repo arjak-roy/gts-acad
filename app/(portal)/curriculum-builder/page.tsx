@@ -1129,6 +1129,7 @@ function SortableStageCard({
   stage,
   courseId,
   contentOptions,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   repositoryFolders,
   contentFolders,
   assessmentOptions,

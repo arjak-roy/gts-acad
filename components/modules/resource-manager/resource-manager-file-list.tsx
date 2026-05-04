@@ -15,7 +15,6 @@ import {
   Eye,
   Pencil,
   FolderInput,
-  Download,
   Trash2,
   Copy,
   Loader2,

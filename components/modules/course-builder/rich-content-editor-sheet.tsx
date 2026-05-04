@@ -148,7 +148,7 @@ export function RichContentEditorSheet({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [studioMode, setStudioMode] = useState<StudioMode>("write");
   const [panels, setPanels] = useState<PanelVisibility>({ structure: true, outline: false, preview: false, quality: false });
-  const [editorVersion, setEditorVersion] = useState(0);
+  const [, setEditorVersion] = useState(0);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [imageDialogOpen, setImageDialogOpen] = useState(false);

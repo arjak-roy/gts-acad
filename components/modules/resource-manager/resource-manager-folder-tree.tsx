@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Folder, FolderOpen, HardDrive } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 
@@ -11,8 +11,6 @@ import { useResourceManager, type FolderTreeNode } from "./resource-manager-type
 export function ResourceManagerFolderTree() {
   const {
     folderTree,
-    selectedFolderId,
-    setSelectedFolderId,
     inlineCreateParentId,
     setInlineCreateParentId,
     createFolder,

@@ -26,7 +26,7 @@ export function useResourceUpload(options: {
   uploadConfig: LearningResourceUploadConfig | null;
   onComplete: () => void;
 }) {
-  const { folderId, uploadConfig, onComplete } = options;
+  const { folderId, onComplete } = options;
   const [state, setState] = useState<UploadState>(EMPTY_UPLOAD_STATE);
   const abortRef = useRef<AbortController | null>(null);
 

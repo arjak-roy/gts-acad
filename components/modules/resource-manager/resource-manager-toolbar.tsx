@@ -25,7 +25,6 @@ import { useResourceManager } from "./resource-manager-types";
 export function ResourceManagerToolbar() {
   const {
     mode,
-    lookups,
     selectedFolderId,
     setSelectedFolderId,
     viewMode,
@@ -33,11 +32,9 @@ export function ResourceManagerToolbar() {
     filters,
     setFilters,
     setInlineCreateParentId,
-    renamingFolderId,
     setRenamingFolderId,
     selectedResourceIds,
     clearSelection,
-    folderTree,
     deleteFolder,
   } = useResourceManager();
 
@@ -59,12 +56,6 @@ export function ResourceManagerToolbar() {
   }, [filters.search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoUp = selectedFolderId !== null;
-
-  function handleGoUp() {
-    if (!selectedFolderId) return;
-    const current = lookups.folders.find((f) => f.id === selectedFolderId);
-    setSelectedFolderId(current?.parentId ?? null);
-  }
 
   return (
     <div className="flex items-center gap-0.5 border-b border-slate-200 bg-slate-50/80 px-2 py-1.5">

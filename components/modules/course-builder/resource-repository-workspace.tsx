@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, PencilLine, Search, Trash2, UploadCloud, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, FolderPlus, PencilLine, Search, Trash2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddContentSheet } from "@/components/modules/course-builder/add-content-sheet";

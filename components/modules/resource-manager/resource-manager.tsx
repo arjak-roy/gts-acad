@@ -10,7 +10,7 @@ import {
   type LearningResourceLookups,
   type LearningResourceUploadConfig,
 } from "@/components/modules/course-builder/learning-resource-client";
-import { LearningResourceFormSheet } from "@/components/modules/course-builder/learning-resource-form-sheet";
+import { LearningResourceFormSheet, type LearningResourceFormSeed } from "@/components/modules/course-builder/learning-resource-form-sheet";
 import { LearningResourceDetailSheet } from "@/components/modules/course-builder/learning-resource-detail-sheet";
 import { LearningResourceAssignmentsSheet } from "@/components/modules/course-builder/learning-resource-assignments-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,6 @@ import {
   ResourceManagerContext,
   type ContentSelectionMode,
   type ResourceFilterState,
-  type ResourceManagerMode,
   type ResourceManagerPickResult,
   type ViewMode,
 } from "./resource-manager-types";
@@ -80,7 +79,7 @@ export function ResourceManager(props: ResourceManagerProps) {
 
   // Form sheet state
   const [formSheetOpen, setFormSheetOpen] = useState(false);
-  const [formPreset, setFormPreset] = useState<{ contentType?: string; folderId?: string } | undefined>(undefined);
+  const [formPreset, setFormPreset] = useState<LearningResourceFormSeed | undefined>(undefined);
   const [editResourceId, setEditResourceId] = useState<string | null>(null);
 
   // Detail sheet state
@@ -151,7 +150,7 @@ export function ResourceManager(props: ResourceManagerProps) {
   }, [fetchResources]);
 
   // ── Upload ─────────────────────────────────────────────────────────────────
-  const { uploadState, startUpload, cancelUpload, clearUploadState } = useResourceUpload({
+  const { uploadState, startUpload } = useResourceUpload({
     folderId: selectedFolderId,
     uploadConfig,
     onComplete: () => {
@@ -480,7 +479,7 @@ export function ResourceManager(props: ResourceManagerProps) {
             void (props as ResourceManagerPickProps).onContentCreated?.();
           }
         }}
-        createPreset={formPreset as any}
+        createPreset={formPreset}
       />
 
       {/* Resource detail view */}

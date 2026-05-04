@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpDown, FileText, Film, Globe, File, Link2, Search, Trash2, X } from "lucide-react";
+import { ArrowUpDown, FileText, Film, Globe, File, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";

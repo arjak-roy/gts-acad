@@ -4,7 +4,6 @@ import { createContext, useContext } from "react";
 import type {
   LearningResourceContentType,
   LearningResourceFolderSummary,
-  LearningResourceListItem,
   LearningResourceListPage,
   LearningResourceLookups,
   LearningResourceStatus,
